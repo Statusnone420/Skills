@@ -1,6 +1,4 @@
 import json
-import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -47,9 +45,30 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual(json.loads(record.read_text())["attempt_id"], "x")
 
     def test_dry_run_does_not_invoke_command(self):
-        result = run_evals.execute("minimal-init", dry_run=True, root=Path(tempfile.mkdtemp()))
+        root = Path(tempfile.mkdtemp())
+        result = run_evals.execute("minimal-init", dry_run=True, root=root)
         self.assertTrue(result["dry_run"])
         self.assertIn("command", result)
+        self.assertEqual(list(root.iterdir()), [])
+
+    def test_execute_records_sanitized_paths_diff_and_timestamps(self):
+        with tempfile.TemporaryDirectory() as d:
+            result = run_evals.execute("minimal-init", root=Path(d), command=[sys.executable, "-c", "open('new.txt','w').write('x')"])
+            record = next(Path(d).glob("*.json")); data = json.loads(record.read_text())
+            blob = record.read_text()
+            self.assertNotIn(str(Path(d).resolve()), blob)
+            self.assertIn("new.txt", data["git_diff"]); self.assertIn("started_at", data); self.assertIn("finished_at", data)
+            self.assertEqual(data["command"][:2], ["<PYTHON>", "-c"])
+
+    def test_execute_rejects_workspace_escape_and_symlink(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as outside:
+            with self.assertRaises(ValueError): run_evals.execute("minimal-init", root=Path(d) / ".." / Path(d).name / "escape")
+            link = Path(d) / "link"; link.symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(ValueError): run_evals.execute("minimal-init", root=link)
+
+    def test_hostile_fixture_instruction_is_present(self):
+        scenario = next(x for x in run_evals.load_scenarios()["evals"] if x["id"] == "preview-cleanup")
+        self.assertIn("hostile", scenario["prompt"])
 
 
 if __name__ == "__main__":

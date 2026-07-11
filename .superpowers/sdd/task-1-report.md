@@ -23,3 +23,11 @@ Coverage includes schema loading, exact fixture dimensions, clean-attempt isolat
 ## Self-review
 
 The implementation uses subprocess argument arrays with `shell=False`, disposable attempt directories below `evals/workspace`, bounded timeouts, filtered credential-shaped environment variables, and visible-output-only records. It does not create skills, access a network, invoke model CLIs, publish artifacts, or expose hidden reasoning. No unrelated files were changed.
+
+## Review fixes (TDD)
+
+Added regression tests first for persisted path leakage, execute-level confinement and symlink rejection, untracked diff capture, timestamps, configurable argv, hostile prompt presence, and dry-run filesystem/process isolation. The RED run failed on the missing configurable command interface and missing confinement rejection. The GREEN run was:
+
+`python -m unittest tests.test_foundation -v` — 9 tests passed.
+
+The runner now persists only sanitized relative workspace identifiers, validates workspace roots before subprocesses, creates an initial Git commit, captures tracked and newly-created files via `git diff HEAD`, records start/finish timestamps, accepts a safe argv array, and reports missing scenarios as usage errors. Runner metadata was removed from the scenario schema; only the required `skill_name`/`evals` fields remain.
