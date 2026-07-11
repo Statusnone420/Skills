@@ -9,13 +9,18 @@ SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
 
 def clean_output(path: Path) -> None:
+    path = path.absolute()
+    if path == ROOT or ROOT not in path.parents:
+        raise ValueError("output must be repository-confined")
     if path.exists():
         if path.is_symlink(): raise ValueError("output must not be a symlink")
         shutil.rmtree(path)
     path.mkdir(parents=True)
 
 def slash_skill(text: str) -> str:
-    return text.replace("---\n\n# Diátaxis Docs", "---\nuser-invocable: true\ndisable-model-invocation: true\n\n# Diátaxis Docs", 1)
+    parts = text.split("---", 2)
+    if len(parts) != 3: raise ValueError("canonical frontmatter required")
+    return "---" + parts[1].rstrip() + "\nuser-invocable: true\ndisable-model-invocation: true\n---" + parts[2]
 
 def generate(output: Path) -> None:
     source_text = (SOURCE / "SKILL.md").read_text(encoding="utf-8")
@@ -24,7 +29,7 @@ def generate(output: Path) -> None:
         d = output / vendor; d.mkdir()
         (d / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
         for resource in ("references", "agents"):
-            shutil.copytree(SOURCE / resource, d / resource)
+            shutil.copytree(SOURCE / resource, d / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     wrapper = (
         "# /docs wrapper\n\n"
         "Instruction-enforced invocation: activate the shared `docs` skill explicitly, then "
@@ -44,7 +49,7 @@ def generate(output: Path) -> None:
     (plugin / ".codex-plugin" / "plugin.json").write_text(json.dumps(manifest, sort_keys=True, indent=2)+"\n", encoding="utf-8", newline="\n")
     (plugin / "skills" / "docs" / "SKILL.md").write_text(source_text, encoding="utf-8", newline="\n")
     for resource in ("references", "agents", "scripts"):
-        shutil.copytree(SOURCE / resource, plugin / "skills" / "docs" / resource)
+        shutil.copytree(SOURCE / resource, plugin / "skills" / "docs" / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 def validate(output: Path) -> list[str]:
     errors=[]; canonical=(SOURCE/"SKILL.md").read_text(encoding="utf-8")
@@ -52,17 +57,33 @@ def validate(output: Path) -> list[str]:
     def content(text):
         return re.sub(r"\A\nuser-invocable: true\ndisable-model-invocation: true", "", text.split("---",2)[-1])
     if not re.search(r"^name:\s*docs$", canonical, re.M): errors.append("canonical frontmatter name")
+    if re.search(r"\b(?:Claude|Copilot|Grok|Cursor|Gemini|OpenCode|GPT|model)\b", body, re.I): errors.append("forbidden vendor/model term")
     if len(body.split()) > 500: errors.append("canonical word budget")
+    links = re.findall(r"\[[^]]+\]\(([^)#]+)", canonical)
+    for link in links:
+        target = SOURCE / link
+        if not target.is_file(): errors.append(f"missing reference {link}")
+        elif re.search(r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")):
+            errors.append(f"reference exceeds one hop {link}")
     for v in ("claude","copilot","grok","cursor"):
         p=output/v/"SKILL.md"
         if not p.exists() or "user-invocable: true" not in p.read_text() or "disable-model-invocation: true" not in p.read_text(): errors.append(f"slash parity {v}")
         elif content(p.read_text(encoding="utf-8")) != body: errors.append(f"body parity {v}")
     for v in ("gemini","opencode"):
-        if "raw trailing text" not in (output/v/"docs.md").read_text(encoding="utf-8").lower(): errors.append(f"wrapper {v}")
+        wrapper = (output/v/"docs.md").read_text(encoding="utf-8")
+        if "raw trailing text" not in wrapper.lower() or "$(" in wrapper or "`$" in wrapper: errors.append(f"wrapper {v}")
     for c in COMMANDS:
         if not (output/"web"/f"docs-{c}.txt").exists(): errors.append(f"web command {c}")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
+    expected = {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md")} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py"}
+    actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
+    for extra in sorted(actual - expected): errors.append(f"extra file {extra}")
+    for v in ("claude","copilot","grok","cursor"):
+        for rel in ("agents/openai.yaml","references/commands.md","references/memory.md"):
+            if (output/v/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
+    for rel in ("agents/openai.yaml","references/commands.md","references/memory.md","scripts/check.py"):
+        if (output/"plugin/skills/docs"/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity plugin/{rel}")
     return errors
 
 def main(argv=None):

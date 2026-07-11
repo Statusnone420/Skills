@@ -15,5 +15,5 @@ jobs:
       - name: Run stdlib tests and reproducibility check
         shell: bash
         run: |
-          python3 -m unittest discover -s tests -p 'test_*.py'
-          python3 tools/build_adapters.py --check --output adapters
+          python -m unittest discover -s tests -p 'test_*.py'
+          python tools/build_adapters.py --check --output adapters

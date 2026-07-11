@@ -11,8 +11,42 @@ BUILDER = ROOT / "tools" / "build_adapters.py"
 
 
 class AdapterBuilderTests(unittest.TestCase):
-    def test_generate_and_check_are_reproducible(self):
+    def test_rejects_output_outside_repo_without_deleting_sentinel(self):
         with tempfile.TemporaryDirectory() as td:
+            outside = Path(td); sentinel = outside / "sentinel"; sentinel.write_text("keep")
+            run = subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(outside)], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(run.returncode, 0); self.assertTrue(sentinel.exists())
+
+    def test_slash_metadata_is_inside_frontmatter(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
+            text = (out / "claude/SKILL.md").read_text()
+            self.assertEqual(text.split("---", 2)[1].count("user-invocable:"), 1)
+            self.assertNotIn("user-invocable:", text.split("---", 2)[2])
+
+    def test_check_detects_stale_extra_and_resource_drift(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
+            (out / "web/extra.txt").write_text("stale")
+            (out / "plugin/skills/docs/references/memory.md").write_text("drift")
+            check = subprocess.run([sys.executable, str(BUILDER), "--check", "--output", str(out)], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(check.returncode, 0); self.assertIn("extra", check.stderr); self.assertIn("parity", check.stderr)
+
+    def test_isolated_user_install_metadata_invocation_and_uninstall(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"; home = Path(td) / "home"
+            subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
+            target = home / ".codex" / "skills" / "docs"; target.parent.mkdir(parents=True)
+            import shutil; shutil.copytree(out / "plugin/skills/docs", target)
+            self.assertEqual((target / "SKILL.md").read_text().split("---", 2)[0], "")
+            self.assertIn("$docs", (target / "agents/openai.yaml").read_text())
+            shutil.rmtree(target); self.assertFalse(target.exists())
+
+    def test_ci_uses_portable_python_command(self):
+        workflow = (ROOT / ".github/workflows/validate.yml").read_text()
+        self.assertIn("windows-latest", workflow); self.assertNotIn("python3 -m", workflow)
+    def test_generate_and_check_are_reproducible(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"
             run = subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
@@ -24,7 +58,7 @@ class AdapterBuilderTests(unittest.TestCase):
             self.assertEqual(first, second)
 
     def test_generated_contracts(self):
-        with tempfile.TemporaryDirectory() as td:
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
             canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
