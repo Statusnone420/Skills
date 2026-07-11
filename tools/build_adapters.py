@@ -12,6 +12,9 @@ def clean_output(path: Path) -> None:
     path = path.absolute()
     if path == ROOT or ROOT not in path.parents:
         raise ValueError("output must be repository-confined")
+    real_root = ROOT.resolve(); real_parent = path.parent.resolve()
+    if real_parent != real_root and real_root not in real_parent.parents:
+        raise ValueError("output traverses a symlink or reparse parent")
     if path.exists():
         if path.is_symlink(): raise ValueError("output must not be a symlink")
         shutil.rmtree(path)
@@ -54,6 +57,16 @@ def generate(output: Path) -> None:
 def validate(output: Path) -> list[str]:
     errors=[]; canonical=(SOURCE/"SKILL.md").read_text(encoding="utf-8")
     body=canonical.split("---",2)[-1]
+    def frontmatter(text):
+        parts=text.split("---",2)
+        if len(parts)!=3: return None
+        vals={}
+        for line in parts[1].strip().splitlines():
+            if not line.strip() or ":" not in line: continue
+            key,val=line.split(":",1); key=key.strip()
+            if key in vals: return None
+            vals[key]=val.strip()
+        return vals
     def content(text):
         return re.sub(r"\A\nuser-invocable: true\ndisable-model-invocation: true", "", text.split("---",2)[-1])
     if not re.search(r"^name:\s*docs$", canonical, re.M): errors.append("canonical frontmatter name")
@@ -67,7 +80,8 @@ def validate(output: Path) -> list[str]:
             errors.append(f"reference exceeds one hop {link}")
     for v in ("claude","copilot","grok","cursor"):
         p=output/v/"SKILL.md"
-        if not p.exists() or "user-invocable: true" not in p.read_text() or "disable-model-invocation: true" not in p.read_text(): errors.append(f"slash parity {v}")
+        parsed=frontmatter(p.read_text(encoding="utf-8")) if p.exists() else None
+        if parsed is None or parsed.get("user-invocable") != "true" or parsed.get("disable-model-invocation") != "true": errors.append(f"frontmatter {v}")
         elif content(p.read_text(encoding="utf-8")) != body: errors.append(f"body parity {v}")
     for v in ("gemini","opencode"):
         wrapper = (output/v/"docs.md").read_text(encoding="utf-8")
@@ -79,6 +93,12 @@ def validate(output: Path) -> list[str]:
     expected = {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md")} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py"}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     for extra in sorted(actual - expected): errors.append(f"extra file {extra}")
+    expected_dirs=set()
+    for x in expected:
+        parts=x.split('/')[:-1]
+        for i in range(1,len(parts)+1): expected_dirs.add('/'.join(parts[:i]))
+    for d in output.rglob('*'):
+        if d.is_dir() and d.relative_to(output).as_posix() not in expected_dirs: errors.append(f"extra directory {d.relative_to(output).as_posix()}")
     for v in ("claude","copilot","grok","cursor"):
         for rel in ("agents/openai.yaml","references/commands.md","references/memory.md"):
             if (output/v/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")

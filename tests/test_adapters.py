@@ -11,6 +11,22 @@ BUILDER = ROOT / "tools" / "build_adapters.py"
 
 
 class AdapterBuilderTests(unittest.TestCase):
+    def test_reparse_parent_output_cannot_escape(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td); outside = Path(outside_td); sentinel = outside / "sentinel"; sentinel.write_text("keep")
+            link = base / "link"
+            try: link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError): self.skipTest("symlink unavailable")
+            run = subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(link / "new")], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(run.returncode, 0); self.assertTrue(sentinel.exists())
+
+    def test_frontmatter_conflict_and_stale_empty_dir_fail_check(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
+            p = out / "claude/SKILL.md"; p.write_text(p.read_text().replace("user-invocable: true", "user-invocable: false\nuser-invocable: true", 1))
+            (out / "web/stale-empty").mkdir()
+            check = subprocess.run([sys.executable, str(BUILDER), "--check", "--output", str(out)], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(check.returncode, 0); self.assertIn("frontmatter", check.stderr); self.assertIn("directory", check.stderr)
     def test_rejects_output_outside_repo_without_deleting_sentinel(self):
         with tempfile.TemporaryDirectory() as td:
             outside = Path(td); sentinel = outside / "sentinel"; sentinel.write_text("keep")

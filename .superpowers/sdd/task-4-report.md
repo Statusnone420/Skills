@@ -44,3 +44,7 @@ Fix verification:
 - `git diff --check` — passed.
 
 The isolated install test uses a temporary repository-local home and simulates filesystem installation, metadata inspection, explicit `$docs` presence, and uninstall; it does not claim Desktop UI or macOS execution.
+
+## Second review fix wave
+
+RED: `python -m unittest tests.test_adapters` failed the new reparse-parent and conflicting-frontmatter/stale-directory regressions. Fixed by resolving the output parent realpath before deletion, structurally parsing frontmatter with duplicate/value checks, and validating complete directory topology (including empty directories). Final focused suite: 9 passed; full suite: 48 passed. Adapter check clean, official plugin validator passed, and `git diff --check` passed.
