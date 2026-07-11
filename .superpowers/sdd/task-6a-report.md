@@ -34,3 +34,25 @@ Follow-up RED observed the expected failures (`5` frontmatter/artifact failures)
 ## Changes
 
 Closed checker scope reparse handling, option-order JSON error handling, strict slash frontmatter validation, and Windows install verification. Added vendor-neutral external-review kit and skills-only plugin submission-readiness packet. All captures are repository-relative and omit hidden reasoning/secrets/private paths.
+
+## Recursive packet-validator follow-up
+
+Focused RED (new recursive synthetic test before implementation):
+
+```text
+python -m unittest tests.test_task6a_artifacts.Task6AArtifacts.test_plugin_packet_validator_rejects_nested_bad_objects_and_exact_schema
+ERROR (ModuleNotFoundError: tools.plugin_packet_validator)
+```
+
+Implemented `tools/plugin_packet_validator.py` with exact case type/result-shape and result-schema values, plus recursive key/value checks for absolute paths, credential-like material, and hidden-reasoning schema keys while allowing safety wording in prompt/behavior text. Focused GREEN:
+
+```text
+python -m unittest tests.test_task6a_artifacts -v  # 3 tests passed
+```
+
+Fresh verification after the follow-up:
+
+- Full suite: `python -m unittest discover -s tests -v` — **57 passed**.
+- Adapter check: `python tools/build_adapters.py --check` — **clean**.
+- Repository checker human/JSON: `python skills/docs/scripts/check.py .` and `--json` — **clean; findings: []**.
+- `git diff --check` — **clean**.
