@@ -30,11 +30,11 @@ def _workspace(root: Path) -> Path:
     if resolved != root.absolute() and not root.exists(): raise ValueError("workspace must not escape configured root")
     return resolved
 
-def prepare_attempt(root: Path, scenario_id: str) -> Path:
-    root = _workspace(root); root.mkdir(parents=True, exist_ok=True)
+def prepare_attempt(scenario_id: str) -> Path:
+    root = _workspace(WORKSPACE); root.mkdir(parents=True, exist_ok=True)
     attempt = root / f"attempt-{uuid.uuid4().hex}"
     attempt.mkdir()
-    if not is_confined(attempt, root): raise ValueError("attempt escaped workspace")
+    if attempt.is_symlink() or not is_confined(attempt, root): raise ValueError("attempt escaped workspace")
     subprocess.run(["git", "init", "--quiet"], cwd=attempt, shell=False, check=True, timeout=15)
     (attempt / "scenario.txt").write_text(scenario_id + "\n", encoding="utf-8"); build_fixture(attempt / "fixtures")
     subprocess.run(["git", "add", "-A"], cwd=attempt, shell=False, check=True, timeout=15)
@@ -70,16 +70,18 @@ def record_attempt(root, attempt_id, prompt, result):
     data = {"attempt_id": attempt_id, "prompt": redact(prompt), "recorded_at": datetime.now(timezone.utc).isoformat(), "harness": "statusnone-evals/0.1", "model": None, "usage": None, **result}
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"); return path
 
-def execute(scenario_id, *, dry_run=False, root=WORKSPACE, command=None, timeout=30):
+def relative_attempt(path): return f"evals/workspace/{Path(path).name}"
+
+def execute(scenario_id, *, dry_run=False, command=None, timeout=30):
     scenario = next((x for x in load_scenarios()["evals"] if x["id"] == scenario_id), None)
     if scenario is None: raise ValueError(f"unknown scenario: {scenario_id}")
     argv = list(command or [sys.executable, "-c", "print('model command not configured')"]); safe = _safe_command(argv)
-    workspace = _workspace(Path(root))
+    workspace = _workspace(WORKSPACE)
     if dry_run: return {"dry_run": True, "scenario_id": scenario_id, "command": safe, "workspace": "evals/workspace"}
-    attempt = prepare_attempt(workspace, scenario_id); result = run_command(argv, attempt, timeout)
+    attempt = prepare_attempt(scenario_id); result = run_command(argv, attempt, timeout)
     subprocess.run(["git", "add", "-A"], cwd=attempt, shell=False, check=True, timeout=15)
     diff = subprocess.run(["git", "diff", "HEAD", "--no-ext-diff"], cwd=attempt, shell=False, capture_output=True, text=True, timeout=15)
-    result.update({"scenario_id": scenario_id, "attempt_workspace": f"evals/workspace/{attempt.name}", "command": safe, "git_diff": redact(diff.stdout, workspace.parent), "git_status": redact(subprocess.run(["git", "status", "--short"], cwd=attempt, shell=False, capture_output=True, text=True, timeout=15).stdout, workspace.parent)})
+    result.update({"scenario_id": scenario_id, "attempt_workspace": relative_attempt(attempt), "command": safe, "git_diff": redact(diff.stdout, workspace.parent), "git_status": redact(subprocess.run(["git", "status", "--short"], cwd=attempt, shell=False, capture_output=True, text=True, timeout=15).stdout, workspace.parent)})
     record_attempt(workspace, attempt.name, scenario["prompt"], result); return result
 
 def main(argv=None):
@@ -87,7 +89,7 @@ def main(argv=None):
     if args.action == "list": print(json.dumps(load_scenarios(), indent=2))
     elif args.action == "prepare":
         if not args.scenario: p.error("prepare requires scenario")
-        print(prepare_attempt(WORKSPACE, args.scenario))
+        print(relative_attempt(prepare_attempt(args.scenario)))
     elif args.action == "run":
         if not args.scenario: p.error("run requires scenario")
         print(json.dumps(execute(args.scenario, dry_run=args.dry_run), indent=2))

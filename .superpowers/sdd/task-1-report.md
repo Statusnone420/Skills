@@ -31,3 +31,10 @@ Added regression tests first for persisted path leakage, execute-level confineme
 `python -m unittest tests.test_foundation -v` — 9 tests passed.
 
 The runner now persists only sanitized relative workspace identifiers, validates workspace roots before subprocesses, creates an initial Git commit, captures tracked and newly-created files via `git diff HEAD`, records start/finish timestamps, accepts a safe argv array, and reports missing scenarios as usage errors. Runner metadata was removed from the scenario schema; only the required `skill_name`/`evals` fields remain.
+
+## Final boundary fixes (TDD)
+
+RED command: `python -m unittest tests.test_foundation -v` failed with the old public `prepare_attempt(root, scenario)` signature, missing `relative_attempt`, and an execute path override. After moving production attempts to the module `WORKSPACE` constant, adding symlink/confinement checks, and making `prepare` print `evals/workspace/<attempt-id>`, GREEN verification passed:
+
+- `python -m unittest tests.test_foundation -v` — 10 tests passed.
+- `python -m unittest discover -s tests -v` — 10 tests passed.

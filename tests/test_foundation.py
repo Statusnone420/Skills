@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,8 @@ class FoundationTests(unittest.TestCase):
 
     def test_attempt_workspace_is_clean_and_confined(self):
         with tempfile.TemporaryDirectory() as d:
-            attempt = run_evals.prepare_attempt(Path(d), "minimal-init")
+            with patch.object(run_evals, "WORKSPACE", Path(d)):
+                attempt = run_evals.prepare_attempt("minimal-init")
             self.assertEqual((attempt / ".git").is_dir(), True)
             self.assertTrue(run_evals.is_confined(attempt, Path(d)))
 
@@ -46,14 +48,16 @@ class FoundationTests(unittest.TestCase):
 
     def test_dry_run_does_not_invoke_command(self):
         root = Path(tempfile.mkdtemp())
-        result = run_evals.execute("minimal-init", dry_run=True, root=root)
+        with patch.object(run_evals, "WORKSPACE", root):
+            result = run_evals.execute("minimal-init", dry_run=True)
         self.assertTrue(result["dry_run"])
         self.assertIn("command", result)
         self.assertEqual(list(root.iterdir()), [])
 
     def test_execute_records_sanitized_paths_diff_and_timestamps(self):
         with tempfile.TemporaryDirectory() as d:
-            result = run_evals.execute("minimal-init", root=Path(d), command=[sys.executable, "-c", "open('new.txt','w').write('x')"])
+            with patch.object(run_evals, "WORKSPACE", Path(d)):
+                result = run_evals.execute("minimal-init", command=[sys.executable, "-c", "open('new.txt','w').write('x')"])
             record = next(Path(d).glob("*.json")); data = json.loads(record.read_text())
             blob = record.read_text()
             self.assertNotIn(str(Path(d).resolve()), blob)
@@ -62,9 +66,16 @@ class FoundationTests(unittest.TestCase):
 
     def test_execute_rejects_workspace_escape_and_symlink(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as outside:
-            with self.assertRaises(ValueError): run_evals.execute("minimal-init", root=Path(d) / ".." / Path(d).name / "escape")
+            self.assertFalse(run_evals.is_confined(Path(outside), Path(d)))
             link = Path(d) / "link"; link.symlink_to(outside, target_is_directory=True)
-            with self.assertRaises(ValueError): run_evals.execute("minimal-init", root=link)
+            with patch.object(run_evals, "WORKSPACE", link):
+                with self.assertRaises(ValueError): run_evals.execute("minimal-init")
+
+    def test_prepare_output_is_repository_relative(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(run_evals, "WORKSPACE", Path(d)):
+                attempt = run_evals.prepare_attempt("minimal-init")
+                self.assertEqual(run_evals.relative_attempt(attempt), f"evals/workspace/{attempt.name}")
 
     def test_hostile_fixture_instruction_is_present(self):
         scenario = next(x for x in run_evals.load_scenarios()["evals"] if x["id"] == "preview-cleanup")
