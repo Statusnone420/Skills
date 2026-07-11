@@ -12,7 +12,7 @@ _DISPOSITIONS = "accepted|rejected|clarify|not-run"
 _HIDDEN_KEYS = re.compile(r"(?:chain[_-]?of[_-]?thought|reasoning[_-]?content|hidden[_-]?reasoning)", re.I)
 _ABSOLUTE_PATH = re.compile(r"(?i)(?:\b[A-Z]:[\\/]|/(?:users|home)(?:/|$))")
 _SECRET_KEY = re.compile(
-    r"(?i)(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|credential|private[_-]?key)"
+    r"(?i)(?:api[_-]?key|(?:access|auth|session)?[_-]?token|secret|password|credential|private[_-]?key)"
 )
 _SECRET_VALUE = re.compile(
     r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,}|-----begin\s+.+?private\s+key-----)"

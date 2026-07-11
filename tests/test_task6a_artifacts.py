@@ -12,6 +12,7 @@ class Task6AArtifacts(unittest.TestCase):
             ("schema enum", lambda d: d['result_schema'].__setitem__('result','PASS|FAIL')),
             ("nested path", lambda d: d['positive'][0].update({'metadata':{'deep':['C:/Users/name/repo']}})),
             ("nested credential", lambda d: d['positive'][0].update({'metadata':{'deep':{'api_key':'sk-test-secret-value'}}})),
+            ("nested token key", lambda d: d['positive'][0].update({'metadata':{'deep':{'token':'opaque-value'}}})),
             ("nested hidden schema key", lambda d: d['positive'][0].update({'metadata':{'chain_of_thought':'omit'}})),
         ]
         for label, mutate in bad_objects:
