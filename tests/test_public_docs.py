@@ -41,6 +41,11 @@ class PublicDocumentationContractTests(unittest.TestCase):
         docs_hot = (ROOT / "docs/README.md").stat().st_size + (ROOT / "docs/STATE.md").stat().st_size
         self.assertLessEqual(docs_hot, 16 * 1024)
 
+    def test_windows_install_verification_fails_when_skill_missing(self):
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        self.assertRegex(install, r"if\s*\(-not\s*\(Test-Path .*SKILL\.md")
+        self.assertIn("throw", install.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

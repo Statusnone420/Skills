@@ -40,6 +40,13 @@ class AdapterBuilderTests(unittest.TestCase):
             self.assertEqual(text.split("---", 2)[1].count("user-invocable:"), 1)
             self.assertNotIn("user-invocable:", text.split("---", 2)[2])
 
+    def test_slash_frontmatter_rejects_unknown_and_malformed_lines(self):
+        import tools.build_adapters as builder
+        canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
+        for bad in (canonical.replace("name: docs", "unknown: value\nname: docs", 1), canonical.replace("name: docs", "malformed line\nname: docs", 1)):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError): builder.slash_skill(bad)
+
     def test_check_detects_stale_extra_and_resource_drift(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)

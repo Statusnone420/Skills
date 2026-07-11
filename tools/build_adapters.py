@@ -23,6 +23,14 @@ def clean_output(path: Path) -> None:
 def slash_skill(text: str) -> str:
     parts = text.split("---", 2)
     if len(parts) != 3: raise ValueError("canonical frontmatter required")
+    allowed = {"name", "description"}; seen = set()
+    for line in parts[1].splitlines():
+        if not line.strip(): continue
+        if ":" not in line: raise ValueError("malformed frontmatter line")
+        key, value = line.split(":", 1); key = key.strip()
+        if key not in allowed or key in seen or not value.strip(): raise ValueError("invalid frontmatter key or value")
+        seen.add(key)
+    if seen != allowed: raise ValueError("incomplete frontmatter")
     return "---" + parts[1].rstrip() + "\nuser-invocable: true\ndisable-model-invocation: true\n---" + parts[2]
 
 def generate(output: Path) -> None:

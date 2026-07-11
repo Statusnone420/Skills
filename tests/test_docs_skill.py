@@ -134,6 +134,20 @@ class DocsSkillContractTests(unittest.TestCase):
         p = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), "--json"], capture_output=True, text=True)
         self.assertEqual(p.returncode, 2); self.assertEqual(json.loads(p.stdout)["findings"], [])
 
+    def test_scope_symlink_fails_with_confinement_diagnostic(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); (root / "docs").mkdir(); outside = root / "outside"; outside.mkdir()
+            link = root / "docs" / "linked"
+            try: link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError): self.skipTest("symlinks unavailable")
+            p = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), str(root), "--scope", "docs/linked"], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 2)
+            self.assertRegex(p.stdout.lower(), r"symlink|reparse|confin")
+
+    def test_json_missing_root_after_options_is_parseable(self):
+        p = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), "--map", "docs/README.md", "--scope", "docs", "--json"], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2); self.assertEqual(json.loads(p.stdout)["findings"], [])
+
     def test_malformed_markdown_and_human_clean_output(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td); (root / "docs").mkdir()

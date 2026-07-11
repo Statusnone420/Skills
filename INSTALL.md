@@ -10,7 +10,9 @@ if (Test-Path $dest) { Write-Error "Destination exists; inspect or update it del
   New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
   Copy-Item -Recurse -Path .\skills\docs -Destination $dest
 }
-Test-Path (Join-Path $dest 'SKILL.md')
+$skillPath = Join-Path $dest 'SKILL.md'
+if (-not (Test-Path (Join-Path $dest 'SKILL.md') -PathType Leaf)) { throw "Installation verification failed: missing $skillPath" }
+Write-Output "Installed: $skillPath"
 ```
 
 POSIX shell (macOS/Linux):
