@@ -63,6 +63,8 @@ def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
     if Path(map_path).is_absolute() or any(x == '..' for x in Path(map_path).parts): raise ValueError("map must be repo-relative")
     if hot_paths and any(Path(x).is_absolute() or any(y == '..' for y in Path(x).parts) for x in hot_paths): raise ValueError("hot paths must be repo-relative")
     if Path(scope).is_absolute() or any(x == '..' for x in Path(scope).parts): raise ValueError("scope must be repo-relative")
+    scope_path = safe_path(root / scope, root)
+    if scope_path.exists() and not scope_path.is_dir(): raise ValueError("scope must be a directory")
     mapfile = safe_path(root / map_path, root)
     for r in (hot_paths or ["docs/README.md", "docs/STATE.md"]): safe_path(root / r, root)
     for base, dirs, names in os.walk(root, followlinks=False):
@@ -123,7 +125,15 @@ def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if "--json" in argv and not any(not a.startswith("-") for a in argv):
+    value_options = {"--map", "--hot", "--scope"}
+    positional = []
+    skip = False
+    for arg in argv:
+        if skip: skip = False; continue
+        if arg in value_options: skip = True; continue
+        if arg.startswith("--"): continue
+        positional.append(arg)
+    if "--json" in argv and not positional:
         print(json.dumps({"error": "the following arguments are required: root", "findings": []}))
         return 2
     ap=argparse.ArgumentParser(); ap.add_argument("root"); ap.add_argument("--json",action="store_true"); ap.add_argument("--map",default="docs/README.md"); ap.add_argument("--hot",default=None); ap.add_argument("--scope",default="docs")

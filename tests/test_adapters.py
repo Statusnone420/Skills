@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,39 @@ BUILDER = ROOT / "tools" / "build_adapters.py"
 
 
 class AdapterBuilderTests(unittest.TestCase):
+    def test_unowned_existing_output_directory_is_preserved(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            output = Path(td) / "existing"
+            output.mkdir()
+            sentinel = output / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            run = subprocess.run(
+                [sys.executable, str(BUILDER), "generate", "--output", str(output)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_protected_repository_subtree_cannot_be_cleaned(self):
+        with tempfile.TemporaryDirectory() as td:
+            clone = Path(td) / "repo"
+            (clone / "tools").mkdir(parents=True)
+            shutil.copy2(BUILDER, clone / "tools" / "build_adapters.py")
+            shutil.copytree(ROOT / "skills", clone / "skills")
+            sentinel = clone / "skills" / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            run = subprocess.run(
+                [sys.executable, str(clone / "tools" / "build_adapters.py"), "generate", "--output", str(clone / "skills")],
+                cwd=clone,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertTrue(sentinel.exists(), run.stderr)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
     def test_reparse_parent_output_cannot_escape(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td, tempfile.TemporaryDirectory() as outside_td:
             base = Path(td); outside = Path(outside_td); sentinel = outside / "sentinel"; sentinel.write_text("keep")
@@ -82,6 +116,15 @@ class AdapterBuilderTests(unittest.TestCase):
     def test_ci_uses_portable_python_command(self):
         workflow = (ROOT / ".github/workflows/validate.yml").read_text()
         self.assertIn("windows-latest", workflow); self.assertNotIn("python3 -m", workflow)
+
+    def test_checked_in_adapters_match_canonical_source(self):
+        check = subprocess.run(
+            [sys.executable, str(BUILDER), "--check", "--output", str(ROOT / "adapters")],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(check.returncode, 0, check.stderr)
     def test_generate_and_check_are_reproducible(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"
@@ -111,6 +154,7 @@ class AdapterBuilderTests(unittest.TestCase):
             self.assertIn("capabilit", web.lower())
             manifest = json.loads((out / "plugin/.codex-plugin/plugin.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["name"], "statusnone-skills")
+            self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
 
 
 if __name__ == "__main__":

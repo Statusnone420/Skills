@@ -1,24 +1,58 @@
 #!/usr/bin/env python3
 """Build and validate deterministic cross-harness bundles from skills/docs."""
 from __future__ import annotations
-import argparse, json, re, shutil, sys
+import argparse, json, os, re, shutil, stat, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
+MARKER_NAME = ".statusnone-adapters-output"
+MARKER_TEXT = "statusnone-adapters-v1\n"
+PROTECTED_ROOTS = tuple(ROOT / name for name in (".git", ".github", ".superpowers", "docs", "evals", "skills", "tests", "tools"))
+
+def _lexical(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
+
+def _is_reparse(path: Path) -> bool:
+    info = os.lstat(path)
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+
+def _safe_output(path: Path) -> Path:
+    path = _lexical(path); root = _lexical(ROOT)
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("output must be repository-confined") from exc
+    if not relative.parts:
+        raise ValueError("output must not be the repository root")
+    for protected in PROTECTED_ROOTS:
+        protected = _lexical(protected)
+        if path == protected or protected in path.parents:
+            raise ValueError(f"output overlaps protected repository subtree: {protected.name}")
+    current = root
+    for part in relative.parts:
+        current /= part
+        if os.path.lexists(current) and _is_reparse(current):
+            raise ValueError("output path must not contain a symlink or reparse point")
+    return path
+
+def _has_valid_marker(path: Path) -> bool:
+    marker = path / MARKER_NAME
+    return marker.is_file() and not _is_reparse(marker) and marker.read_text(encoding="utf-8") == MARKER_TEXT
 
 def clean_output(path: Path) -> None:
-    path = path.absolute()
-    if path == ROOT or ROOT not in path.parents:
-        raise ValueError("output must be repository-confined")
-    real_root = ROOT.resolve(); real_parent = path.parent.resolve()
-    if real_parent != real_root and real_root not in real_parent.parents:
-        raise ValueError("output traverses a symlink or reparse parent")
+    path = _safe_output(path)
     if path.exists():
-        if path.is_symlink(): raise ValueError("output must not be a symlink")
+        if not path.is_dir(): raise ValueError("output must be a directory")
+        marker = path / MARKER_NAME
+        if os.path.lexists(marker) and not _has_valid_marker(path):
+            raise ValueError("output ownership marker is invalid")
+        if not os.path.lexists(marker) and path != _lexical(ROOT / "adapters"):
+            raise ValueError("refusing to replace an unowned output directory")
         shutil.rmtree(path)
     path.mkdir(parents=True)
+    (path / MARKER_NAME).write_text(MARKER_TEXT, encoding="utf-8", newline="\n")
 
 def slash_skill(text: str) -> str:
     canonical = (SOURCE / "SKILL.md").read_text(encoding="utf-8")
@@ -52,7 +86,7 @@ def generate(output: Path) -> None:
             "This generic web prompt has no guaranteed filesystem, shell, or repository-tool capabilities; "
             "report unavailable tools honestly.\n", encoding="utf-8", newline="\n")
     plugin = output / "plugin"; (plugin / ".codex-plugin").mkdir(parents=True); (plugin / "skills" / "docs").mkdir(parents=True)
-    manifest = {"name":"statusnone-skills", "version":"0.1.0", "description":"Statusnone repository documentation skill", "author":{"name":"Statusnone", "url":"https://github.com/Statusnone420/skills"}, "license":"Apache-2.0", "repository":"https://github.com/Statusnone420/skills", "skills":"./skills/", "interface":{"displayName":"Statusnone Skills", "developerName":"Statusnone", "shortDescription":"Bounded repository documentation", "longDescription":"Evidence-backed Diátaxis documentation assistance for repositories.", "category":"Productivity", "capabilities":["Read"], "defaultPrompt":["$docs help"]}}
+    manifest = {"name":"statusnone-skills", "version":"0.1.0", "description":"Statusnone repository documentation skill", "author":{"name":"Statusnone", "url":"https://github.com/Statusnone420/skills"}, "license":"Apache-2.0", "repository":"https://github.com/Statusnone420/skills", "skills":"./skills/", "interface":{"displayName":"Statusnone Skills", "developerName":"Statusnone", "shortDescription":"Bounded repository documentation", "longDescription":"Evidence-backed Diátaxis documentation assistance for repositories.", "category":"Productivity", "capabilities":["Read", "Write"], "defaultPrompt":["$docs help"]}}
     (plugin / ".codex-plugin" / "plugin.json").write_text(json.dumps(manifest, sort_keys=True, indent=2)+"\n", encoding="utf-8", newline="\n")
     (plugin / "skills" / "docs" / "SKILL.md").write_text(source_text, encoding="utf-8", newline="\n")
     for resource in ("references", "agents", "scripts"):
@@ -94,8 +128,10 @@ def validate(output: Path) -> list[str]:
         if not (output/"web"/f"docs-{c}.txt").exists(): errors.append(f"web command {c}")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
-    expected = {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md")} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py"}
+    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md")} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py"}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
+    marker = output / MARKER_NAME
+    if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
     for extra in sorted(actual - expected): errors.append(f"extra file {extra}")
     expected_dirs=set()
     for x in expected:

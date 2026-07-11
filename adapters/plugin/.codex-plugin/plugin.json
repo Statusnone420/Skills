@@ -6,7 +6,8 @@
   "description": "Statusnone repository documentation skill",
   "interface": {
     "capabilities": [
-      "Read"
+      "Read",
+      "Write"
     ],
     "category": "Productivity",
     "defaultPrompt": [
