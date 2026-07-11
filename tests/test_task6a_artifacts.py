@@ -6,13 +6,22 @@ class Task6AArtifacts(unittest.TestCase):
     def test_plugin_packet_validator_rejects_nested_bad_objects_and_exact_schema(self):
         source=json.loads((ROOT/'evals/plugin-submission-readiness/cases.json').read_text(encoding='utf-8'))
         validate_packet(source)
+        safe=json.loads(json.dumps(source))
+        safe['positive'][0]['metadata']={'url':'https://example.com/docs','relative':'docs/README.md','tokenization_note':'ordinary prose'}
+        validate_packet(safe)
         bad_objects=[
             ("nested type", lambda d: d['positive'][0].update({'type':'other'})),
             ("nested shape", lambda d: d['negative'][0].update({'result_shape':'verbose'})),
             ("schema enum", lambda d: d['result_schema'].__setitem__('result','PASS|FAIL')),
             ("nested path", lambda d: d['positive'][0].update({'metadata':{'deep':['C:/Users/name/repo']}})),
+            ("nested UNC backslash path", lambda d: d['positive'][0].update({'metadata':{'deep':['\\\\server\\share\\repo']}})),
+            ("nested UNC slash path", lambda d: d['positive'][0].update({'metadata':{'deep':['//server/share/repo']}})),
+            ("nested POSIX tmp path", lambda d: d['positive'][0].update({'metadata':{'deep':['/tmp/x']}})),
+            ("nested POSIX var path", lambda d: d['positive'][0].update({'metadata':{'deep':['/var/lib/data']}})),
             ("nested credential", lambda d: d['positive'][0].update({'metadata':{'deep':{'api_key':'sk-test-secret-value'}}})),
             ("nested token key", lambda d: d['positive'][0].update({'metadata':{'deep':{'token':'opaque-value'}}})),
+            ("nested oauth token key", lambda d: d['positive'][0].update({'metadata':{'deep':{'oauth_token':'opaque-value'}}})),
+            ("nested refresh token key", lambda d: d['positive'][0].update({'metadata':{'deep':{'refresh_token':'opaque-value'}}})),
             ("nested hidden schema key", lambda d: d['positive'][0].update({'metadata':{'chain_of_thought':'omit'}})),
         ]
         for label, mutate in bad_objects:

@@ -10,9 +10,12 @@ _RESULT_SHAPES = {"standard"}
 _RESULT_ENUM = "PASS|FAIL|INCONCLUSIVE"
 _DISPOSITIONS = "accepted|rejected|clarify|not-run"
 _HIDDEN_KEYS = re.compile(r"(?:chain[_-]?of[_-]?thought|reasoning[_-]?content|hidden[_-]?reasoning)", re.I)
-_ABSOLUTE_PATH = re.compile(r"(?i)(?:\b[A-Z]:[\\/]|/(?:users|home)(?:/|$))")
+_URL = re.compile(r"(?i)https?://[^\s]+")
+_ABSOLUTE_PATH = re.compile(
+    r"(?i)(?:\b[A-Z]:[\\/]|(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?!/)[^\s]*)"
+)
 _SECRET_KEY = re.compile(
-    r"(?i)(?:api[_-]?key|(?:access|auth|session)?[_-]?token|secret|password|credential|private[_-]?key)"
+    r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])"
 )
 _SECRET_VALUE = re.compile(
     r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,}|-----begin\s+.+?private\s+key-----)"
@@ -69,7 +72,7 @@ def validate_packet(packet: Mapping) -> None:
         raise ValueError("result_schema does not match the exact documented schema")
     for value, path in _walk(packet):
         text = str(value)
-        if _ABSOLUTE_PATH.search(text):
+        if _ABSOLUTE_PATH.search(_URL.sub("", text)):
             raise ValueError(f"absolute path at {'/'.join(path)}")
         if _SECRET_VALUE.search(text):
             raise ValueError(f"credential-like value at {'/'.join(path)}")
@@ -77,5 +80,5 @@ def validate_packet(packet: Mapping) -> None:
             # Safety wording in prompts/Markdown may mention hidden reasoning; schema keys may not.
             if isinstance(packet, Mapping) and path[-1] not in {"expected_behavior", "starter_prompt"}:
                 raise ValueError(f"hidden-reasoning key at {'/'.join(path)}")
-        if path and _SECRET_KEY.fullmatch(path[-1]):
+        if path and _SECRET_KEY.search(path[-1]):
             raise ValueError(f"credential-like key at {'/'.join(path)}")

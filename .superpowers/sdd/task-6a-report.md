@@ -56,3 +56,17 @@ Fresh verification after the follow-up:
 - Adapter check: `python tools/build_adapters.py --check` — **clean**.
 - Repository checker human/JSON: `python skills/docs/scripts/check.py .` and `--json` — **clean; findings: []**.
 - `git diff --check` — **clean**.
+
+## Final path/token recursion follow-up
+
+Focused RED after adding nested UNC (`\\server\\share` and `//server/share`), generic POSIX (`/tmp/x`, `/var/lib/data`), and `oauth_token`/`refresh_token` mutations: **6 expected subtest failures** (the prior detector accepted each).
+
+Minimal GREEN broadened path detection to drive-rooted, UNC/network-rooted, and generic POSIX paths while stripping HTTPS URLs; key detection now matches token/secret/password/credential/api-key families by key-name segments. Relative paths, HTTPS URLs, and ordinary prose keys remain accepted.
+
+```text
+python -m unittest tests.test_task6a_artifacts -v — 3 passed
+python -m unittest discover -s tests -q — 57 passed
+python tools/build_adapters.py --check — clean
+python skills/docs/scripts/check.py . and --json — clean; findings: []
+git diff --check — clean
+```
