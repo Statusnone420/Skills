@@ -1,0 +1,1 @@
+Activate the shared docs skill and run `check` with the user's raw trailing text. This generic web prompt has no guaranteed filesystem, shell, or repository-tool capabilities; report unavailable tools honestly.

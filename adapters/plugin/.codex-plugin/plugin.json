@@ -1,0 +1,25 @@
+{
+  "author": {
+    "name": "Statusnone",
+    "url": "https://github.com/Statusnone420/skills"
+  },
+  "description": "Statusnone repository documentation skill",
+  "interface": {
+    "capabilities": [
+      "Read"
+    ],
+    "category": "Productivity",
+    "defaultPrompt": [
+      "$docs help"
+    ],
+    "developerName": "Statusnone",
+    "displayName": "Statusnone Skills",
+    "longDescription": "Evidence-backed Di\u00e1taxis documentation assistance for repositories.",
+    "shortDescription": "Bounded repository documentation"
+  },
+  "license": "Apache-2.0",
+  "name": "statusnone-skills",
+  "repository": "https://github.com/Statusnone420/skills",
+  "skills": "./skills/",
+  "version": "0.1.0"
+}

@@ -1,0 +1,16 @@
+name: validate
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Run stdlib tests and reproducibility check
+        shell: bash
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 tools/build_adapters.py --check --output adapters
