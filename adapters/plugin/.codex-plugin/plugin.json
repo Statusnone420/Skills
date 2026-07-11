@@ -5,16 +5,19 @@
   },
   "description": "Statusnone repository documentation skill",
   "interface": {
+    "brandColor": "#6657E8",
     "capabilities": [
       "Read",
       "Write"
     ],
     "category": "Productivity",
+    "composerIcon": "./assets/bounded-compass.png",
     "defaultPrompt": [
       "$docs help"
     ],
     "developerName": "Statusnone",
     "displayName": "Statusnone Skills",
+    "logo": "./assets/bounded-compass.png",
     "longDescription": "Evidence-backed Di\u00e1taxis documentation assistance for repositories.",
     "shortDescription": "Bounded repository documentation"
   },

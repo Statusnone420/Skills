@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
+ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 MARKER_NAME = ".statusnone-adapters-output"
 MARKER_TEXT = "statusnone-adapters-v1\n"
 PROTECTED_ROOTS = tuple(ROOT / name for name in (".git", ".github", ".superpowers", "docs", "evals", "skills", "tests", "tools"))
@@ -69,7 +70,7 @@ def generate(output: Path) -> None:
     for vendor in ("claude", "copilot", "grok", "cursor"):
         d = output / vendor; d.mkdir()
         (d / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
-        for resource in ("references", "agents"):
+        for resource in ("references", "agents", "assets"):
             shutil.copytree(SOURCE / resource, d / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     wrapper = (
         "# /docs wrapper\n\n"
@@ -86,11 +87,13 @@ def generate(output: Path) -> None:
             "This generic web prompt has no guaranteed filesystem, shell, or repository-tool capabilities; "
             "report unavailable tools honestly.\n", encoding="utf-8", newline="\n")
     plugin = output / "plugin"; (plugin / ".codex-plugin").mkdir(parents=True); (plugin / "skills" / "docs").mkdir(parents=True)
-    manifest = {"name":"statusnone-skills", "version":"0.1.0", "description":"Statusnone repository documentation skill", "author":{"name":"Statusnone", "url":"https://github.com/Statusnone420/skills"}, "license":"Apache-2.0", "repository":"https://github.com/Statusnone420/skills", "skills":"./skills/", "interface":{"displayName":"Statusnone Skills", "developerName":"Statusnone", "shortDescription":"Bounded repository documentation", "longDescription":"Evidence-backed Diátaxis documentation assistance for repositories.", "category":"Productivity", "capabilities":["Read", "Write"], "defaultPrompt":["$docs help"]}}
+    manifest = {"name":"statusnone-skills", "version":"0.1.0", "description":"Statusnone repository documentation skill", "author":{"name":"Statusnone", "url":"https://github.com/Statusnone420/skills"}, "license":"Apache-2.0", "repository":"https://github.com/Statusnone420/skills", "skills":"./skills/", "interface":{"displayName":"Statusnone Skills", "developerName":"Statusnone", "shortDescription":"Bounded repository documentation", "longDescription":"Evidence-backed Diátaxis documentation assistance for repositories.", "category":"Productivity", "capabilities":["Read", "Write"], "defaultPrompt":["$docs help"], "brandColor":"#6657E8", "composerIcon":"./assets/bounded-compass.png", "logo":"./assets/bounded-compass.png"}}
     (plugin / ".codex-plugin" / "plugin.json").write_text(json.dumps(manifest, sort_keys=True, indent=2)+"\n", encoding="utf-8", newline="\n")
     (plugin / "skills" / "docs" / "SKILL.md").write_text(source_text, encoding="utf-8", newline="\n")
-    for resource in ("references", "agents", "scripts"):
+    for resource in ("references", "agents", "scripts", "assets"):
         shutil.copytree(SOURCE / resource, plugin / "skills" / "docs" / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (plugin / "assets").mkdir()
+    shutil.copy2(SOURCE / "assets" / "bounded-compass.png", plugin / "assets" / "bounded-compass.png")
 
 def validate(output: Path) -> list[str]:
     errors=[]; canonical=(SOURCE/"SKILL.md").read_text(encoding="utf-8")
@@ -128,7 +131,7 @@ def validate(output: Path) -> list[str]:
         if not (output/"web"/f"docs-{c}.txt").exists(): errors.append(f"web command {c}")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
-    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md")} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py"}
+    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml","references/commands.md","references/memory.md",*(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", "plugin/skills/docs/references/commands.md", "plugin/skills/docs/references/memory.md", "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
@@ -140,10 +143,11 @@ def validate(output: Path) -> list[str]:
     for d in output.rglob('*'):
         if d.is_dir() and d.relative_to(output).as_posix() not in expected_dirs: errors.append(f"extra directory {d.relative_to(output).as_posix()}")
     for v in ("claude","copilot","grok","cursor"):
-        for rel in ("agents/openai.yaml","references/commands.md","references/memory.md"):
+        for rel in ("agents/openai.yaml","references/commands.md","references/memory.md",*(f"assets/{name}" for name in ASSETS)):
             if (output/v/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
-    for rel in ("agents/openai.yaml","references/commands.md","references/memory.md","scripts/check.py"):
+    for rel in ("agents/openai.yaml","references/commands.md","references/memory.md","scripts/check.py",*(f"assets/{name}" for name in ASSETS)):
         if (output/"plugin/skills/docs"/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity plugin/{rel}")
+    if (output/"plugin/assets/bounded-compass.png").read_bytes() != (SOURCE/"assets/bounded-compass.png").read_bytes(): errors.append("resource parity plugin presentation asset")
     return errors
 
 def main(argv=None):

@@ -1,17 +1,102 @@
 import hashlib
 import json
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).parents[1]
 BUILDER = ROOT / "tools" / "build_adapters.py"
 
 
+def read_rgba_png(path):
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    position = 8
+    compressed = []
+    width = height = bit_depth = color_type = interlace = None
+    while position < len(data):
+        length = struct.unpack(">I", data[position:position + 4])[0]
+        kind = data[position + 4:position + 8]
+        payload = data[position + 8:position + 8 + length]
+        position += length + 12
+        if kind == b"IHDR":
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", payload)
+        elif kind == b"IDAT":
+            compressed.append(payload)
+        elif kind == b"IEND":
+            break
+    if (bit_depth, color_type, interlace) != (8, 6, 0):
+        raise ValueError("PNG must be non-interlaced 8-bit RGBA")
+    raw = zlib.decompress(b"".join(compressed))
+    stride = width * 4
+    rows = []
+    previous = bytearray(stride)
+    offset = 0
+    for _ in range(height):
+        filter_type = raw[offset]
+        scan = raw[offset + 1:offset + 1 + stride]
+        offset += stride + 1
+        row = bytearray(stride)
+        for index, value in enumerate(scan):
+            left = row[index - 4] if index >= 4 else 0
+            above = previous[index]
+            upper_left = previous[index - 4] if index >= 4 else 0
+            if filter_type == 0:
+                predictor = 0
+            elif filter_type == 1:
+                predictor = left
+            elif filter_type == 2:
+                predictor = above
+            elif filter_type == 3:
+                predictor = (left + above) // 2
+            elif filter_type == 4:
+                base = left + above - upper_left
+                distances = (abs(base - left), abs(base - above), abs(base - upper_left))
+                predictor = (left, above, upper_left)[distances.index(min(distances))]
+            else:
+                raise ValueError(f"unsupported PNG filter: {filter_type}")
+            row[index] = (value + predictor) & 0xFF
+        rows.append(row)
+        previous = row
+    return width, height, rows
+
+
 class AdapterBuilderTests(unittest.TestCase):
+    def test_canonical_visual_assets_and_metadata(self):
+        assets = ROOT / "skills" / "docs" / "assets"
+        small = assets / "bounded-compass-small.svg"
+        large = assets / "bounded-compass.png"
+        self.assertTrue(small.is_file())
+        self.assertTrue(large.is_file())
+
+        svg = small.read_text(encoding="utf-8")
+        root = ElementTree.fromstring(svg)
+        self.assertEqual(root.attrib.get("viewBox"), "0 0 24 24")
+        self.assertIn("#6657E8", svg)
+        elements = [element.tag.rsplit("}", 1)[-1] for element in root.iter()]
+        self.assertEqual(elements.count("path"), 4)
+        self.assertFalse({"script", "text", "image", "foreignObject", "linearGradient", "radialGradient"} & set(elements))
+        for element in root.iter():
+            for key, value in element.attrib.items():
+                self.assertNotEqual(key.rsplit("}", 1)[-1], "href")
+                self.assertFalse(value.startswith(("http://", "https://", "data:")))
+
+        width, height, rows = read_rgba_png(large)
+        self.assertEqual((width, height), (512, 512))
+        corner_alpha = (rows[0][3], rows[0][-1], rows[-1][3], rows[-1][-1])
+        self.assertEqual(corner_alpha, (0, 0, 0, 0))
+
+        metadata = (ROOT / "skills" / "docs" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        for value in ("./assets/bounded-compass-small.svg", "./assets/bounded-compass.png", "#6657E8"):
+            self.assertIn(value, metadata)
+
     def test_unowned_existing_output_directory_is_preserved(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             output = Path(td) / "existing"
@@ -155,6 +240,15 @@ class AdapterBuilderTests(unittest.TestCase):
             manifest = json.loads((out / "plugin/.codex-plugin/plugin.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["name"], "statusnone-skills")
             self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
+            self.assertEqual(manifest["interface"].get("brandColor"), "#6657E8")
+            self.assertEqual(manifest["interface"].get("composerIcon"), "./assets/bounded-compass.png")
+            self.assertEqual(manifest["interface"].get("logo"), "./assets/bounded-compass.png")
+            for vendor in ("claude", "copilot", "grok", "cursor"):
+                for name in ("bounded-compass-small.svg", "bounded-compass.png"):
+                    self.assertEqual((out / vendor / "assets" / name).read_bytes(), (ROOT / "skills/docs/assets" / name).read_bytes())
+            for name in ("bounded-compass-small.svg", "bounded-compass.png"):
+                self.assertEqual((out / "plugin/skills/docs/assets" / name).read_bytes(), (ROOT / "skills/docs/assets" / name).read_bytes())
+            self.assertEqual((out / "plugin/assets/bounded-compass.png").read_bytes(), (ROOT / "skills/docs/assets/bounded-compass.png").read_bytes())
 
 
 if __name__ == "__main__":
