@@ -34,6 +34,29 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("$docs", meta)
         self.assertIn("allow_implicit_invocation: false", meta)
 
+    def test_map_command_has_visual_reader_contract(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("`map`")
+        end = commands.index("`classify`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "documentation map",
+            "plain english",
+            "compact text hierarchy",
+            "where to start",
+            "current truth",
+            "generated",
+            "intentionally cold",
+            "16,384 bytes",
+            "needs attention",
+            "outside the mapped routes",
+            "deliberately not loaded",
+            "presentation may vary",
+        ):
+            self.assertIn(phrase, contract)
+        self.assertIn("make no edits", contract)
+        self.assertIn("detailed diagnostics remain under `check`", contract)
+
     def test_checker_reports_json_findings_and_exit_codes(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

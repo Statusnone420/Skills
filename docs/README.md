@@ -8,4 +8,4 @@ Operations: [contributing](../CONTRIBUTING.md), [security](../SECURITY.md), and 
 
 Canonical implementation: [`skills/docs/SKILL.md`](../skills/docs/SKILL.md) with [commands](../skills/docs/references/commands.md) and [memory](../skills/docs/references/memory.md). Generated adapters are deliberately cold for this map.
 
-Planning record: [Diátaxis Docs v0.1 plan](plans/2026-07-11-diataxis-docs-v0.1.md).
+Planning record: [Diátaxis Docs v0.1](plans/2026-07-11-diataxis-docs-v0.1.md), [map contract design](superpowers/specs/2026-07-11-map-contract-hardening-design.md), and [map contract implementation plan](superpowers/plans/2026-07-11-map-contract-hardening.md).
