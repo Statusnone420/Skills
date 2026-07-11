@@ -25,6 +25,12 @@ Minimal fixes were then implemented. The same focused command and artifact tests
 
 No 108-run matrix, compatibility pilots, security scan, UI/profile install, external model calls, cost projection, submission portal, or final review archive was run.
 
+## Review follow-up
+
+Added structural artifact tests for explicit case kind/type, stable IDs, required behavior/result fields, refusal rationale, recursive secret/local-path scanning, and visible-evidence/hidden-reasoning constraints. Tightened slash frontmatter to exact canonical bytes plus exact slash keys, rejecting whitespace drift, separator drift, malformed/duplicate/unknown keys, and value drift.
+
+Follow-up RED observed the expected failures (`5` frontmatter/artifact failures). Follow-up GREEN and full suite pass: `python -m unittest discover -s tests` — **56 passed**. Adapter check, checker human/JSON, plugin/artifact validation, and `git diff --check` completed cleanly.
+
 ## Changes
 
 Closed checker scope reparse handling, option-order JSON error handling, strict slash frontmatter validation, and Windows install verification. Added vendor-neutral external-review kit and skills-only plugin submission-readiness packet. All captures are repository-relative and omit hidden reasoning/secrets/private paths.

@@ -47,6 +47,20 @@ class AdapterBuilderTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError): builder.slash_skill(bad)
 
+    def test_slash_frontmatter_requires_exact_canonical_syntax_and_values(self):
+        import tools.build_adapters as builder
+        canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
+        bads = (
+            canonical.replace("name: docs", "name : docs", 1),
+            canonical.replace("---\n\n#", "--- \n\n#", 1),
+            canonical.replace("name: docs", "name: other", 1),
+            canonical.replace("description:", "description :", 1),
+            canonical.replace("name: docs", "name: docs\nname: docs", 1),
+        )
+        for bad in bads:
+            with self.subTest():
+                with self.assertRaises(ValueError): builder.slash_skill(bad)
+
     def test_check_detects_stale_extra_and_resource_drift(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)

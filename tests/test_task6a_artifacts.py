@@ -9,11 +9,23 @@ class Task6AArtifacts(unittest.TestCase):
         text='\n'.join(p.read_text(encoding='utf-8') for p in base.glob('*.md')).lower()
         self.assertIn('hidden reasoning',text); self.assertIn('model/version',text); self.assertIn('visible',text)
         self.assertNotRegex(text,r'[a-z]:[\\/](?:users|home)[\\/]')
+        self.assertNotRegex(text,r'(?:sk|rk|ghp|xox[baprs]-)[a-z0-9_-]{8,}', re.I)
+        self.assertNotIn('chain_of_thought', text); self.assertIn('forbid', text)
     def test_plugin_packet_has_exact_cases_schema_and_honest_gaps(self):
         data=json.loads((ROOT/'evals/plugin-submission-readiness/cases.json').read_text(encoding='utf-8'))
         self.assertEqual(len(data['positive']),5); self.assertEqual(len(data['negative']),3); self.assertEqual(data['status'],'NOT READY')
-        for case in data['positive']+data['negative']:
-            self.assertIn('starter_prompt',case); self.assertIn('expect',case); self.assertNotRegex(case['starter_prompt'].lower(),r'hidden reasoning|api key')
+        cases=data['positive']+data['negative']; self.assertEqual(len({c['id'] for c in cases}),8)
+        for kind, group in (('positive',data['positive']),('negative',data['negative'])):
+            for case in group:
+                self.assertEqual(case['kind'],kind); self.assertIn('type',case)
+                self.assertIn('starter_prompt',case); self.assertIn('expected_behavior',case); self.assertIn('result_shape',case)
+                self.assertNotRegex(json.dumps(case).lower(),r'hidden reasoning|api key')
+                if kind=='negative': self.assertRegex(case['expected_behavior'].lower(),r'refuse|clarif|safe fallback')
+                for value in case.values(): self.assertNotRegex(str(value),r'[a-z]:[\\/](?:users|home)[\\/]',re.I)
+        schema=data['result_schema']
+        for field in ('case_id','result','visible_output','evidence','file_line','diff','tool_events','disposition','status','limitations'):
+            self.assertIn(field,schema)
+        for enum in ('PASS','FAIL','INCONCLUSIVE'): self.assertIn(enum,schema['result'])
         readme=(ROOT/'evals/plugin-submission-readiness/README.md').read_text(encoding='utf-8').lower()
         for gap in ('publisher identity','production logo','category','website','support','privacy','terms','availability','release notes'):
             self.assertIn(gap,readme)

@@ -4,7 +4,7 @@ This vendor-neutral kit supports read-only repository audits and synthetic funct
 
 ## Required run record
 
-Use `prompt-audit.md` or `prompt-functional.md`, then complete `result-template.md`. Record harness, model and exact version, run date (UTC), commit, files and line numbers, visible outputs and diffs. Do not request, retain, or infer hidden reasoning; summarize only observable evidence. Redact credentials, tokens, private paths, personal data, and machine-specific identifiers.
+Use `prompt-audit.md` or `prompt-functional.md`, then complete `result-template.md`. Record harness, model and exact version, run date (UTC), commit, files and line numbers, visible outputs and diffs. Do not request, retain, or infer hidden reasoning; templates forbid hidden reasoning and require visible evidence only. Redact credentials, tokens, private paths, personal data, and machine-specific identifiers.
 
 ## Dated ingestion
 
