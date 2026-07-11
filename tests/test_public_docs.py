@@ -25,6 +25,14 @@ class PublicDocumentationContractTests(unittest.TestCase):
         self.assertIn("not run", benchmark.lower())
         compatibility = (ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
         self.assertIn("unpublished preview", compatibility.lower())
+        self.assertIn("canonical source", compatibility.lower())
+        self.assertIn("adapters", compatibility.lower())
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        for phrase in ("PowerShell", "Windows 11", "$HOME/.agents/skills/docs", "New-Item", "mkdir -p", "docs/SKILL.md", "$docs help", "restart", "inspect"):
+            self.assertIn(phrase.lower(), install.lower())
+        getting = (ROOT / "GETTING_STARTED.md").read_text(encoding="utf-8")
+        for phrase in ("Prerequisites", "repository access", "Python", "read-only", "expected", "skill is missing", "file tools"):
+            self.assertIn(phrase.lower(), getting.lower())
         origin = (ROOT / "ORIGIN.md").read_text(encoding="utf-8")
         self.assertIn("independent", origin.lower())
         self.assertIn("290,542", origin)

@@ -30,4 +30,3 @@ Compatibility is evidence-tiered, not universal. The generated `adapters/plugin`
 ## Origin
 
 Read the [origin note](ORIGIN.md), including the public [Crimson Desert Report Hub](https://github.com/Statusnone420/Crimson-Desert-Report-Hub). Statusnone conceived and directed this project; Codex collaborated on planning, implementation, adversarial testing, and review.
-

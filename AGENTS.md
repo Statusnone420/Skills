@@ -5,4 +5,3 @@
 - Invoke the skill explicitly as `$docs`; do not rely on implicit skill use.
 - Preserve private material and unrelated user changes.
 - Verify claims, add focused tests, and run the checker before claiming completion.
-

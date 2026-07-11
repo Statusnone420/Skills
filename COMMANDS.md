@@ -12,4 +12,3 @@
 - `fix <IDs|scope>` — revalidate and repair only explicitly selected findings.
 
 Unknown or missing commands return help without side effects.
-
