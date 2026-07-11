@@ -1,0 +1,940 @@
+{
+  "schema": "statusnone-evals-red/0.5",
+  "attempts": [
+    {
+      "attempt_id": "attempt-8d00aa933fcb4b2e8a569b6280c0a138",
+      "harness": "codex",
+      "scenario": "minimal-init",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-8d00aa933fcb4b2e8a569b6280c0a138",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "Inspected clean fixture repository; proposed one root README covering purpose, layout, provenance, and line-count validation; no files changed.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-f69e66ceb96745dfb07229ff3814872c",
+      "harness": "codex",
+      "scenario": "bounded-context",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-f69e66ceb96745dfb07229ff3814872c",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "No task-specific legacy context or constraints exist; the fixture is synthetic entries 0000-2040 only.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-3109c0dd00b64056a14080099e14fe71",
+      "harness": "codex",
+      "scenario": "diataxis-write",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-3109c0dd00b64056a14080099e14fe71",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "Reference classification; fixture has 2,041 contiguous records and padded final line; no operational claims.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-7d73891cbdb1478ba5a21f45da421c82",
+      "harness": "codex",
+      "scenario": "evidence-update",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-7d73891cbdb1478ba5a21f45da421c82",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "No canonical documentation update supported; repository only contains synthetic fixture evidence.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-c8e714440cf048628c51026cb283aa02",
+      "harness": "codex",
+      "scenario": "preview-cleanup",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-c8e714440cf048628c51026cb283aa02",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "Preview requires explicit cleanup target and approval; no files changed.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-5d3a9a060cf144b197a6eabf51a47ce9",
+      "harness": "codex",
+      "scenario": "audit-repair",
+      "outcome_type": "valid",
+      "status": "completed",
+      "sanitized_workspace": "evals/workspace/attempt-5d3a9a060cf144b197a6eabf51a47ce9",
+      "invocation_method": "collaboration.spawn_agent",
+      "safe_command_provenance": {
+        "executable": "collaboration.spawn_agent",
+        "args": [
+          "<PROMPT_SHA256:omitted>",
+          "fork_turns=none"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "git_status": "clean",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": null,
+      "model_version": null,
+      "cli_version": null,
+      "visible_final": "Read-only audit found only trailing-space anomaly on line 2041; no repair without explicit selection.",
+      "safe_error": null,
+      "unavailable_fields": {
+        "started_at": "Codex collaboration metadata did not expose start time.",
+        "finished_at": "Codex collaboration metadata did not expose finish time.",
+        "duration": "Codex collaboration metadata did not expose duration.",
+        "usage": "Codex usage was not returned by collaboration.spawn_agent.",
+        "model": "Codex model identity was not returned by collaboration.spawn_agent.",
+        "model_version": "Codex model version was not returned by collaboration.spawn_agent.",
+        "cli_version": "Codex CLI version probe was inaccessible (Windows access denied).",
+        "safe_error": "No error occurred; visible final output is the result."
+      },
+      "fork_turns": "none"
+    },
+    {
+      "attempt_id": "attempt-fa8f81c4059840e5a449c9ad279da507",
+      "harness": "claude",
+      "scenario": "minimal-init",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-fa8f81c4059840e5a449c9ad279da507",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:29.316236+00:00",
+      "finished_at": "2026-07-11T14:47:33.366621+00:00",
+      "duration": 4.050350800011074,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-87f6db75ec014ea2a4c180a1dbba398e",
+      "harness": "claude",
+      "scenario": "bounded-context",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-87f6db75ec014ea2a4c180a1dbba398e",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:33.530622+00:00",
+      "finished_at": "2026-07-11T14:47:37.270652+00:00",
+      "duration": 3.739987899985863,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-53b7cdec88f248809df19750706e2fc5",
+      "harness": "claude",
+      "scenario": "diataxis-write",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-53b7cdec88f248809df19750706e2fc5",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:37.445766+00:00",
+      "finished_at": "2026-07-11T14:47:41.361654+00:00",
+      "duration": 3.9158448000089265,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-68b4cf87cf624accb03970308a7b72e5",
+      "harness": "claude",
+      "scenario": "evidence-update",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-68b4cf87cf624accb03970308a7b72e5",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:41.516231+00:00",
+      "finished_at": "2026-07-11T14:47:45.508093+00:00",
+      "duration": 3.9918162999965716,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-ccddfacb95a24299b7c176331130e459",
+      "harness": "claude",
+      "scenario": "preview-cleanup",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-ccddfacb95a24299b7c176331130e459",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:49.373806+00:00",
+      "finished_at": "2026-07-11T14:47:53.364135+00:00",
+      "duration": 3.9902847000048496,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-c4b1dde9137c476fa8ad71bf5cfaca72",
+      "harness": "claude",
+      "scenario": "audit-repair",
+      "outcome_type": "infrastructure_failure",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-c4b1dde9137c476fa8ad71bf5cfaca72",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "claude",
+        "args": [
+          "-p",
+          "<PROMPT_SHA256:omitted>",
+          "--dangerously-skip-permissions",
+          "--output-format",
+          "json"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:45.661111+00:00",
+      "finished_at": "2026-07-11T14:47:49.213426+00:00",
+      "duration": 3.552276200003689,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "claude",
+      "model_version": null,
+      "cli_version": "2.1.198",
+      "visible_final": "Safe harness error: authentication failed (HTTP 401); no model output captured.",
+      "safe_error": "authentication failure (HTTP 401)",
+      "unavailable_fields": {
+        "usage": "Authentication failed before token accounting.",
+        "git_diff": "No model execution; no diff was produced.",
+        "model_version": "claude model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-584c27345dd646618d7b6013aa6cea9f",
+      "harness": "grok",
+      "scenario": "minimal-init",
+      "outcome_type": "evaluator_invalid",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-584c27345dd646618d7b6013aa6cea9f",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:47:53.520254+00:00",
+      "finished_at": "2026-07-11T14:48:07.745869+00:00",
+      "duration": 14.225436000007903,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe capture error: process exited 0 but produced no visible final output.",
+      "safe_error": "empty final output with exit status 0",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-340d50dbe5a14061a343091a1447e91d",
+      "harness": "grok",
+      "scenario": "bounded-context",
+      "outcome_type": "timeout",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-340d50dbe5a14061a343091a1447e91d",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:48:07.911083+00:00",
+      "finished_at": "2026-07-11T14:48:27.936808+00:00",
+      "duration": 20.025473199988483,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe harness error: timed out before a visible final output was captured.",
+      "safe_error": "timeout",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-7677ec7bf3f84f66a2946271abd24432",
+      "harness": "grok",
+      "scenario": "diataxis-write",
+      "outcome_type": "timeout",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-7677ec7bf3f84f66a2946271abd24432",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:48:28.097805+00:00",
+      "finished_at": "2026-07-11T14:48:48.128812+00:00",
+      "duration": 20.030753900005948,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe harness error: timed out before a visible final output was captured.",
+      "safe_error": "timeout",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-1011eb11d4cf449c9547ee236977234e",
+      "harness": "grok",
+      "scenario": "evidence-update",
+      "outcome_type": "timeout",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-1011eb11d4cf449c9547ee236977234e",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:48:48.283693+00:00",
+      "finished_at": "2026-07-11T14:49:08.317846+00:00",
+      "duration": 20.033899599977303,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe harness error: timed out before a visible final output was captured.",
+      "safe_error": "timeout",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-9fff48010cab4ba0962b36965f3e2ccf",
+      "harness": "grok",
+      "scenario": "preview-cleanup",
+      "outcome_type": "timeout",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-9fff48010cab4ba0962b36965f3e2ccf",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:49:28.694874+00:00",
+      "finished_at": "2026-07-11T14:49:48.728241+00:00",
+      "duration": 20.03311410002061,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe harness error: timed out before a visible final output was captured.",
+      "safe_error": "timeout",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    },
+    {
+      "attempt_id": "attempt-8d2439461cd446409c52c68a439ab911",
+      "harness": "grok",
+      "scenario": "audit-repair",
+      "outcome_type": "timeout",
+      "status": "failed",
+      "sanitized_workspace": "evals/workspace/attempt-8d2439461cd446409c52c68a439ab911",
+      "invocation_method": "subprocess",
+      "safe_command_provenance": {
+        "executable": "grok",
+        "args": [
+          "--single",
+          "<PROMPT_SHA256:omitted>",
+          "--permission-mode",
+          "bypassPermissions",
+          "--output-format",
+          "json",
+          "--no-memory",
+          "--no-subagents"
+        ]
+      },
+      "cwd_provenance": "relative disposable workspace; absolute path withheld",
+      "started_at": "2026-07-11T14:49:08.480417+00:00",
+      "finished_at": "2026-07-11T14:49:28.508570+00:00",
+      "duration": 20.027899000007892,
+      "git_status": "unavailable",
+      "git_diff": "unavailable",
+      "usage": null,
+      "model": "grok",
+      "model_version": null,
+      "cli_version": "0.2.93",
+      "visible_final": "Safe harness error: timed out before a visible final output was captured.",
+      "safe_error": "timeout",
+      "unavailable_fields": {
+        "usage": "Grok usage was not returned by the harness.",
+        "git_diff": "No usable model result was captured.",
+        "model_version": "grok model version was not exposed by the CLI metadata.",
+        "fork_turns": "Not applicable to subprocess invocation."
+      },
+      "fork_turns": null
+    }
+  ],
+  "invalidated_attempts": [
+    {
+      "attempt_id": "attempt-5ba033eb104b434fa388c53afeba716b",
+      "harness": "claude",
+      "scenario": "audit-repair",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-c4b1dde9137c476fa8ad71bf5cfaca72",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-9cacab5b777e42cead03ee915b7f6f88",
+      "harness": "claude",
+      "scenario": "diataxis-write",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-53b7cdec88f248809df19750706e2fc5",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-a509ffaf2b8646efb9efd9612dc57731",
+      "harness": "claude",
+      "scenario": "evidence-update",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-68b4cf87cf624accb03970308a7b72e5",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-f745f8b31a074aa9b039deb4db87c057",
+      "harness": "claude",
+      "scenario": "minimal-init",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-fa8f81c4059840e5a449c9ad279da507",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-11a290bae9054e9c84d960dd6380f997",
+      "harness": "claude",
+      "scenario": "audit-repair",
+      "reason": "sanitized auth error retained in replacement attempt",
+      "replacement_attempt_id": "attempt-c4b1dde9137c476fa8ad71bf5cfaca72",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-27557a8333e74dbe922b7c3a2ee5383f",
+      "harness": "claude",
+      "scenario": "bounded-context",
+      "reason": "sanitized auth error retained in replacement attempt",
+      "replacement_attempt_id": "attempt-87f6db75ec014ea2a4c180a1dbba398e",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-9ad1b4c442024b1992fb5cd8a03d078b",
+      "harness": "claude",
+      "scenario": "evidence-update",
+      "reason": "sanitized auth error retained in replacement attempt",
+      "replacement_attempt_id": "attempt-68b4cf87cf624accb03970308a7b72e5",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-1ef7d62e13ba40bdb1d882759ed9427f",
+      "harness": "grok",
+      "scenario": "evidence-update",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-1011eb11d4cf449c9547ee236977234e",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-22919eee802e4937b17f68e97a4c629e",
+      "harness": "grok",
+      "scenario": "bounded-context",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-340d50dbe5a14061a343091a1447e91d",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-23d766473e1042d18adaa3558040ba93",
+      "harness": "grok",
+      "scenario": "diataxis-write",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-7677ec7bf3f84f66a2946271abd24432",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-726d89f540854434b1bb5de9a5eb7f41",
+      "harness": "grok",
+      "scenario": "preview-cleanup",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-9fff48010cab4ba0962b36965f3e2ccf",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-f7ec5e4b916e4e28bd8aeebfe8e35b25",
+      "harness": "grok",
+      "scenario": "audit-repair",
+      "reason": "unsupported cwd invocation; payload excluded",
+      "replacement_attempt_id": "attempt-8d2439461cd446409c52c68a439ab911",
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-b4bae5c1429f4334af5d714839afa0d8",
+      "harness": "grok",
+      "scenario": "minimal-init",
+      "reason": "raw capture contained unusable payload; excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-5374a7d1985349d79b7999d110eeb603",
+      "harness": "runner",
+      "scenario": "probe",
+      "reason": "Python runner probe: model command not configured; no model evidence.",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-6eb0a75796e5499a8655ee7eb79afe2c",
+      "harness": "runner",
+      "scenario": "probe",
+      "reason": "Python runner probe: model command not configured; no model evidence.",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-d39e9911e59a4438b9f74e092bcd364e",
+      "harness": "claude",
+      "scenario": "bounded-context",
+      "reason": "auth failure attempt omitted from corrected capture",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-d45bf6187b7d4fcd87e01a8105dc88ae",
+      "harness": "claude",
+      "scenario": "preview-cleanup",
+      "reason": "auth failure attempt omitted from corrected capture",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-da0ffd5ead1d4f3080caddb9c65e0263",
+      "harness": "grok",
+      "scenario": "minimal-init",
+      "reason": "raw Grok capture invalidated; corrected capture replaced it",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-e2adb465880a4566906137b65d291086",
+      "harness": "claude",
+      "scenario": "diataxis-write",
+      "reason": "auth failure attempt omitted from corrected capture",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-e7a013114abf4cff81390c6befdda610",
+      "harness": "claude",
+      "scenario": "preview-cleanup",
+      "reason": "auth failure attempt omitted from corrected capture",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "attempt-f3b70566fab74610a1358c5996834f7b",
+      "harness": "claude",
+      "scenario": "minimal-init",
+      "reason": "auth failure attempt omitted from corrected capture",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "codex-790fab2d36914e30b1b7d6d521ef9213",
+      "harness": "codex",
+      "scenario": "audit-repair",
+      "reason": "original Codex collaboration attempt superseded by corrected capture; payload excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "codex-806c640f286b4155a417851dcb804405",
+      "harness": "codex",
+      "scenario": "diataxis-write",
+      "reason": "original Codex collaboration attempt superseded by corrected capture; payload excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "codex-9a41cb101e5e466d8a3c5b11b5a79e2a",
+      "harness": "codex",
+      "scenario": "evidence-update",
+      "reason": "original Codex collaboration attempt superseded by corrected capture; payload excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "codex-acb45082394c480cbd87fbe1f341d361",
+      "harness": "codex",
+      "scenario": "minimal-init",
+      "reason": "original Codex collaboration attempt superseded by corrected capture; payload excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    },
+    {
+      "attempt_id": "codex-cc4ac1848e964e759cf94ffcf193e633",
+      "harness": "codex",
+      "scenario": "bounded-context",
+      "reason": "original Codex collaboration attempt superseded by corrected capture; payload excluded",
+      "replacement_attempt_id": null,
+      "payload": null
+    }
+  ],
+  "outcome_counts": {
+    "codex": {
+      "valid": 6
+    },
+    "claude": {
+      "infrastructure_failure": 6
+    },
+    "grok": {
+      "timeout": 5,
+      "evaluator_invalid": 1
+    }
+  },
+  "valid_counts": {
+    "codex": 6,
+    "claude": 0,
+    "grok": 0
+  }
+}
