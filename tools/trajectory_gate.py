@@ -194,6 +194,14 @@ def evaluate(receipt: Mapping) -> dict:
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
+    if (
+        command == "doctor"
+        and first_map_read is not None
+        and first_map_read.get("status") == "complete"
+        and checker_actions
+        and next(index for index, item in enumerate(docs_actions) if item.get("kind") == "checker") > 2
+    ):
+        errors.append("retrieval.doctor_precheck_budget")
     if command == "context" and sum(
         len(item["paths"])
         for item in docs_actions

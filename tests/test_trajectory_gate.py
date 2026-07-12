@@ -438,6 +438,20 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn(error, result["errors"])
 
+    def test_doctor_mapped_route_caps_reads_before_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        actions = receipt["retrieval"]["actions"]
+        first_read = dict(actions[0], status="complete")
+        state_read = dict(actions[0], paths=["STATE.md"], status="complete")
+        product_read = dict(actions[0], paths=["PRODUCT.md"], status="complete")
+        receipt["retrieval"]["actions"] = [first_read, state_read, product_read, actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.doctor_precheck_budget", result["errors"])
+
     def test_doctor_missing_map_requires_fallback_before_checker(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "doctor"
