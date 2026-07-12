@@ -102,10 +102,9 @@ class DocsSkillContractTests(unittest.TestCase):
             "`git -c <selected-root>`",
             "normalized `--show-toplevel` exactly equals that selected root",
             "reject parent-repository discovery",
-            "exact proposed worktree destination",
-            "exact approved boundary",
-            "exact branch name",
-            "current-workspace risk gate",
+            "exact destination/boundary",
+            "exact destination/boundary and branch",
+            "current-workspace risk",
             "draft-only",
         ):
             self.assertIn(phrase, doctor)
@@ -147,14 +146,38 @@ class DocsSkillContractTests(unittest.TestCase):
 
     def test_doctor_prefers_exact_safe_isolation_before_current_workspace_risk(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
-        self.assertIn("when git worktree isolation is available", doctor)
-        self.assertIn("must propose the exact safe worktree destination", doctor)
-        self.assertIn("exact branch name before approval", doctor)
+        self.assertIn("with worktree isolation", doctor)
+        self.assertIn("propose exact destination/boundary and branch", doctor)
         self.assertIn(
-            "current-workspace risk only when git or safe isolation is unavailable",
+            "current-workspace risk only if git/safe isolation unavailable",
             doctor,
         )
-        self.assertIn("explicit risk acceptance", doctor)
+        self.assertIn("require explicit acceptance", doctor)
+
+    def test_doctor_rejects_destinations_inside_an_unrelated_enclosing_repository(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8").lower()
+        self.assertIn("destination's nearest existing ancestor", doctor)
+        self.assertIn("different git top-level rejects it before approval", doctor)
+        self.assertIn("outside selected/unrelated git worktrees", doctor)
+        self.assertIn("ask for safe boundary", doctor)
+        self.assertIn("before creation", isolation)
+        self.assertIn("proposed destination's nearest existing ancestor", isolation)
+        self.assertIn("different git worktree", isolation)
+        self.assertIn("re-preview outside it", isolation)
+        self.assertIn("never dirty another repository", isolation)
+
+    def test_doctor_captures_the_underlying_verification_process_result(self):
+        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8").lower()
+        self.assertIn("capture the underlying process exit code", isolation)
+        self.assertIn("relevant output explicitly", isolation)
+        self.assertIn("never substitute a wrapper or tool-call status", isolation)
+
+    def test_doctor_missing_checker_uses_the_bounded_conceptual_fallback(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertIn("missing args/capability", doctor)
+        self.assertIn("do not run it", doctor)
+        self.assertIn("continue bounded conceptually", doctor)
 
     def test_doctor_prewrite_isolation_review_and_memory_contracts(self):
         doctor = (SKILL / "references/doctor.md").read_text(encoding="utf-8").lower()
@@ -240,6 +263,49 @@ class DocsSkillContractTests(unittest.TestCase):
         p = subprocess.run(cmd, capture_output=True, text=True)
         if p.returncode:
             raise unittest.SkipTest(f"junction creation failed rc={p.returncode}: {p.stderr.strip()}")
+
+    def test_reparse_pressure_proves_git_can_escape_a_lexical_worktree_boundary(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8").lower()
+        self.assertIn("reject symlink/junction/reparse chains before approval", doctor)
+        self.assertIn("before `git worktree add`", isolation)
+        self.assertIn("reject any symlink, junction, or reparse point", isolation)
+        self.assertIn("existing destination/boundary chain", isolation)
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            base = Path(td)
+            repo = base / "repo"
+            outside = base / "outside"
+            boundary = base / "approved"
+            repo.mkdir()
+            outside.mkdir()
+            subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Isolation Fixture"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", "isolation@example.invalid"], cwd=repo, check=True)
+            (repo / "README.md").write_text("# Fixture\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "--quiet", "-m", "fixture"], cwd=repo, check=True)
+            if os.name == "nt":
+                self._junction(boundary, outside)
+            else:
+                boundary.symlink_to(outside, target_is_directory=True)
+            candidate = boundary / "worktree"
+            added = subprocess.run(
+                ["git", "-C", str(repo), "worktree", "add", "--detach", str(candidate)],
+                capture_output=True,
+                text=True,
+            )
+            if added.returncode and os.name != "nt":
+                raise unittest.SkipTest(f"Git rejected the POSIX symlink pressure fixture: {added.stderr.strip()}")
+            self.assertEqual(added.returncode, 0, added.stderr)
+            try:
+                self.assertTrue((outside / "worktree" / ".git").exists())
+            finally:
+                subprocess.run(
+                    ["git", "-C", str(repo), "worktree", "remove", "--force", str(candidate)],
+                    capture_output=True,
+                    text=True,
+                )
 
     def test_canonical_files_and_contract(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
