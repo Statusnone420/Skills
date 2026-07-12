@@ -1,8 +1,10 @@
-# Statusnone Skills
-
 <p align="center">
   <img src="skills/docs/assets/bounded-compass-small.svg" width="88" height="88" alt="Bounded Compass mark">
 </p>
+
+<h1 align="center">Diátaxis Docs</h1>
+
+<p align="center"><strong>Part of Statusnone Skills</strong></p>
 
 <p align="center"><strong>Your repository's documentation should help agents—not consume their context window.</strong></p>
 

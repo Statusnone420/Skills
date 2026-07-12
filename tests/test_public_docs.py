@@ -21,7 +21,13 @@ class PublicDocumentationContractTests(unittest.TestCase):
         for name in required:
             self.assertTrue((ROOT / name).is_file(), name)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertTrue(readme.startswith("# Statusnone Skills"))
+        hero = '<h1 align="center">Diátaxis Docs</h1>'
+        collection = '<p align="center"><strong>Part of Statusnone Skills</strong></p>'
+        self.assertIn(hero, readme)
+        self.assertIn(collection, readme)
+        self.assertLess(readme.index("Bounded Compass mark"), readme.index(hero))
+        self.assertLess(readme.index(hero), readme.index(collection))
+        self.assertLess(readme.index(collection), readme.index("Your repository's documentation should help agents"))
         self.assertLess(readme.index("Bounded repository memory"), readme.index("## 60-second use"))
         self.assertIn("Diátaxis Docs", readme)
         self.assertIn("Benchmark status", readme)
