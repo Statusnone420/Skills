@@ -261,7 +261,7 @@ def evaluate(receipt: Mapping) -> dict:
     ):
         errors.append("retrieval.preflight_action")
     for item in docs_actions:
-        if command == "map" and item.get("kind") == "combined-read":
+        if command in MAP_READING_COMMANDS and item.get("kind") == "combined-read":
             paths = item.get("paths")
             if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
                 errors.append("retrieval.invalid_action_paths")

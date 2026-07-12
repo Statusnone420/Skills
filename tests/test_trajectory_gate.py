@@ -431,6 +431,21 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.forbidden_path", result["errors"])
 
+    def test_doctor_missing_map_combined_read_paths_are_bounded(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        receipt["retrieval"]["actions"][2]["paths"] = [
+            "README.md",
+            "STATE.md",
+            "PRODUCT.md",
+            "PLAN.md",
+        ]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.action_path_budget", result["errors"])
+
     def test_map_rejects_unknown_action_kinds(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"][2]["kind"] = "bulk-read"
