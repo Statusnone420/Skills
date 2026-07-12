@@ -35,6 +35,17 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertIn("external.failed_lookup", result["warnings"])
         self.assertNotIn("external.action_budget", result["errors"])
 
+    def test_common_exit_status_diagnostics_fail(self):
+        for diagnostic in ("checker exit status 1", "non-zero exit status 1"):
+            with self.subTest(diagnostic=diagnostic):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["presentation"]["visible_diagnostics"] = [diagnostic]
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("presentation.raw_exit_code", result["errors"])
+
     def test_missing_reader_questions_fail_without_exact_output_snapshot(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["outcome"]["answers"].remove("deliberately_unloaded")

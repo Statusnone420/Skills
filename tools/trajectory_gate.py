@@ -35,7 +35,7 @@ _ABSOLUTE_PATH = re.compile(
 _SECRET_KEY = re.compile(r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])")
 _SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
 _PRIVATE_KEY = re.compile(r"(?i)(?:hidden[_-]?reasoning|chain[_-]?of[_-]?thought|reasoning[_-]?content|session[_-]?id)")
-_RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+code)?|return\s+code)\s*[:=]?\s*[1-9]\d*\b")
+_RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:code|status))?|return\s+code)\s*[:=]?\s*[1-9]\d*\b")
 
 
 def _walk(value, path=()):
