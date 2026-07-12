@@ -264,6 +264,17 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.invalid_map_route", result["errors"])
 
+    def test_mapped_route_rejects_source_hot_path_reads(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        extra_read = dict(actions[0], status="complete", paths=["src/main.py"])
+        receipt["retrieval"]["actions"] = [dict(actions[0], status="complete"), extra_read, actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.forbidden_path", result["errors"])
+
     def test_missing_map_requires_combined_read_before_checker(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -331,6 +342,23 @@ class TrajectoryGateTests(unittest.TestCase):
         cases = (
             ("missing", lambda actions: [actions[0], actions[1]], "retrieval.missing_checker"),
             ("failed", lambda actions: [actions[0], actions[1], dict(actions[3], status="error")], "retrieval.checker_failed"),
+        )
+        for name, select_actions, error in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = "doctor"
+                actions = receipt["retrieval"]["actions"]
+                receipt["retrieval"]["actions"] = select_actions(actions)
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn(error, result["errors"])
+
+    def test_doctor_requires_map_read_before_checker(self):
+        cases = (
+            ("checker-only", lambda actions: [actions[3]], "retrieval.missing_map_read"),
+            ("late-map-read", lambda actions: [actions[1], actions[0], actions[3]], "retrieval.map_read_not_first"),
         )
         for name, select_actions, error in cases:
             with self.subTest(name=name):

@@ -32,6 +32,7 @@ ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hos
 MAX_COMBINED_READ_PATHS = 3
 MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
 MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
+MAP_READING_COMMANDS = {"map", "doctor"}
 CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
 BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
 CHECKER_PREFLIGHT_KINDS = {"preflight", "availability-probe"}
@@ -193,11 +194,11 @@ def evaluate(receipt: Mapping) -> dict:
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
-    if command == "map" and not map_read_actions:
+    if command in MAP_READING_COMMANDS and not map_read_actions:
         errors.append("retrieval.missing_map_read")
-    if command == "map" and map_read_actions and first_map_read is None:
+    if command in MAP_READING_COMMANDS and map_read_actions and first_map_read is None:
         errors.append("retrieval.map_read_not_first")
-    if command == "map" and first_map_read is not None:
+    if command in MAP_READING_COMMANDS and first_map_read is not None:
         if first_map_read.get("paths") != ["docs/README.md"] or first_map_read.get("status") not in {"missing", "complete"}:
             errors.append("retrieval.invalid_map_read")
     if command == "map" and checker_actions and docs_actions[-1].get("kind") != "checker":
@@ -226,6 +227,15 @@ def evaluate(receipt: Mapping) -> dict:
                 errors.append("retrieval.missing_combined_read")
             elif not probe_seen:
                 errors.append("retrieval.invalid_map_route")
+        if first_map_read.get("status") == "complete":
+            for item in docs_actions[1:]:
+                if item.get("kind") != "read-map":
+                    continue
+                paths = item.get("paths")
+                if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
+                    errors.append("retrieval.invalid_action_paths")
+                elif any(not _is_allowed_map_fallback_path(path) for path in paths):
+                    errors.append("retrieval.forbidden_path")
     if command in {"context", "map", "check", "doctor"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
         for item in docs_actions
