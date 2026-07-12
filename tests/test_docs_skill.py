@@ -258,6 +258,8 @@ class DocsSkillContractTests(unittest.TestCase):
 
     @staticmethod
     def _junction(link, target):
+        if os.name != "nt":
+            raise unittest.SkipTest("Windows junction test")
         command = f"New-Item -ItemType Junction -Path '{str(link).replace(chr(39), chr(39)*2)}' -Target '{str(target).replace(chr(39), chr(39)*2)}' | Out-Null"
         cmd = ["powershell", "-NoProfile", "-Command", command]
         p = subprocess.run(cmd, capture_output=True, text=True)
