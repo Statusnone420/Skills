@@ -31,6 +31,7 @@ ALLOWED_CAMPAIGN_COMMANDS = ("map", "context", "check", "doctor")
 ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hostile-repository")
 MAX_COMBINED_READ_PATHS = 3
 MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
+MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
 CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
 BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
 CHECKER_PREFLIGHT_KINDS = {"preflight", "availability-probe"}
@@ -124,6 +125,14 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
+def _is_allowed_map_fallback_path(path):
+    if path in MAP_FALLBACK_ROOT_PATHS:
+        return True
+    if not path.startswith("docs/") or path.count("/") != 1:
+        return False
+    return "." in path.rsplit("/", 1)[1]
+
+
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
     _require_mapping(receipt, "receipt")
@@ -197,12 +206,30 @@ def evaluate(receipt: Mapping) -> dict:
         for item in docs_actions:
             if item.get("kind") not in MAP_ACTION_KINDS:
                 errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
-    if command in {"context", "map", "check"} and any(
+    if command == "map" and first_map_read is not None:
+        kinds = [item.get("kind") for item in docs_actions]
+        if first_map_read.get("status") == "complete" and any(
+            kind in {"bounded-probe", "combined-read"} for kind in kinds
+        ):
+            errors.append("retrieval.invalid_map_route")
+        if first_map_read.get("status") == "missing":
+            combined_seen = False
+            probe_seen = False
+            for kind in kinds:
+                if kind == "combined-read":
+                    combined_seen = True
+                elif kind == "bounded-probe":
+                    if combined_seen:
+                        errors.append("retrieval.invalid_map_route")
+                    probe_seen = True
+            if combined_seen and not probe_seen:
+                errors.append("retrieval.invalid_map_route")
+    if command in {"context", "map", "check", "doctor"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
         for item in docs_actions
     ):
         errors.append("retrieval.broad_action")
-    if command in {"context", "map", "check"} and any(
+    if command in {"context", "map", "check", "doctor"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in CHECKER_PREFLIGHT_KINDS
         for item in docs_actions
     ):
@@ -214,6 +241,15 @@ def evaluate(receipt: Mapping) -> dict:
                 errors.append("retrieval.invalid_action_paths")
             elif len(paths) > MAX_COMBINED_READ_PATHS:
                 errors.append("retrieval.action_path_budget")
+    if command == "map" and first_map_read is not None and first_map_read.get("status") == "missing":
+        for item in docs_actions:
+            if item.get("kind") not in {"bounded-probe", "combined-read"}:
+                continue
+            paths = item.get("paths")
+            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
+                errors.append("retrieval.invalid_action_paths")
+            elif any(not _is_allowed_map_fallback_path(path) for path in paths):
+                errors.append("retrieval.forbidden_path")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
     if command in {"map", "check"} and checker_runs == 0:

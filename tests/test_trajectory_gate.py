@@ -236,6 +236,34 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.checker_not_final", result["errors"])
 
+    def test_missing_map_fallback_rejects_forbidden_paths(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        forbidden = ["src/main.py", "tests/test_app.py", "docs/generated/api.md"]
+        receipt["retrieval"]["actions"][1]["paths"] = forbidden
+        receipt["retrieval"]["actions"][2]["paths"] = forbidden
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.forbidden_path", result["errors"])
+
+    def test_map_enforces_status_specific_action_order(self):
+        cases = (
+            ("mapped-fallback-actions", "complete", (1, 3)),
+            ("missing-read-after-combined-read", "missing", (2, 1, 3)),
+        )
+        for name, status, action_indexes in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                actions = receipt["retrieval"]["actions"]
+                actions[0]["status"] = status
+                receipt["retrieval"]["actions"] = [actions[0], *(actions[index] for index in action_indexes)]
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.invalid_map_route", result["errors"])
+
     def test_mapped_budget_uses_first_read_map_status(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -271,6 +299,23 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.action_path_budget", result["errors"])
+
+    def test_doctor_rejects_broad_and_preflight_retrieval(self):
+        for kind, error in (
+            ("repo-wide-search", "retrieval.broad_action"),
+            ("preflight", "retrieval.preflight_action"),
+        ):
+            with self.subTest(kind=kind):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = "doctor"
+                actions = receipt["retrieval"]["actions"]
+                receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+                receipt["retrieval"]["actions"][1]["kind"] = kind
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn(error, result["errors"])
 
     def test_map_rejects_unknown_action_kinds(self):
         receipt = self.load("bulwark-map-accepted.json")
