@@ -175,9 +175,11 @@ class AdapterBuilderTests(unittest.TestCase):
             isolation_path = ROOT / "skills/docs/references/isolation.md"
             self.assertTrue(isolation_path.is_file(), "canonical isolation playbook is required")
             isolation = isolation_path.read_bytes()
+            checker = (ROOT / "skills/docs/scripts/check.py").read_bytes()
             for vendor in ("claude", "copilot", "grok", "cursor"):
                 self.assertEqual((out / vendor / "references/doctor.md").read_bytes(), canonical)
                 self.assertEqual((out / vendor / "references/isolation.md").read_bytes(), isolation)
+                self.assertEqual((out / vendor / "scripts/check.py").read_bytes(), checker)
             self.assertEqual((out / "plugin/skills/docs/references/doctor.md").read_bytes(), canonical)
             self.assertEqual((out / "plugin/skills/docs/references/isolation.md").read_bytes(), isolation)
 

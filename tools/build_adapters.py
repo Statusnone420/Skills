@@ -91,7 +91,7 @@ def generate(output: Path) -> None:
     for vendor in ("claude", "copilot", "grok", "cursor"):
         d = output / vendor; d.mkdir()
         (d / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
-        for resource in ("references", "agents", "assets"):
+        for resource in ("references", "agents", "scripts", "assets"):
             shutil.copytree(SOURCE / resource, d / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     wrapper = (
         "# /docs wrapper\n\n"
@@ -155,7 +155,7 @@ def validate(output: Path) -> list[str]:
         if len(prompt_bytes) > 16_000: errors.append(f"web budget {c}: {len(prompt_bytes)} bytes")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
-    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
+    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
@@ -167,7 +167,7 @@ def validate(output: Path) -> list[str]:
     for d in output.rglob('*'):
         if d.is_dir() and d.relative_to(output).as_posix() not in expected_dirs: errors.append(f"extra directory {d.relative_to(output).as_posix()}")
     for v in ("claude","copilot","grok","cursor"):
-        for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), *(f"assets/{name}" for name in ASSETS)):
+        for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
             if (output/v/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
     for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
         if (output/"plugin/skills/docs"/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity plugin/{rel}")
