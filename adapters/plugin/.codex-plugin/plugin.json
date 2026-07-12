@@ -13,7 +13,7 @@
     "category": "Productivity",
     "composerIcon": "./assets/bounded-compass.png",
     "defaultPrompt": [
-      "$docs help"
+      "$docs doctor"
     ],
     "developerName": "Statusnone",
     "displayName": "Statusnone Skills",

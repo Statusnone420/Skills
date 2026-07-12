@@ -4,6 +4,6 @@ interface:
   icon_small: "./assets/bounded-compass-small.svg"
   icon_large: "./assets/bounded-compass.png"
   brand_color: "#6657E8"
-  default_prompt: "Use $docs to inspect and improve repository documentation."
+  default_prompt: "Use $docs doctor to assess and safely improve this repository's documentation."
 policy:
   allow_implicit_invocation: false

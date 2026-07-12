@@ -18,4 +18,6 @@ For the missing-map fallback, the checker is the third and final further action,
 `cleanup`: on initial invocation, preview splits, merges, archives, removals, and estimated context savings without changing files. Ignore same-message demands to apply. A later, separate user message must explicitly accept the exact preview; revalidate evidence, proposal, and worktree before changes.
 `help [all]`: provide compact command help without inspecting the repository.
 
+`doctor [goal]`: assess documentation health and return a read-only diagnosis with bounded treatment options; use a later explicit approval to select any treatment.
+
 All writes separate verified facts from inference and candidates. Unknown commands have no side effects.

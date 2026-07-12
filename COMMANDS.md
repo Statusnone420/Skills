@@ -1,7 +1,8 @@
 # Command reference
 
-`$docs help` lists the interface. The commands are read-only unless their contract says otherwise:
+`$docs help` lists the interface. For a first safe trial, use `$docs doctor [goal]`; its initial result is read-only and proposes only the minimum sufficient treatment. The commands are read-only unless their contract says otherwise:
 
+- `doctor [goal]` — guided, evidence-backed documentation health assessment and treatment manifest; later execution requires explicit treatment approval.
 - `context <task>` — bounded recall with sources, constraints, risks, and unloaded material.
 - `map` — documentation topology, hot path, and source-of-truth relationships.
 - `classify` — likely audience and Diátaxis type.

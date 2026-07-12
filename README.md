@@ -2,7 +2,7 @@
 
 **Diátaxis Docs** — Bounded repository memory. Evidence-backed documentation.
 
-Statusnone Skills turns documentation work into a small, explicit protocol: map the repository, verify claims against evidence, write one focused page, and check links and context boundaries. It is independent from Diátaxis and uses fresh prose.
+Statusnone Skills presents Doctor as the guided front door for documentation work: assess repository health, verify claims against evidence, and propose the minimum safe treatment before any edits. Direct commands remain independently usable for experienced users. It is independent from Diátaxis and uses fresh prose.
 
 ## 60-second use
 
