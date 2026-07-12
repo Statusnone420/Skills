@@ -84,6 +84,23 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_checker", result["errors"])
 
+    def test_map_and_check_require_successful_checker_status(self):
+        for command in ("map", "check"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                receipt["retrieval"]["actions"][3]["status"] = "error"
+                if command == "check":
+                    actions = receipt["retrieval"]["actions"]
+                    receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+                    receipt["presentation"].pop("tree")
+                    receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.checker_failed", result["errors"])
+
     def test_check_receipts_do_not_require_map_reader_answers(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "check"
@@ -115,6 +132,20 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.docs_action_budget", result["errors"])
+
+    def test_map_rejects_broad_retrieval_actions_within_budget(self):
+        for kind in ("repo-wide-search", "inventory", "name-only-inventory"):
+            with self.subTest(kind=kind):
+                receipt = self.load("bulwark-map-accepted.json")
+                actions = receipt["retrieval"]["actions"]
+                receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+                receipt["retrieval"]["actions"][0]["status"] = "complete"
+                receipt["retrieval"]["actions"][1]["kind"] = kind
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.broad_action", result["errors"])
 
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")

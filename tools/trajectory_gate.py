@@ -27,6 +27,8 @@ REQUIRED_TREE_FEATURES = {
 }
 MAX_DOCS_ACTIONS = {"map": 4, "check": 3, "context": 4, "doctor": 8}
 MAX_RELEASE_RUNS = 12
+CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
+BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
 _ABSOLUTE_PATH = re.compile(
     r"(?i)(?:\b[A-Z]:[\\/]|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?![/\s])[^\s]*)"
 )
@@ -101,10 +103,14 @@ def evaluate(receipt: Mapping) -> dict:
     warnings = []
     docs_actions = [item for item in actions if isinstance(item, Mapping) and item.get("owner") == "docs"]
     external_actions = [item for item in actions if isinstance(item, Mapping) and item.get("owner") != "docs"]
+    checker_actions = [item for item in docs_actions if item.get("kind") == "checker"]
     checker_runs = sum(
         _positive_int(item.get("count", 1), "action.count")
-        for item in docs_actions
-        if item.get("kind") == "checker"
+        for item in checker_actions
+    )
+    checker_failed = any(
+        not isinstance(item.get("status"), str) or item.get("status") not in CHECKER_SUCCESS_STATUSES
+        for item in checker_actions
     )
 
     if outcome.get("read_only") is not True or outcome.get("files_changed") != 0:
@@ -132,10 +138,17 @@ def evaluate(receipt: Mapping) -> dict:
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
+    if command == "map" and any(
+        isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
+        for item in docs_actions
+    ):
+        errors.append("retrieval.broad_action")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
     if command in {"map", "check"} and checker_runs == 0:
         errors.append("retrieval.missing_checker")
+    if command in {"map", "check"} and checker_failed:
+        errors.append("retrieval.checker_failed")
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
 
