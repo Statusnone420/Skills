@@ -43,7 +43,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("new structural or unrelated work returns to preview and approval", doctor)
         for phrase in (
             "after approval for multi-step, structural, review-heavy, or resumable work",
-            "follow repository convention", "if no convention exists, preview the proposed path",
+            "follow repository convention", "if none exists, preview the proposed path",
             "plan-only request authorizes only that plan file", "simple repairs need no plan file",
             "no required database", "no required embeddings", "no required daemon",
             "no background process", "no new dependency",
@@ -62,7 +62,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "bare `doctor`: at most two highest-priority actionable groups",
             "one finding plus up to two directly linked/paired corroboration files",
             "total post-check opens: at most four files",
-            "a checker finding needing no extra read consumes no file opening",
+            "a finding needing no read consumes no opening",
             "report all other checker diagnostics unresolved and unopened",
             "without explicit scope, keep untracked/unrelated material cold",
         ):
@@ -72,9 +72,8 @@ class DocsSkillContractTests(unittest.TestCase):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
         for phrase in (
             "`--hot` contains only existing current-state files selected from map evidence",
-            "never the map itself or a missing path",
+            "never the map or a missing path",
             "omit `--hot` when none exists",
-            "checker runs exactly once",
         ):
             self.assertIn(phrase, doctor)
 
@@ -97,8 +96,17 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("[isolation.md](references/isolation.md)", skill)
         for phrase in (
             "one bounded identity/status action",
-            "verified repository root",
+            "verified selected root",
             "no isolation creation before approval",
+            "host/user-selected repository root",
+            "`git -c <selected-root>`",
+            "normalized `--show-toplevel` exactly equals that selected root",
+            "reject parent-repository discovery",
+            "exact proposed worktree destination",
+            "exact approved boundary",
+            "exact branch name",
+            "current-workspace risk gate",
+            "draft-only",
         ):
             self.assertIn(phrase, doctor)
         for phrase in (
@@ -113,8 +121,17 @@ class DocsSkillContractTests(unittest.TestCase):
             "any mismatch: stop with no copy, import, or write",
             "never import dirty or untracked files",
             "branch fallback uses the same root binding and identity proof",
+            "normalized `git -c <new-path> rev-parse --show-toplevel`",
+            "exact approved worktree destination",
+            "verify the exact approved branch name",
         ):
             self.assertIn(phrase, isolation)
+
+    def test_isolation_link_applies_only_to_doctor_selected_treatments(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
+        self.assertIn("only doctor execution of exact approved treatment ids follows", skill)
+        self.assertIn("direct `write`, `update`, and `fix`", skill)
+        self.assertIn("exact-preview direct commands remain independent", skill)
 
     def test_doctor_no_git_gate_requires_ids_and_current_workspace_risk_acceptance(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
