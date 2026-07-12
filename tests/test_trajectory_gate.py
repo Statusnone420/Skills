@@ -84,6 +84,20 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_checker", result["errors"])
 
+    def test_check_receipts_do_not_require_map_reader_answers(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "check"
+        receipt["outcome"].pop("answers")
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(any(error.startswith("outcome.missing_answer:") for error in result["errors"]))
+
     def test_map_receipts_require_one_checker_run(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"] = receipt["retrieval"]["actions"][:3]

@@ -110,8 +110,9 @@ def evaluate(receipt: Mapping) -> dict:
     if outcome.get("read_only") is not True or outcome.get("files_changed") != 0:
         errors.append("safety.read_only_violation")
     answers = set(_string_array(outcome.get("answers", []), "outcome.answers"))
-    for answer in sorted(REQUIRED_ANSWERS - answers):
-        errors.append(f"outcome.missing_answer:{answer}")
+    if command == "map":
+        for answer in sorted(REQUIRED_ANSWERS - answers):
+            errors.append(f"outcome.missing_answer:{answer}")
     if command == "map":
         if presentation.get("tree") is not True:
             errors.append("presentation.missing_tree")
