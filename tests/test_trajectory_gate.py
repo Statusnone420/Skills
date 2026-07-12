@@ -264,6 +264,16 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.invalid_map_route", result["errors"])
 
+    def test_missing_map_requires_combined_read_before_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.missing_combined_read", result["errors"])
+
     def test_mapped_budget_uses_first_read_map_status(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -311,6 +321,23 @@ class TrajectoryGateTests(unittest.TestCase):
                 actions = receipt["retrieval"]["actions"]
                 receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
                 receipt["retrieval"]["actions"][1]["kind"] = kind
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn(error, result["errors"])
+
+    def test_doctor_requires_one_successful_checker_run(self):
+        cases = (
+            ("missing", lambda actions: [actions[0], actions[1]], "retrieval.missing_checker"),
+            ("failed", lambda actions: [actions[0], actions[1], dict(actions[3], status="error")], "retrieval.checker_failed"),
+        )
+        for name, select_actions, error in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = "doctor"
+                actions = receipt["retrieval"]["actions"]
+                receipt["retrieval"]["actions"] = select_actions(actions)
 
                 result = trajectory_gate.evaluate(receipt)
 

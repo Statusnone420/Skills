@@ -222,7 +222,9 @@ def evaluate(receipt: Mapping) -> dict:
                     if combined_seen:
                         errors.append("retrieval.invalid_map_route")
                     probe_seen = True
-            if combined_seen and not probe_seen:
+            if not combined_seen:
+                errors.append("retrieval.missing_combined_read")
+            elif not probe_seen:
                 errors.append("retrieval.invalid_map_route")
     if command in {"context", "map", "check", "doctor"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
@@ -252,9 +254,9 @@ def evaluate(receipt: Mapping) -> dict:
                 errors.append("retrieval.forbidden_path")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
-    if command in {"map", "check"} and checker_runs == 0:
+    if command in {"map", "check", "doctor"} and checker_runs == 0:
         errors.append("retrieval.missing_checker")
-    if command in {"map", "check"} and checker_failed:
+    if command in {"map", "check", "doctor"} and checker_failed:
         errors.append("retrieval.checker_failed")
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
