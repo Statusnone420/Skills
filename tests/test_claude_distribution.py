@@ -29,6 +29,8 @@ class ClaudeDistributionContractTests(unittest.TestCase):
         self.assertEqual(source.parts[0], "adapters")
         self.assertNotIn("..", source.parts)
         self.assertTrue((ROOT / source).is_dir())
+        self.assertFalse((ROOT / source / "SKILL.md").exists())
+        self.assertTrue((ROOT / source / "skills" / "docs" / "SKILL.md").is_file())
 
     def test_generated_claude_plugin_is_a_thin_unversioned_wrapper(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
@@ -46,7 +48,18 @@ class ClaudeDistributionContractTests(unittest.TestCase):
             self.assertEqual(manifest["repository"], "https://github.com/Statusnone420/Skills")
             self.assertEqual(manifest["license"], "Apache-2.0")
             self.assertNotIn("version", manifest)
-            self.assertEqual((output / "claude" / "SKILL.md").read_bytes(), (ROOT / "adapters" / "claude" / "SKILL.md").read_bytes())
+            skill_root = output / "claude" / "skills" / "docs"
+            self.assertFalse((output / "claude" / "SKILL.md").exists())
+            generated_skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+            canonical_skill = (ROOT / "skills" / "docs" / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("user-invocable: true", generated_skill)
+            self.assertIn("disable-model-invocation: true", generated_skill)
+            self.assertEqual(
+                generated_skill.split("---", 2)[-1],
+                canonical_skill.split("---", 2)[-1],
+            )
+            for resource in ("references", "agents", "scripts", "assets"):
+                self.assertTrue((skill_root / resource).is_dir(), resource)
 
     def test_validator_rejects_missing_or_drifted_claude_manifest(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
