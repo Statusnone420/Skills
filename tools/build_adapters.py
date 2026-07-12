@@ -94,14 +94,21 @@ def web_prompt(command: str) -> str:
         sections.extend(("\n\n", (SOURCE / "references" / "doctor.md").read_text(encoding="utf-8")))
     return "".join(sections)
 
+def adapter_skill_root(output: Path, vendor: str) -> Path:
+    if vendor == "claude":
+        return output / vendor / "skills" / "docs"
+    return output / vendor
+
 def generate(output: Path) -> None:
     source_text = (SOURCE / "SKILL.md").read_text(encoding="utf-8")
     clean_output(output)
     for vendor in ("claude", "copilot", "grok", "cursor"):
         d = output / vendor; d.mkdir()
-        (d / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
+        skill_root = adapter_skill_root(output, vendor)
+        skill_root.mkdir(parents=True, exist_ok=True)
+        (skill_root / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
         for resource in ("references", "agents", "scripts", "assets"):
-            shutil.copytree(SOURCE / resource, d / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.copytree(SOURCE / resource, skill_root / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         if vendor == "claude":
             (d / ".claude-plugin").mkdir()
             (d / ".claude-plugin" / "plugin.json").write_text(
@@ -154,7 +161,7 @@ def validate(output: Path) -> list[str]:
         elif re.search(r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")):
             errors.append(f"reference exceeds one hop {link}")
     for v in ("claude","copilot","grok","cursor"):
-        p=output/v/"SKILL.md"
+        p=adapter_skill_root(output, v)/"SKILL.md"
         parsed=frontmatter(p.read_text(encoding="utf-8")) if p.exists() else None
         if parsed is None or parsed.get("user-invocable") != "true" or parsed.get("disable-model-invocation") != "true": errors.append(f"frontmatter {v}")
         elif content(p.read_text(encoding="utf-8")) != body: errors.append(f"body parity {v}")
@@ -178,7 +185,20 @@ def validate(output: Path) -> list[str]:
         if len(prompt_bytes) > 16_000: errors.append(f"web budget {c}: {len(prompt_bytes)} bytes")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
-    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
+    adapter_files = set()
+    for vendor in ("claude", "copilot", "grok", "cursor"):
+        prefix = f"{vendor}/skills/docs" if vendor == "claude" else vendor
+        adapter_files.add(f"{prefix}/SKILL.md")
+        adapter_files.update(
+            f"{prefix}/{rel}"
+            for rel in (
+                "agents/openai.yaml",
+                *(f"references/{name}" for name in REFERENCE_FILES),
+                "scripts/check.py",
+                *(f"assets/{name}" for name in ASSETS),
+            )
+        )
+    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | adapter_files | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
@@ -191,7 +211,7 @@ def validate(output: Path) -> list[str]:
         if d.is_dir() and d.relative_to(output).as_posix() not in expected_dirs: errors.append(f"extra directory {d.relative_to(output).as_posix()}")
     for v in ("claude","copilot","grok","cursor"):
         for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
-            if (output/v/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
+            if (adapter_skill_root(output, v)/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
     for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
         if (output/"plugin/skills/docs"/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity plugin/{rel}")
     if (output/"plugin/assets/bounded-compass.png").read_bytes() != (SOURCE/"assets/bounded-compass.png").read_bytes(): errors.append("resource parity plugin presentation asset")

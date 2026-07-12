@@ -14,6 +14,12 @@ ROOT = Path(__file__).parents[1]
 BUILDER = ROOT / "tools" / "build_adapters.py"
 
 
+def adapter_skill_root(output, vendor):
+    if vendor == "claude":
+        return output / vendor / "skills" / "docs"
+    return output / vendor
+
+
 def read_rgba_png(path):
     data = path.read_bytes()
     if data[:8] != b"\x89PNG\r\n\x1a\n":
@@ -177,9 +183,10 @@ class AdapterBuilderTests(unittest.TestCase):
             isolation = isolation_path.read_bytes()
             checker = (ROOT / "skills/docs/scripts/check.py").read_bytes()
             for vendor in ("claude", "copilot", "grok", "cursor"):
-                self.assertEqual((out / vendor / "references/doctor.md").read_bytes(), canonical)
-                self.assertEqual((out / vendor / "references/isolation.md").read_bytes(), isolation)
-                self.assertEqual((out / vendor / "scripts/check.py").read_bytes(), checker)
+                skill_root = adapter_skill_root(out, vendor)
+                self.assertEqual((skill_root / "references/doctor.md").read_bytes(), canonical)
+                self.assertEqual((skill_root / "references/isolation.md").read_bytes(), isolation)
+                self.assertEqual((skill_root / "scripts/check.py").read_bytes(), checker)
             self.assertEqual((out / "plugin/skills/docs/references/doctor.md").read_bytes(), canonical)
             self.assertEqual((out / "plugin/skills/docs/references/isolation.md").read_bytes(), isolation)
 
@@ -265,7 +272,7 @@ class AdapterBuilderTests(unittest.TestCase):
     def test_frontmatter_conflict_and_stale_empty_dir_fail_check(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
-            p = out / "claude/SKILL.md"; p.write_text(p.read_text().replace("user-invocable: true", "user-invocable: false\nuser-invocable: true", 1))
+            p = out / "claude/skills/docs/SKILL.md"; p.write_text(p.read_text().replace("user-invocable: true", "user-invocable: false\nuser-invocable: true", 1))
             (out / "web/stale-empty").mkdir()
             check = subprocess.run([sys.executable, str(BUILDER), "--check", "--output", str(out)], cwd=ROOT, capture_output=True, text=True)
             self.assertNotEqual(check.returncode, 0); self.assertIn("frontmatter", check.stderr); self.assertIn("directory", check.stderr)
@@ -278,7 +285,7 @@ class AdapterBuilderTests(unittest.TestCase):
     def test_slash_metadata_is_inside_frontmatter(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
-            text = (out / "claude/SKILL.md").read_text()
+            text = (out / "claude/skills/docs/SKILL.md").read_text()
             self.assertEqual(text.split("---", 2)[1].count("user-invocable:"), 1)
             self.assertNotIn("user-invocable:", text.split("---", 2)[2])
 
@@ -351,7 +358,7 @@ class AdapterBuilderTests(unittest.TestCase):
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
             canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
             for vendor in ("claude", "copilot", "grok", "cursor"):
-                text = (out / vendor / "SKILL.md").read_text(encoding="utf-8")
+                text = (adapter_skill_root(out, vendor) / "SKILL.md").read_text(encoding="utf-8")
                 self.assertIn("user-invocable: true", text)
                 self.assertIn("disable-model-invocation: true", text)
                 self.assertEqual(text.split("---", 2)[-1].replace("\nuser-invocable: true\ndisable-model-invocation: true", "", 1), canonical.split("---", 2)[-1])
@@ -368,7 +375,7 @@ class AdapterBuilderTests(unittest.TestCase):
             self.assertEqual(manifest["interface"].get("logo"), "./assets/bounded-compass.png")
             for vendor in ("claude", "copilot", "grok", "cursor"):
                 for name in ("bounded-compass-small.svg", "bounded-compass.png"):
-                    self.assertEqual((out / vendor / "assets" / name).read_bytes(), (ROOT / "skills/docs/assets" / name).read_bytes())
+                    self.assertEqual((adapter_skill_root(out, vendor) / "assets" / name).read_bytes(), (ROOT / "skills/docs/assets" / name).read_bytes())
             for name in ("bounded-compass-small.svg", "bounded-compass.png"):
                 self.assertEqual((out / "plugin/skills/docs/assets" / name).read_bytes(), (ROOT / "skills/docs/assets" / name).read_bytes())
             self.assertEqual((out / "plugin/assets/bounded-compass.png").read_bytes(), (ROOT / "skills/docs/assets/bounded-compass.png").read_bytes())
