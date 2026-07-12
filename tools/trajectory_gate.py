@@ -30,7 +30,13 @@ MAX_RELEASE_RUNS = 12
 CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
 BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
 _ABSOLUTE_PATH = re.compile(
-    r"(?i)(?:\b[A-Z]:[\\/]|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?![/\s])[^\s]*)"
+    r"(?i)(?:"
+    r"\b[A-Z]:[\\/]"
+    r"|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+"
+    r"|(?<![A-Za-z0-9/:])/(?![/\s])[^\s]*"
+    r"|\bfile:///[^\s]+"
+    r"|\b[A-Za-z][A-Za-z0-9+.-]*:(?=/[^\s/])[^\s]*"
+    r")"
 )
 _SECRET_KEY = re.compile(r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])")
 _SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
@@ -138,7 +144,9 @@ def evaluate(receipt: Mapping) -> dict:
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
-    if command == "map" and any(
+    if command == "map" and not any(item.get("kind") == "read-map" for item in docs_actions):
+        errors.append("retrieval.missing_map_read")
+    if command in {"context", "map", "check"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
         for item in docs_actions
     ):

@@ -158,6 +158,29 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.broad_action", result["errors"])
 
+    def test_check_and_context_reject_broad_retrieval_actions(self):
+        for command in ("check", "context"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                actions = receipt["retrieval"]["actions"]
+                receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+                receipt["retrieval"]["actions"][1]["kind"] = "repo-wide-search"
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.broad_action", result["errors"])
+
+    def test_map_receipts_require_read_map_action(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"] = [receipt["retrieval"]["actions"][3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.missing_map_read", result["errors"])
+
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["usage"]["paired_control"] = {
@@ -182,6 +205,8 @@ class TrajectoryGateTests(unittest.TestCase):
             ("POSIX workspace path", {"note": "/workspace/Skills"}),
             ("POSIX temporary path", {"note": "/tmp/private"}),
             ("POSIX var path", {"note": "/var/lib/private"}),
+            ("colon-prefixed POSIX path", {"note": "root:/workspace/Skills"}),
+            ("file URI path", {"note": "file:///workspace/Skills"}),
             ("secret", {"metadata": {"api_token": "opaque"}}),
             ("hidden reasoning", {"hidden_reasoning": "private"}),
             ("raw session id", {"session_id": "synthetic-private-id"}),
