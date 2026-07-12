@@ -53,6 +53,8 @@ def _validate_public(receipt: Mapping) -> None:
         location = "/".join(path)
         if kind == "key" and (_SECRET_KEY.search(text) or _PRIVATE_KEY.search(text)):
             raise ValueError(f"public trajectory receipt contains a private key at {location}")
+        if kind == "key" and _ABSOLUTE_PATH.search(text):
+            raise ValueError(f"public trajectory receipt contains private material at {location}")
         if kind == "value" and (_ABSOLUTE_PATH.search(text) or _SECRET_VALUE.search(text)):
             raise ValueError(f"public trajectory receipt contains private material at {location}")
 
@@ -125,7 +127,7 @@ def evaluate(receipt: Mapping) -> dict:
         errors.append("retrieval.docs_action_budget")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
-    if command == "check" and checker_runs == 0:
+    if command in {"map", "check"} and checker_runs == 0:
         errors.append("retrieval.missing_checker")
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")

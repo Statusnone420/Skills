@@ -84,6 +84,15 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_checker", result["errors"])
 
+    def test_map_receipts_require_one_checker_run(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"] = receipt["retrieval"]["actions"][:3]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.missing_checker", result["errors"])
+
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["usage"]["paired_control"] = {
@@ -117,6 +126,13 @@ class TrajectoryGateTests(unittest.TestCase):
                 receipt.update(addition)
                 with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
                     trajectory_gate.evaluate(receipt)
+
+    def test_public_receipts_reject_absolute_path_keys(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["diagnostics"] = {"/workspace/Skills/docs/README.md": "unresolved"}
+
+        with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
+            trajectory_gate.evaluate(receipt)
 
     def test_receipt_rejects_malformed_retrieval_actions(self):
         receipt = self.load("bulwark-map-accepted.json")
