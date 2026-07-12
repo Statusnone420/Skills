@@ -1,4 +1,5 @@
 .superpowers/
+docs/superpowers/
 __pycache__/
 *.py[cod]
 .coverage
@@ -6,4 +7,3 @@ __pycache__/
 .venv/
 evals/workspace/
 evals/results/drafts/
-
