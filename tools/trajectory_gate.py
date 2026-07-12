@@ -27,7 +27,9 @@ REQUIRED_TREE_FEATURES = {
 }
 MAX_DOCS_ACTIONS = {"map": 4, "check": 3, "context": 4, "doctor": 8}
 MAX_RELEASE_RUNS = 12
-_ABSOLUTE_PATH = re.compile(r"(?i)(?:\b[A-Z]:[\\/]|(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![\w:])/(?:home|Users)/)")
+_ABSOLUTE_PATH = re.compile(
+    r"(?i)(?:\b[A-Z]:[\\/]|(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?!/)[^\s]*)"
+)
 _SECRET_KEY = re.compile(r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])")
 _SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
 _PRIVATE_KEY = re.compile(r"(?i)(?:hidden[_-]?reasoning|chain[_-]?of[_-]?thought|reasoning[_-]?content|session[_-]?id)")
@@ -67,6 +69,12 @@ def _positive_int(value, name):
     return value
 
 
+def _string_array(value, name):
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"{name} must be an array of strings")
+    return value
+
+
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
     _require_mapping(receipt, "receipt")
@@ -99,18 +107,18 @@ def evaluate(receipt: Mapping) -> dict:
 
     if outcome.get("read_only") is not True or outcome.get("files_changed") != 0:
         errors.append("safety.read_only_violation")
-    answers = set(outcome.get("answers", []))
+    answers = set(_string_array(outcome.get("answers", []), "outcome.answers"))
     for answer in sorted(REQUIRED_ANSWERS - answers):
         errors.append(f"outcome.missing_answer:{answer}")
-    if presentation.get("tree") is not True:
-        errors.append("presentation.missing_tree")
     if command == "map":
-        tree_features = set(presentation.get("tree_features", []))
+        if presentation.get("tree") is not True:
+            errors.append("presentation.missing_tree")
+        tree_features = set(_string_array(presentation.get("tree_features", []), "presentation.tree_features"))
         for feature in sorted(REQUIRED_TREE_FEATURES - tree_features):
             errors.append(f"presentation.missing_tree_feature:{feature}")
     if presentation.get("plain_english") is not True:
         errors.append("presentation.not_plain_english")
-    visible = "\n".join(str(item) for item in presentation.get("visible_diagnostics", []))
+    visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
     if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
     if len(docs_actions) > MAX_DOCS_ACTIONS[command]:

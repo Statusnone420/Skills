@@ -51,6 +51,20 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertIn("presentation.missing_tree_feature:cold_collapsed", result["errors"])
 
+    def test_non_map_commands_do_not_require_documentation_tree(self):
+        for command in ("check", "context", "doctor"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                receipt["retrieval"]["actions"] = receipt["retrieval"]["actions"][: trajectory_gate.MAX_DOCS_ACTIONS[command]]
+                receipt["presentation"].pop("tree")
+                receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "PASS")
+                self.assertNotIn("presentation.missing_tree", result["errors"])
+
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["usage"]["paired_control"] = {
@@ -71,6 +85,9 @@ class TrajectoryGateTests(unittest.TestCase):
     def test_public_receipts_reject_sensitive_or_hidden_material_recursively(self):
         bad_values = [
             ("absolute path", {"note": r"C:\Users\person\repo"}),
+            ("POSIX workspace path", {"note": "/workspace/Skills"}),
+            ("POSIX temporary path", {"note": "/tmp/private"}),
+            ("POSIX var path", {"note": "/var/lib/private"}),
             ("secret", {"metadata": {"api_token": "opaque"}}),
             ("hidden reasoning", {"hidden_reasoning": "private"}),
             ("raw session id", {"session_id": "synthetic-private-id"}),
@@ -88,6 +105,20 @@ class TrajectoryGateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "retrieval.actions entries"):
             trajectory_gate.evaluate(receipt)
+
+    def test_malformed_receipt_arrays_raise_value_error(self):
+        mutations = (
+            ("outcome.answers", lambda receipt: receipt["outcome"].update(answers=None)),
+            ("presentation.tree_features", lambda receipt: receipt["presentation"].update(tree_features=None)),
+            ("presentation.visible_diagnostics", lambda receipt: receipt["presentation"].update(visible_diagnostics=None)),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                mutate(receipt)
+
+                with self.assertRaisesRegex(ValueError, "must be an array"):
+                    trajectory_gate.evaluate(receipt)
 
     def test_cli_emits_json_and_uses_exit_codes_zero_one_two(self):
         cases = [
@@ -118,6 +149,24 @@ class TrajectoryGateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
         finally:
             malformed.unlink(missing_ok=True)
+
+    def test_cli_returns_invalid_for_malformed_receipt_arrays(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["outcome"]["answers"] = None
+        with tempfile.TemporaryDirectory() as td:
+            malformed = Path(td) / "malformed-array.json"
+            malformed.write_text(json.dumps(receipt), encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "trajectory_gate.py"), str(malformed)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["status"], "INVALID")
+        self.assertEqual(result.stderr, "")
 
     def test_release_campaign_is_capped_and_requires_explicit_approval(self):
         campaign = self.load("release-canary-example.json")
