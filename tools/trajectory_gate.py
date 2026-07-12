@@ -41,7 +41,7 @@ _ABSOLUTE_PATH = re.compile(
     r"\b[A-Z]:[\\/]"
     r"|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+"
     r"|(?<![A-Za-z0-9/:])/(?![/\s])[^\s]*"
-    r"|\bfile:///[^\s]+"
+    r"|\bfile://[^\s]+"
     r"|\b[A-Za-z][A-Za-z0-9+.-]*:(?=/[^\s/])[^\s]*"
     r")"
 )
@@ -194,6 +194,12 @@ def evaluate(receipt: Mapping) -> dict:
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
+    if command == "context" and sum(
+        len(item["paths"])
+        for item in docs_actions
+        if item.get("kind") != "bounded-probe" and isinstance(item.get("paths"), list)
+    ) > MAX_DOCS_ACTIONS["context"]:
+        errors.append("retrieval.context_file_budget")
     if command in MAP_READING_COMMANDS and not map_read_actions:
         errors.append("retrieval.missing_map_read")
     if command in MAP_READING_COMMANDS and map_read_actions and first_map_read is None:

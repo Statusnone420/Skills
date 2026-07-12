@@ -190,6 +190,23 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.broad_action", result["errors"])
 
+    def test_context_counts_loaded_paths_across_read_actions(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["docs/README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"],
+                "status": "complete",
+            }
+        ]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.context_file_budget", result["errors"])
+
     def test_map_receipts_require_read_map_action(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"] = [receipt["retrieval"]["actions"][3]]
@@ -490,6 +507,15 @@ class TrajectoryGateTests(unittest.TestCase):
             with self.subTest(label=label):
                 receipt = self.load("bulwark-map-accepted.json")
                 receipt.update(addition)
+                with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
+                    trajectory_gate.evaluate(receipt)
+
+    def test_public_receipts_reject_file_uris_with_authorities(self):
+        for uri in ("file://localhost/workspace/Skills", "file://server/share/repo"):
+            with self.subTest(uri=uri):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["note"] = uri
+
                 with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
                     trajectory_gate.evaluate(receipt)
 
