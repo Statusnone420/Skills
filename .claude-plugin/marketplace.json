@@ -1,0 +1,28 @@
+{
+  "description": "Installation adapters for Statusnone Skills.",
+  "name": "statusnone-skills",
+  "owner": {
+    "name": "Statusnone"
+  },
+  "plugins": [
+    {
+      "author": {
+        "name": "Statusnone"
+      },
+      "category": "development",
+      "description": "Bounded repository memory. Evidence-backed documentation.",
+      "displayName": "Diátaxis Docs",
+      "homepage": "https://github.com/Statusnone420/Skills",
+      "keywords": [
+        "documentation",
+        "diataxis",
+        "repository-memory",
+        "coding-agents"
+      ],
+      "license": "Apache-2.0",
+      "name": "diataxis-docs",
+      "repository": "https://github.com/Statusnone420/Skills",
+      "source": "./adapters/claude"
+    }
+  ]
+}

@@ -12,6 +12,15 @@ ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 MARKER_NAME = ".statusnone-adapters-output"
 MARKER_TEXT = "statusnone-adapters-v1\n"
 PROTECTED_ROOTS = tuple(ROOT / name for name in (".git", ".github", ".superpowers", "docs", "evals", "skills", "tests", "tools"))
+CLAUDE_PLUGIN_MANIFEST = {
+    "name": "diataxis-docs",
+    "description": "Bounded repository memory. Evidence-backed documentation.",
+    "author": {"name": "Statusnone"},
+    "homepage": "https://github.com/Statusnone420/Skills",
+    "repository": "https://github.com/Statusnone420/Skills",
+    "license": "Apache-2.0",
+    "keywords": ["documentation", "diataxis", "repository-memory", "coding-agents"],
+}
 
 def _lexical(path: Path) -> Path:
     return Path(os.path.abspath(os.fspath(path)))
@@ -93,6 +102,13 @@ def generate(output: Path) -> None:
         (d / "SKILL.md").write_text(slash_skill(source_text), encoding="utf-8", newline="\n")
         for resource in ("references", "agents", "scripts", "assets"):
             shutil.copytree(SOURCE / resource, d / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        if vendor == "claude":
+            (d / ".claude-plugin").mkdir()
+            (d / ".claude-plugin" / "plugin.json").write_text(
+                json.dumps(CLAUDE_PLUGIN_MANIFEST, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
     wrapper = (
         "# /docs wrapper\n\n"
         "Instruction-enforced invocation: activate the shared `docs` skill explicitly, then "
@@ -142,6 +158,13 @@ def validate(output: Path) -> list[str]:
         parsed=frontmatter(p.read_text(encoding="utf-8")) if p.exists() else None
         if parsed is None or parsed.get("user-invocable") != "true" or parsed.get("disable-model-invocation") != "true": errors.append(f"frontmatter {v}")
         elif content(p.read_text(encoding="utf-8")) != body: errors.append(f"body parity {v}")
+    claude_manifest_path = output / "claude" / ".claude-plugin" / "plugin.json"
+    try:
+        claude_manifest = json.loads(claude_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        errors.append("claude plugin manifest")
+    else:
+        if claude_manifest != CLAUDE_PLUGIN_MANIFEST: errors.append("claude plugin manifest parity")
     for v in ("gemini","opencode"):
         wrapper = (output/v/"docs.md").read_text(encoding="utf-8")
         if "raw trailing text" not in wrapper.lower() or "$(" in wrapper or "`$" in wrapper: errors.append(f"wrapper {v}")
@@ -155,7 +178,7 @@ def validate(output: Path) -> list[str]:
         if len(prompt_bytes) > 16_000: errors.append(f"web budget {c}: {len(prompt_bytes)} bytes")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
-    expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
+    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")

@@ -1,0 +1,16 @@
+{
+  "author": {
+    "name": "Statusnone"
+  },
+  "description": "Bounded repository memory. Evidence-backed documentation.",
+  "homepage": "https://github.com/Statusnone420/Skills",
+  "keywords": [
+    "documentation",
+    "diataxis",
+    "repository-memory",
+    "coding-agents"
+  ],
+  "license": "Apache-2.0",
+  "name": "diataxis-docs",
+  "repository": "https://github.com/Statusnone420/Skills"
+}

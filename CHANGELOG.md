@@ -2,6 +2,7 @@
 
 ## Public alpha candidate (2026-07-12)
 
+- Added a thin Claude marketplace installation shim that routes to the generated adapter without forking the canonical skill.
 - Added Doctor as the guided read-only diagnosis and approval-gated treatment workflow.
 - Hardened repository identity, worktree isolation, junction/reparse confinement, dirty-worktree preservation, and verification failure reporting.
 - Expanded the deterministic suite to more than 100 tests and added Windows/Linux CI.

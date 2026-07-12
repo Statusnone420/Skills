@@ -13,6 +13,7 @@ class PublicDocumentationContractTests(unittest.TestCase):
             "BENCHMARK.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md",
             "ROADMAP.md", "LICENSE", "NOTICE", "AGENTS.md", "docs/README.md",
             "docs/STATE.md", ".github/dependabot.yml", ".github/workflows/codeql.yml",
+            ".claude-plugin/marketplace.json", "adapters/claude/.claude-plugin/plugin.json",
             ".github/ISSUE_TEMPLATE/bug-report.yml",
             ".github/ISSUE_TEMPLATE/feature-request.yml",
             ".github/ISSUE_TEMPLATE/config.yml",
