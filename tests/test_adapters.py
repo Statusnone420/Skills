@@ -76,6 +76,7 @@ class AdapterBuilderTests(unittest.TestCase):
         commands = (ROOT / "skills/docs/references/commands.md").read_text(encoding="utf-8")
         memory = (ROOT / "skills/docs/references/memory.md").read_text(encoding="utf-8")
         doctor = (ROOT / "skills/docs/references/doctor.md").read_text(encoding="utf-8")
+        isolation = (ROOT / "skills/docs/references/isolation.md").read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
@@ -95,6 +96,8 @@ class AdapterBuilderTests(unittest.TestCase):
                 self.assertNotIn("name: docs", text)
                 if command == "doctor":
                     self.assertIn(doctor, text)
+                    self.assertNotIn(isolation, text)
+                    self.assertIn("treatments remain draft-only", text)
                 else:
                     self.assertNotIn(doctor, text)
 
@@ -152,9 +155,14 @@ class AdapterBuilderTests(unittest.TestCase):
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
             self.assertTrue((out / "web" / "docs-doctor.txt").is_file())
             canonical = (ROOT / "skills/docs/references/doctor.md").read_bytes()
+            isolation_path = ROOT / "skills/docs/references/isolation.md"
+            self.assertTrue(isolation_path.is_file(), "canonical isolation playbook is required")
+            isolation = isolation_path.read_bytes()
             for vendor in ("claude", "copilot", "grok", "cursor"):
                 self.assertEqual((out / vendor / "references/doctor.md").read_bytes(), canonical)
+                self.assertEqual((out / vendor / "references/isolation.md").read_bytes(), isolation)
             self.assertEqual((out / "plugin/skills/docs/references/doctor.md").read_bytes(), canonical)
+            self.assertEqual((out / "plugin/skills/docs/references/isolation.md").read_bytes(), isolation)
 
     def test_public_entry_points_recommend_doctor_without_hiding_direct_commands(self):
         commands = (ROOT / "COMMANDS.md").read_text(encoding="utf-8")

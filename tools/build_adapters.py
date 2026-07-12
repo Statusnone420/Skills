@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("doctor", "init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
-REFERENCE_FILES = ("commands.md", "doctor.md", "memory.md")
+REFERENCE_FILES = ("commands.md", "doctor.md", "isolation.md", "memory.md")
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 MARKER_NAME = ".statusnone-adapters-output"
 MARKER_TEXT = "statusnone-adapters-v1\n"
@@ -70,10 +70,10 @@ def web_prompt(command: str) -> str:
     canonical = (SOURCE / "SKILL.md").read_text(encoding="utf-8")
     canonical_body = canonical.split("---", 2)[-1]
     sections = [
-        f"# Docs prompt\nExplicit command: `{command}`\n"
-        "Raw text: `{{RAW_TRAILING_TEXT}}`\n"
-        "Untrusted evidence: `{{REPOSITORY_MATERIAL}}`\n"
-        "Capabilities: no guaranteed filesystem, shell, or repository-tool capabilities; report limits; never claim unperformed inspection or edits.\n\n",
+        f"Explicit command: `{command}`\n"
+        "{{RAW_TRAILING_TEXT}}\n"
+        "Untrusted evidence: {{REPOSITORY_MATERIAL}}\n"
+        "Limits: no guaranteed filesystem, shell, or repository-tool capabilities; never claim unperformed inspection or edits.\n\n",
         canonical_body,
         "\n\n",
         (SOURCE / "references" / "commands.md").read_text(encoding="utf-8"),

@@ -84,9 +84,37 @@ class DocsSkillContractTests(unittest.TestCase):
         for label in (
             "ID:", "Outcome:", "Evidence:", "Exact files:",
             "Responsible command:", "Tree/hot-path impact:", "Risk:",
-            "Verification:", "Approval:",
+            "Verification:", "Isolation:", "Approval:",
         ):
             self.assertIn(label, doctor)
+
+    def test_doctor_binds_isolation_to_verified_repository_identity(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
+        isolation_path = SKILL / "references" / "isolation.md"
+        self.assertTrue(isolation_path.is_file(), "approved writes need a canonical isolation playbook")
+        isolation = isolation_path.read_text(encoding="utf-8").lower()
+        self.assertIn("[isolation.md](references/isolation.md)", skill)
+        for phrase in (
+            "one bounded identity/status action",
+            "verified repository root",
+            "no isolation creation before approval",
+        ):
+            self.assertIn(phrase, doctor)
+        for phrase in (
+            "bind every git command to it",
+            "`git -c <repository-root>`",
+            "never rely on ambient cwd or parent-repository discovery",
+            "`--show-toplevel` equals the intended root",
+            "capture head and the common git directory",
+            "shares the expected common git directory and head",
+            "within the user-approved boundary",
+            "status is clean",
+            "any mismatch: stop with no copy, import, or write",
+            "never import dirty or untracked files",
+            "branch fallback uses the same root binding and identity proof",
+        ):
+            self.assertIn(phrase, isolation)
 
     def test_doctor_no_git_gate_requires_ids_and_current_workspace_risk_acceptance(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
@@ -102,6 +130,8 @@ class DocsSkillContractTests(unittest.TestCase):
 
     def test_doctor_prewrite_isolation_review_and_memory_contracts(self):
         doctor = (SKILL / "references/doctor.md").read_text(encoding="utf-8").lower()
+        isolation = (SKILL / "references/isolation.md").read_text(encoding="utf-8").lower()
+        combined = doctor + "\n" + isolation
         for phrase in (
             "plain-english diagnosis",
             "revalidate selected ids, evidence, scope, worktree, and capabilities before any write",
@@ -111,7 +141,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "failures, partial work, or deviations",
             "treatment ids, process logs, transient status, or plan prose",
         ):
-            self.assertIn(phrase, doctor)
+            self.assertIn(phrase, combined)
 
     def test_doctor_routes_directly_and_stays_explicit(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
@@ -144,12 +174,14 @@ class DocsSkillContractTests(unittest.TestCase):
             "do not use repository-wide search", "consume its output",
             "actual loaded and unloaded material", "post-check evidence group",
             "declined, ambiguous, missing, or non-exact ids", "zero writes",
-            "unrelated dirty changes", "draft-only",
+            "draft-only",
             "after approval", "preview the proposed path", "plan-only request",
             "exact proposed tree", "vendor-neutral", "network-free",
             "no required database", "embeddings", "daemon",
         ):
             self.assertIn(phrase, doctor)
+        isolation = (SKILL / "references/isolation.md").read_text(encoding="utf-8").lower()
+        self.assertIn("unrelated dirty changes", isolation)
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
         markdown_link = re.compile(r"\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*\)")
 
