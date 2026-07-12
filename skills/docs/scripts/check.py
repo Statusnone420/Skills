@@ -57,16 +57,35 @@ def safe_path(path, root):
         if os.path.lexists(current) and _is_reparse(current): raise ValueError("symlink path")
     return Path(raw)
 
+def hot_path_summary(root, hot_paths):
+    files=[]; total=0
+    for relative in hot_paths:
+        path = safe_path(root / relative, root)
+        if path.is_file() and not _is_reparse(path):
+            size = path.stat().st_size; total += size
+            files.append({"path":Path(relative).as_posix(),"bytes":size})
+    return {"files":files,"bytes":total,"limit":MAX_HOT,"percentage":round(total / MAX_HOT * 100, 2)}
+
+def unique_relative_paths(paths):
+    unique=[]; seen=set()
+    for relative in paths:
+        normalized = os.path.normpath(os.fspath(relative))
+        key = os.path.normcase(normalized)
+        if key not in seen:
+            seen.add(key); unique.append(Path(normalized).as_posix())
+    return unique
+
 def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
     root = Path(root); findings=[]; files=[]
     _assert_no_reparse_components(root)
     if Path(map_path).is_absolute() or any(x == '..' for x in Path(map_path).parts): raise ValueError("map must be repo-relative")
     if hot_paths and any(Path(x).is_absolute() or any(y == '..' for y in Path(x).parts) for x in hot_paths): raise ValueError("hot paths must be repo-relative")
+    hot_paths = unique_relative_paths([map_path] + (hot_paths or ["docs/STATE.md"]))
     if Path(scope).is_absolute() or any(x == '..' for x in Path(scope).parts): raise ValueError("scope must be repo-relative")
     scope_path = safe_path(root / scope, root)
     if scope_path.exists() and not scope_path.is_dir(): raise ValueError("scope must be a directory")
     mapfile = safe_path(root / map_path, root)
-    for r in (hot_paths or ["docs/README.md", "docs/STATE.md"]): safe_path(root / r, root)
+    for r in hot_paths: safe_path(root / r, root)
     for base, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = [d for d in dirs if not _is_reparse(Path(base)/d)]
         for name in names:
@@ -115,13 +134,9 @@ def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
             if p not in reachable: findings.append({"kind":"unreachable","path":str(p.relative_to(root)),"map":map_path})
     for title, paths in titles.items():
         if len(paths)>1: findings.append({"kind":"duplicate-title","title":title,"paths":paths})
-    hot_paths = hot_paths or ["docs/README.md","docs/STATE.md"]
-    hot=0
-    for r in hot_paths:
-        hp = safe_path(root/r, root)
-        if hp.is_file() and not _is_reparse(hp): hot += hp.stat().st_size
-    if hot>MAX_HOT: findings.append({"kind":"hot-path-bytes","bytes":hot,"limit":MAX_HOT})
-    return findings
+    hot_path = hot_path_summary(root, hot_paths)
+    if hot_path["bytes"]>MAX_HOT: findings.append({"kind":"hot-path-bytes","bytes":hot_path["bytes"],"limit":MAX_HOT})
+    return findings, hot_path
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -147,12 +162,12 @@ def main(argv=None):
         if Path(ns.map).is_absolute() or any(x=='..' for x in Path(ns.map).parts): raise ValueError("map must be repo-relative")
         if hot and any(Path(x).is_absolute() or any(y=='..' for y in Path(x).parts) for x in hot): raise ValueError("hot paths must be repo-relative")
         if Path(ns.scope).is_absolute() or any(x=='..' for x in Path(ns.scope).parts): raise ValueError("scope must be repo-relative")
-        findings=check(root, ns.map, hot, ns.scope)
+        findings, hot_path=check(root, ns.map, hot, ns.scope)
     except (OSError,ValueError,UnicodeError) as exc:
         if ns.json: print(json.dumps({"error":str(exc),"findings":[]}))
         else: print(f"error: {exc}")
         return 2
-    if ns.json: print(json.dumps({"root":str(root),"findings":findings},ensure_ascii=False))
+    if ns.json: print(json.dumps({"root":str(root),"hot_path":hot_path,"findings":findings},ensure_ascii=False))
     elif findings:
         for f in findings: print(f"{f['kind']}: {f}")
     else: print("clean")

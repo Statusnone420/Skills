@@ -96,6 +96,26 @@ Preserve existing conventions such as root `STATE.md`, `PRODUCT.md`, and `DESIGN
 - Publish the pilot’s observed usage and projected cost before the separate 108-run release matrix approval gate.
 - Produce a local review snapshot. Do not create, push, tag, release, or publish the GitHub repository before explicit approval.
 
+## Task 6: Shared bounded-retrieval engine
+
+- Preserve the literal, human-readable documentation tree proven by dogfooding; reduce retrieval cost rather than visual quality.
+- Add focused failing contract tests before changing guidance for the observed `map`, `context`, and `check` over-retrieval failures.
+- Treat the map and current-state files as orientation. Treat source anchors as optional routes, not automatic reads or hot-path members.
+- For routine recall and diagnostics, take only the minimum evidence hop needed, then stop or report the relationship as unresolved.
+- Execute a known bundled checker once with its documented arguments. Inspect its source or help only after an execution failure.
+- Keep intentionally broad commands (`audit`, `migrate`, and `cleanup`) capable of deeper inspection; bounded retrieval must raise the floor without flattening useful judgment.
+- Establish an isolated, private-data-free `update` baseline before changing its contract. Add guidance only for a reproduced failure.
+- Rebuild adapters, refresh the isolated local installation, run deterministic validation, and rerun fresh-agent `map`, `context`, and `check` probes against the same repository state.
+
+## Task 7: Cline Desktop 0.2.9 compatibility
+
+- Keep `skills/docs/` canonical and vendor-neutral; never maintain a copied Cline-specific skill fork.
+- Document the existing opt-in Cline installation targets: the global `%USERPROFILE%/.cline/data/settings/skills/docs` directory and a repository-local `.cline/skills/docs` directory.
+- Verify explicit `/docs` discovery and loading from the exact canonical bundle in Cline Desktop 0.2.9.
+- In the separate Cline Desktop repository, evaluate the smallest durable opt-in external-skill-root setting so the app can point at a canonical skill library without copying it.
+- Require both Cline discovery paths to share the same configured roots, preserve path containment and size limits, and include focused tests before implementation.
+- Do not make Cline Desktop, Electron, the Cline SDK, or any application runtime a dependency of Statusnone Skills.
+
 ## Release evaluation
 
 The release matrix is six scenarios × skill/baseline × three repetitions × Codex/Claude/Grok = 108 fresh trajectories. Publish exact harness, model, version, date, prompts, final outputs, diffs, concise tool events, timing, tokens/cost when exposed, failures, and limitations. Never publish hidden reasoning. Record every attempt; infrastructure retries receive new IDs and never replace failures.

@@ -33,16 +33,18 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn('short_description: "Bounded repository memory. Evidence-backed documentation."', meta)
         self.assertIn("$docs", meta)
         self.assertIn("allow_implicit_invocation: false", meta)
+        self.assertIn("Never report inspected material as deliberately unloaded", skill)
 
     def test_map_command_has_visual_reader_contract(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("`map`")
+        start = commands.index("\n`map`:") + 1
         end = commands.index("`classify`", start)
         contract = commands[start:end].lower()
         for phrase in (
             "documentation map",
             "plain english",
-            "compact text hierarchy",
+            "fenced `text` tree",
+            "line-drawing branches",
             "where to start",
             "current truth",
             "generated",
@@ -57,15 +59,131 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("make no edits", contract)
         self.assertIn("detailed diagnostics remain under `check`", contract)
 
+    def test_map_command_has_bounded_evidence_recipe(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("\n`map`:") + 1
+        end = commands.index("`classify`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "complete this bounded command directly without a separate planning phase",
+            "the first repository-evidence action is a direct read of `docs/readme.md`",
+            "only a missing read activates bounded map discovery",
+            "exactly three repository-evidence actions",
+            "read the existing documentation map directly",
+            "read only the current-state hot-path files it names",
+            "<python> <checker-path> <repository-root> --json --map docs/readme.md --hot <comma-separated-repository-relative-current-state-paths>",
+            "checker action supplies findings and hot-path bytes",
+            "the checker includes the map automatically",
+            "never include skill or playbook files in `--hot`",
+            "label unresolved relationships",
+        ):
+            self.assertIn(phrase, contract)
+
+    def test_shared_bounded_retrieval_contract(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "## bounded retrieval",
+            "for `context`, `map`, and `check`",
+            "orient from existing map/current-state files",
+            "follow only task-relevant evidence routes",
+            "stop or label unresolved relationships",
+            "not hot-path members or automatic reads",
+            "do not inventory the repository or inspect git solely to prove a read-only result",
+            "name-only and recursive directory listings are inventories",
+            "when mapped routes exist, do not use repository-wide search",
+            "execute a documented bundled tool invocation once",
+            "do not preflight its path or availability",
+            "inspect source or help only when it cannot execute or returns malformed output",
+        ):
+            self.assertIn(phrase, commands)
+
+    def test_context_command_has_bounded_retrieval_contract(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("`context <task>`")
+        end = commands.index("`write <need>`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "make no edits",
+            "orient from the map/current state",
+            "only task-relevant routes",
+            "generated copies remain cold unless explicitly targeted",
+            "a source-to-generated relationship targets the canonical source and generator",
+            "not representative generated copies, tests, or a validation run",
+            "for an explanation, read one most-direct canonical route",
+            "do not inspect tests or execute validation unless the user asks to verify current status",
+            "at most four repository files by default",
+            "map, current state, and up to two task-relevant canonical sources",
+            "name the next route without loading it",
+            "deliberately unloaded material",
+        ):
+            self.assertIn(phrase, contract)
+
+    def test_update_command_limits_worktree_evidence_after_observed_failure(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("`update <change>`")
+        end = commands.index("`audit [scope]`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "orient from the map/current state",
+            "task-relevant `sources:` anchors",
+            "inspect changed path names first",
+            "path-limited diffs",
+            "preserve unrelated dirty and untracked work without loading its contents",
+            "do not inventory the repository or run the documentation checker when those routes are available",
+            "at most one available focused verification",
+            "do not probe multiple missing runners",
+        ):
+            self.assertIn(phrase, contract)
+
+    def test_check_command_executes_known_checker_once(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("\n`check`:") + 1
+        end = commands.index("`cleanup`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "make no edits",
+            "execute the bundled checker once",
+            "<python> <checker-path> <repository-root> --json --map docs/readme.md --hot <comma-separated-repository-relative-current-state-paths>",
+            "exit 1 means findings, not an execution failure",
+            "from its json",
+            "smallest scriptless equivalent",
+        ):
+            self.assertIn(phrase, contract)
+
     def test_checker_reports_json_findings_and_exit_codes(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "docs").mkdir()
             (root / "docs" / "README.md").write_text("# Map\n\n[missing](nope.md)\n", encoding="utf-8")
-            proc = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), str(root), "--json"], capture_output=True, text=True)
+            (root / "docs" / "STATE.md").write_text("# State\n", encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL / "scripts" / "check.py"),
+                    str(root),
+                    "--json",
+                    "--map",
+                    "docs/README.md",
+                    "--hot",
+                    "docs/STATE.md",
+                ],
+                capture_output=True,
+                text=True,
+            )
             self.assertEqual(proc.returncode, 1)
             payload = json.loads(proc.stdout)
             self.assertTrue(payload["findings"])
+            self.assertEqual(payload["hot_path"]["limit"], 16 * 1024)
+            self.assertEqual(payload["hot_path"]["bytes"], sum(item["bytes"] for item in payload["hot_path"]["files"]))
+            self.assertEqual(
+                [item["path"] for item in payload["hot_path"]["files"]],
+                ["docs/README.md", "docs/STATE.md"],
+            )
+            self.assertAlmostEqual(
+                payload["hot_path"]["percentage"],
+                payload["hot_path"]["bytes"] / (16 * 1024) * 100,
+                places=2,
+            )
 
     def test_checker_rejects_outside_root(self):
         proc = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), ".."], capture_output=True, text=True, cwd=ROOT)
@@ -105,6 +223,31 @@ class DocsSkillContractTests(unittest.TestCase):
             payload = json.loads(proc.stdout)
             self.assertTrue(any(f["kind"] == "duplicate-title" for f in payload["findings"]))
             self.assertTrue(any(f["kind"] == "hot-path-bytes" for f in payload["findings"]))
+
+    def test_hot_path_deduplicates_equivalent_relative_spellings(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); docs = root / "docs"; docs.mkdir()
+            map_file = docs / "README.md"; state_file = docs / "STATE.md"
+            map_file.write_text("# Map\n\n[State](STATE.md)\n", encoding="utf-8")
+            state_file.write_text("# State\n", encoding="utf-8")
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL / "scripts" / "check.py"),
+                    str(root),
+                    "--json",
+                    "--map",
+                    "docs/./README.md",
+                    "--hot",
+                    "docs/README.md,docs/STATE.md",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            hot_path = json.loads(proc.stdout)["hot_path"]
+            self.assertEqual(hot_path["bytes"], map_file.stat().st_size + state_file.stat().st_size)
+            self.assertEqual(len(hot_path["files"]), 2)
 
     def test_root_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -210,7 +353,8 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_optional_source_anchor_convention(self):
         memory=(SKILL/'references'/'memory.md').read_text(encoding='utf-8')
         self.assertIn('Sources: `repo/path`, `tests/path`',memory)
-        self.assertIn('do not prove a claim',memory)
+        self.assertIn('neither prove a claim nor join the hot path',memory)
+        self.assertIn('Follow an anchor only when the task requires corroboration',memory)
         self.assertIn('$docs update',memory)
         self.assertIn('revalidates',memory)
 
