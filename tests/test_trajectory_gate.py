@@ -181,6 +181,33 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_map_read", result["errors"])
 
+    def test_mapped_budget_uses_first_read_map_status(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        first_read = dict(actions[0], status="complete")
+        later_read = dict(actions[0], status="missing")
+        receipt["retrieval"]["actions"] = [first_read, actions[1], actions[3], later_read]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.docs_action_budget", result["errors"])
+
+    def test_bounded_commands_reject_checker_preflight_actions(self):
+        for command in ("map", "check", "context"):
+            for kind in ("preflight", "availability-probe"):
+                with self.subTest(command=command, kind=kind):
+                    receipt = self.load("bulwark-map-accepted.json")
+                    receipt["command"] = command
+                    actions = receipt["retrieval"]["actions"]
+                    receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+                    receipt["retrieval"]["actions"][1]["kind"] = kind
+
+                    result = trajectory_gate.evaluate(receipt)
+
+                    self.assertEqual(result["status"], "FAIL")
+                    self.assertIn("retrieval.preflight_action", result["errors"])
+
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["usage"]["paired_control"] = {

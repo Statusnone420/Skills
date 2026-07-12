@@ -29,6 +29,7 @@ MAX_DOCS_ACTIONS = {"map": 4, "check": 3, "context": 4, "doctor": 8}
 MAX_RELEASE_RUNS = 12
 CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
 BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
+CHECKER_PREFLIGHT_KINDS = {"preflight", "availability-probe"}
 _ABSOLUTE_PATH = re.compile(
     r"(?i)(?:"
     r"\b[A-Z]:[\\/]"
@@ -136,21 +137,26 @@ def evaluate(receipt: Mapping) -> dict:
     visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
     if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
+    map_read_actions = [item for item in docs_actions if item.get("kind") == "read-map"]
     docs_action_budget = MAX_DOCS_ACTIONS[command]
-    if command == "map" and not any(
-        item.get("kind") == "read-map" and item.get("status") == "missing"
-        for item in docs_actions
+    if command == "map" and (
+        not map_read_actions or map_read_actions[0].get("status") != "missing"
     ):
         docs_action_budget = 3
     if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
-    if command == "map" and not any(item.get("kind") == "read-map" for item in docs_actions):
+    if command == "map" and not map_read_actions:
         errors.append("retrieval.missing_map_read")
     if command in {"context", "map", "check"} and any(
         isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
         for item in docs_actions
     ):
         errors.append("retrieval.broad_action")
+    if command in {"context", "map", "check"} and any(
+        isinstance(item.get("kind"), str) and item.get("kind") in CHECKER_PREFLIGHT_KINDS
+        for item in docs_actions
+    ):
+        errors.append("retrieval.preflight_action")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
     if command in {"map", "check"} and checker_runs == 0:
