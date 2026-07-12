@@ -1,5 +1,7 @@
 # Installation
 
+Diátaxis Docs is a public alpha. Install from a revision you trust, review proposed changes before approval, and use normal Git safeguards.
+
 In the ChatGPT desktop app, Codex CLI, and supported IDE integrations, user skills are available from `$HOME/.agents/skills`. From a clone of this repository, install the canonical `skills/docs` directory without overwriting an existing destination.
 
 PowerShell (Windows 11):
@@ -30,3 +32,11 @@ The exact layout check is `$HOME/.agents/skills/docs/SKILL.md`. Restart the host
 The canonical OpenAI references are [Skills](https://developers.openai.com/codex/skills) and [Plugins](https://developers.openai.com/codex/plugins/build). Plugins are the distribution layer; this repository does not claim a marketplace or plugin installation exists yet.
 
 Set `policy.allow_implicit_invocation: false` to keep invocation explicit. Other harnesses use the generated adapters and their documented enforcement tiers; see [compatibility](COMPATIBILITY.md).
+
+After installation, the safest first trial is:
+
+```text
+$docs doctor make this repository's documentation trustworthy, bounded, and easy for humans and agents to use
+```
+
+The first Doctor response must be read-only and stop before treatment.

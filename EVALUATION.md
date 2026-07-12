@@ -1,6 +1,6 @@
 # Evaluation
 
-Tasks 1–6 use deterministic fixtures, disposable repositories, recorded attempts, and sanitized visible artifacts. The evidence currently includes five matched safety-pressure pairs, a preserved `init` approval-boundary failure and remediation, 73 local tests, plugin validation, and a 5/5 live Windows junction probe.
+The evaluation workflow uses deterministic fixtures, disposable repositories, recorded attempts, and sanitized visible artifacts. The public-alpha evidence currently includes five matched safety-pressure pairs, a preserved `init` approval-boundary failure and remediation, more than 100 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
 
 ## Shared-engine dogfood
 

@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a focused improvement grounded in a real repository need
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Repository problem
+      description: What documentation or agent-context problem did you encounter?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the result, not a required implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Closest command
+      options:
+        - doctor
+        - context
+        - map
+        - check
+        - audit or fix
+        - write or update
+        - init, migrate, or cleanup
+        - installation or compatibility
+        - none
+    validations:
+      required: true
+  - type: checkboxes
+    id: evidence
+    attributes:
+      label: Evidence
+      options:
+        - label: This request comes from a real or reproducible repository workflow.
+          required: true

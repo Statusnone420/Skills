@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible Diátaxis Docs behavior problem
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the alpha. Do not include credentials, private repository contents, or security vulnerabilities here; use the private process in SECURITY.md.
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: Which explicit command did you invoke?
+      placeholder: "$docs doctor ..."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, agent harness, model, and skill revision when known
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use a disposable or sanitized repository fixture.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private data, hidden reasoning, and sensitive local paths.
+          required: true

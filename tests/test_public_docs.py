@@ -1,3 +1,4 @@
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -10,7 +11,12 @@ class PublicDocumentationContractTests(unittest.TestCase):
             "README.md", "GETTING_STARTED.md", "INSTALL.md", "COMMANDS.md",
             "ARCHITECTURE.md", "ORIGIN.md", "EVALUATION.md", "COMPATIBILITY.md",
             "BENCHMARK.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md",
-            "LICENSE", "NOTICE", "AGENTS.md", "docs/README.md", "docs/STATE.md",
+            "ROADMAP.md", "LICENSE", "NOTICE", "AGENTS.md", "docs/README.md",
+            "docs/STATE.md", ".github/dependabot.yml", ".github/workflows/codeql.yml",
+            ".github/ISSUE_TEMPLATE/bug-report.yml",
+            ".github/ISSUE_TEMPLATE/feature-request.yml",
+            ".github/ISSUE_TEMPLATE/config.yml",
+            ".github/PULL_REQUEST_TEMPLATE.md",
         ]
         for name in required:
             self.assertTrue((ROOT / name).is_file(), name)
@@ -20,6 +26,10 @@ class PublicDocumentationContractTests(unittest.TestCase):
         self.assertIn("Diátaxis Docs", readme)
         self.assertIn("Benchmark status", readme)
         self.assertIn("Compatibility", readme)
+        self.assertIn("Your repository's documentation should help agents", readme)
+        self.assertIn("Public alpha", readme)
+        self.assertIn("$docs doctor", readme)
+        self.assertIn("100+ deterministic tests", readme)
         benchmark = (ROOT / "BENCHMARK.md").read_text(encoding="utf-8")
         self.assertIn("108-run matrix", benchmark)
         self.assertIn("not run", benchmark.lower())
@@ -40,6 +50,34 @@ class PublicDocumentationContractTests(unittest.TestCase):
         self.assertNotIn("ADHD Matrix code", origin)
         docs_hot = (ROOT / "docs/README.md").stat().st_size + (ROOT / "docs/STATE.md").stat().st_size
         self.assertLessEqual(docs_hot, 16 * 1024)
+
+    def test_public_alpha_repository_safeguards(self):
+        tracked = subprocess.run(
+            ["git", "ls-files", ".superpowers/**", "docs/superpowers/**"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        published_internal = [path for path in tracked if (ROOT / path).is_file()]
+        self.assertEqual(published_internal, [])
+
+        dependabot = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+        self.assertIn('package-ecosystem: "github-actions"', dependabot)
+        self.assertIn('interval: "monthly"', dependabot)
+
+        codeql = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
+        self.assertIn("security-events: write", codeql)
+        self.assertIn("contents: read", codeql)
+        self.assertIn("languages: python", codeql)
+        action_lines = [line.strip() for line in codeql.splitlines() if "uses:" in line]
+        self.assertTrue(action_lines)
+        for line in action_lines:
+            self.assertRegex(line, r"uses:\s+[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
+
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8").lower()
+        self.assertIn("do not open a public issue", security)
+        self.assertIn("no response-time sla", security)
 
     def test_windows_install_verification_fails_when_skill_missing(self):
         install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")

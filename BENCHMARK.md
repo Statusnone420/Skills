@@ -1,6 +1,6 @@
 # Benchmark status
 
-As of 2026-07-11, Tasks 1–6 provide deterministic fixtures, RED captures, five matched safety-pressure pairs plus the preserved init failure/remediation, 73 local tests, plugin validation, and a 5/5 live Windows junction probe.
+As of 2026-07-12, the public-alpha evidence includes deterministic fixtures, RED captures, five matched safety-pressure pairs plus the preserved init failure/remediation, more than 100 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
 
 ## Map retrieval pilot
 
