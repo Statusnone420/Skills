@@ -42,13 +42,15 @@ In Claude Code, add this repository and install the adapter:
 /plugin install diataxis-docs@statusnone-skills
 ```
 
-Restart Claude if its plugin list is cached, then verify the namespaced skill:
+In Claude Desktop, restart if the plugin list is cached, then attach the skill through `+ → Plugins → Diátaxis Docs → docs` and add `help`, `map`, or another command after the inserted token. The typed namespaced command is not recognized in Claude Desktop; the plugin picker is the supported Desktop invocation path.
+
+In a Claude Code terminal, verify the namespaced skill:
 
 ```text
 /diataxis-docs:docs help
 ```
 
-Claude's built-in `/documentation` command remains separate. Use Diátaxis Docs when you want its repository map, bounded memory, evidence rules, health checks, or approval-gated Doctor workflow. This installation path is structurally tested; live Claude sync is still an alpha compatibility check.
+Claude's built-in `/documentation` command remains separate. Use Diátaxis Docs when you want its repository map, bounded memory, evidence rules, health checks, or approval-gated Doctor workflow. Marketplace sync and Claude Desktop picker invocation are live-tested; the Claude Code terminal form remains structurally tested but has not completed a live terminal pilot.
 
 Set `policy.allow_implicit_invocation: false` to keep invocation explicit. Other harnesses use the generated adapters and their documented enforcement tiers; see [compatibility](COMPATIBILITY.md).
 

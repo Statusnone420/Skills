@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "visibility": "public-sanitized",
+  "campaign_id": "public-alpha-release-canary",
+  "approved": false,
+  "max_runs": 4,
+  "retain_raw_traces": false,
+  "commands": ["map", "context", "check", "doctor"],
+  "fixtures": ["mapped-repository", "missing-map-repository", "hostile-repository"]
+}

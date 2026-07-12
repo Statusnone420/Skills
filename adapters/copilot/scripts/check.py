@@ -149,11 +149,12 @@ def main(argv=None):
         if arg.startswith("--"): continue
         positional.append(arg)
     if "--json" in argv and not positional:
-        print(json.dumps({"error": "the following arguments are required: root", "findings": []}))
+        print(json.dumps({"status": "error", "has_findings": False, "error": "the following arguments are required: root", "findings": []}))
         return 2
-    ap=argparse.ArgumentParser(); ap.add_argument("root"); ap.add_argument("--json",action="store_true"); ap.add_argument("--map",default="docs/README.md"); ap.add_argument("--hot",default=None); ap.add_argument("--scope",default="docs")
+    ap=argparse.ArgumentParser(); ap.add_argument("root"); ap.add_argument("--json",action="store_true"); ap.add_argument("--agent",action="store_true"); ap.add_argument("--map",default="docs/README.md"); ap.add_argument("--hot",default=None); ap.add_argument("--scope",default="docs")
     ns=ap.parse_args(argv)
     try:
+        if ns.agent and not ns.json: raise ValueError("--agent requires --json")
         if any(part == ".." for part in Path(ns.root).parts): raise ValueError("path traversal is not allowed")
         raw=Path(ns.root).expanduser().absolute()
         _assert_no_reparse_components(raw)
@@ -164,13 +165,13 @@ def main(argv=None):
         if Path(ns.scope).is_absolute() or any(x=='..' for x in Path(ns.scope).parts): raise ValueError("scope must be repo-relative")
         findings, hot_path=check(root, ns.map, hot, ns.scope)
     except (OSError,ValueError,UnicodeError) as exc:
-        if ns.json: print(json.dumps({"error":str(exc),"findings":[]}))
+        if ns.json: print(json.dumps({"status":"error","has_findings":False,"error":str(exc),"findings":[]}))
         else: print(f"error: {exc}")
         return 2
-    if ns.json: print(json.dumps({"root":str(root),"hot_path":hot_path,"findings":findings},ensure_ascii=False))
+    if ns.json: print(json.dumps({"status":"findings" if findings else "clean","has_findings":bool(findings),"root":str(root),"hot_path":hot_path,"findings":findings},ensure_ascii=False))
     elif findings:
         for f in findings: print(f"{f['kind']}: {f}")
     else: print("clean")
-    return 1 if findings else 0
+    return 0 if ns.agent else (1 if findings else 0)
 
 if __name__ == "__main__": sys.exit(main())

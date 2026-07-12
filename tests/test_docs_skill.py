@@ -47,7 +47,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "plan-only request authorizes only that plan file", "simple repairs need no plan file",
             "no required database", "no required embeddings", "no required daemon",
             "no background process", "no new dependency",
-            "<python> <installed-skill>/scripts/check.py <repository-root> --json --map <repository-relative-map>",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map <repository-relative-map>",
             "never use repo-local checker, --help, bare-script invocation, availability preflight, or retry",
         ):
             self.assertIn(phrase, doctor)
@@ -360,7 +360,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "at most three evidence actions, in order",
             "read the existing map",
             "only if it names existing current-state hot-path files, read them",
-            "<python> <checker-path> <repository-root> --json --map docs/readme.md",
+            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",
             "never include skill or playbook files in `--hot`",
@@ -458,10 +458,10 @@ class DocsSkillContractTests(unittest.TestCase):
         for phrase in (
             "make no edits",
             "execute the bundled checker once",
-            "<python> <checker-path> <repository-root> --json --map docs/readme.md",
+            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
             "omit `--hot` when no existing current-state file is selected",
-            "exit 1 means findings, not an execution failure",
-            "from its json",
+            "`has_findings: true` is a findings result",
+            "summarize the json in plain english",
             "smallest scriptless equivalent",
         ):
             self.assertIn(phrase, contract)

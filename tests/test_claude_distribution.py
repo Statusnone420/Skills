@@ -89,6 +89,20 @@ class ClaudeDistributionContractTests(unittest.TestCase):
         ):
             self.assertIn(command, install)
 
+    def test_public_docs_distinguish_claude_desktop_from_terminal_invocation(self):
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        compatibility = (ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
+
+        for phrase in (
+            "Claude Desktop",
+            "Plugins → Diátaxis Docs → docs",
+            "Claude Code terminal",
+            "typed namespaced command is not recognized in Claude Desktop",
+        ):
+            self.assertIn(phrase, install)
+        self.assertIn("live-tested through the plugin picker", compatibility)
+        self.assertIn("terminal invocation not yet live-tested", compatibility)
+
 
 if __name__ == "__main__":
     unittest.main()
