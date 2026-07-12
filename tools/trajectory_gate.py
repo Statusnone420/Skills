@@ -28,7 +28,7 @@ REQUIRED_TREE_FEATURES = {
 MAX_DOCS_ACTIONS = {"map": 4, "check": 3, "context": 4, "doctor": 8}
 MAX_RELEASE_RUNS = 12
 _ABSOLUTE_PATH = re.compile(
-    r"(?i)(?:\b[A-Z]:[\\/]|(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?!/)[^\s]*)"
+    r"(?i)(?:\b[A-Z]:[\\/]|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+|(?<![A-Za-z0-9/:])/(?![/\s])[^\s]*)"
 )
 _SECRET_KEY = re.compile(r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])")
 _SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
@@ -123,7 +123,13 @@ def evaluate(receipt: Mapping) -> dict:
     visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
     if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
-    if len(docs_actions) > MAX_DOCS_ACTIONS[command]:
+    docs_action_budget = MAX_DOCS_ACTIONS[command]
+    if command == "map" and not any(
+        item.get("kind") == "read-map" and item.get("status") == "missing"
+        for item in docs_actions
+    ):
+        docs_action_budget = 3
+    if len(docs_actions) > docs_action_budget:
         errors.append("retrieval.docs_action_budget")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")

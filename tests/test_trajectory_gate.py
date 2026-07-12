@@ -93,6 +93,15 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_checker", result["errors"])
 
+    def test_mapped_map_receipts_use_three_action_budget(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"][0]["status"] = "complete"
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.docs_action_budget", result["errors"])
+
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["usage"]["paired_control"] = {
@@ -113,6 +122,7 @@ class TrajectoryGateTests(unittest.TestCase):
     def test_public_receipts_reject_sensitive_or_hidden_material_recursively(self):
         bad_values = [
             ("absolute path", {"note": r"C:\Users\person\repo"}),
+            ("UNC path", {"note": r"\\server\share\repo"}),
             ("POSIX workspace path", {"note": "/workspace/Skills"}),
             ("POSIX temporary path", {"note": "/tmp/private"}),
             ("POSIX var path", {"note": "/var/lib/private"}),
@@ -133,6 +143,17 @@ class TrajectoryGateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
             trajectory_gate.evaluate(receipt)
+
+    def test_public_receipts_allow_urls_and_prose_slashes(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["presentation"]["visible_diagnostics"] = [
+            "See https://docs.example.test/map",
+            "links / anchors checked",
+        ]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS")
 
     def test_receipt_rejects_malformed_retrieval_actions(self):
         receipt = self.load("bulwark-map-accepted.json")
