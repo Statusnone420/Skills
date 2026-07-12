@@ -71,7 +71,8 @@ def read_rgba_png(path):
 class AdapterBuilderTests(unittest.TestCase):
     def test_web_prompts_are_standalone_compositions_with_bounded_size(self):
         import tools.build_adapters as builder
-        canonical_skill = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
+        canonical_full = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
+        canonical_skill = canonical_full.split("---", 2)[-1]
         commands = (ROOT / "skills/docs/references/commands.md").read_text(encoding="utf-8")
         memory = (ROOT / "skills/docs/references/memory.md").read_text(encoding="utf-8")
         doctor = (ROOT / "skills/docs/references/doctor.md").read_text(encoding="utf-8")
@@ -85,11 +86,13 @@ class AdapterBuilderTests(unittest.TestCase):
                 self.assertIn("{{REPOSITORY_MATERIAL}}", text)
                 self.assertIn("untrusted evidence", text.lower())
                 self.assertIn("no guaranteed filesystem, shell, or repository-tool capabilities", text)
+                self.assertIn("never claim unperformed inspection or edits", text)
                 self.assertNotIn("activate the shared skill", text.lower())
                 self.assertIn(canonical_skill, text)
                 self.assertIn(commands, text)
                 self.assertIn(memory, text)
-                self.assertLessEqual(len(text.encode("utf-8")), 16_384)
+                self.assertLessEqual(len(text.encode("utf-8")), 16_000)
+                self.assertNotIn("name: docs", text)
                 if command == "doctor":
                     self.assertIn(doctor, text)
                 else:

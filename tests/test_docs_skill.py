@@ -13,6 +13,58 @@ SKILL = ROOT / "skills" / "docs"
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    def test_doctor_goal_routing_and_evidence_floors(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertIn("classify the explicit goal before general diagnosis", doctor)
+        self.assertIn("feature/change goal", doctor)
+        self.assertIn("`update`", doctor)
+        self.assertIn("changed-path names", doctor)
+        self.assertIn("cleanup, migration, and reader goals", doctor)
+        self.assertIn("bare `doctor`", doctor)
+        self.assertIn("first repository-evidence action is a direct read of `docs/readme.md`", doctor)
+        self.assertIn("forbid name-only inventories", doctor)
+        self.assertIn("get-childitem", doctor)
+        self.assertIn("rg --files", doctor)
+        self.assertIn("git ls-files", doctor)
+        self.assertIn("exact `map`/`check` entry in `commands.md`", doctor)
+        self.assertIn("scripts/check.py` exactly once", doctor)
+        self.assertIn("never use repo-local checker", doctor)
+        for phrase in ("id/outcome", "responsible command", "tree/hot-path impact", "approval"):
+            self.assertIn(phrase, doctor)
+        self.assertIn("future writes require exact selected ids", doctor)
+        self.assertIn("ordinary approval is insufficient", doctor)
+        self.assertIn("every loaded path", doctor)
+        self.assertIn("failed/preflight attempts", doctor)
+
+    def test_doctor_preserves_operational_boundaries_and_exact_checker_argv(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertIn("direct commands remain independently usable.", doctor)
+        self.assertIn("feedback may refine only the accepted treatment scope", doctor)
+        self.assertIn("new structural or unrelated work returns to preview and approval", doctor)
+        for phrase in (
+            "after approval for multi-step, structural, review-heavy, or resumable work",
+            "follow repository convention", "if no convention exists, preview the proposed path",
+            "plan-only request authorizes only that plan file", "simple repairs need no plan file",
+            "no required database", "no required embeddings", "no required daemon",
+            "no background process", "no new dependency",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --map <repository-relative-map> --hot <comma-separated-repository-relative-current-state-paths>",
+            "never use repo-local checker, --help, bare-script invocation, availability preflight, or retry",
+        ):
+            self.assertIn(phrase, doctor)
+
+    def test_doctor_prewrite_isolation_review_and_memory_contracts(self):
+        doctor = (SKILL / "references/doctor.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "plain-english diagnosis",
+            "revalidate selected ids, evidence, scope, worktree, and capabilities before any write",
+            "prefer a safe worktree",
+            "feature branch only after verifying it excludes unrelated dirty changes",
+            "name unrelated status and rollback limits",
+            "failures, partial work, or deviations",
+            "treatment ids, process logs, transient status, or plan prose",
+        ):
+            self.assertIn(phrase, doctor)
+
     def test_doctor_routes_directly_and_stays_explicit(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
         self.assertIn("[doctor.md](references/doctor.md)", skill)
@@ -26,7 +78,6 @@ class DocsSkillContractTests(unittest.TestCase):
             "minimum sufficient treatment", "healthy repository", "treatment ids",
             "current-workspace risk", "before approval", "only in the response",
             "complete affected-file list", "stop before commit", "verified truth",
-            "direct commands remain",
         ):
             self.assertIn(phrase, doctor)
         for phrase in ("facts", "inference", "candidates", "unrelated changes", "missing capabilities", "no-memory", "same-message"):
@@ -42,13 +93,13 @@ class DocsSkillContractTests(unittest.TestCase):
         ])
         for phrase in (
             "16,384 bytes", "bounded conventional fallback", "do not recursively inventory",
-            "do not use repository-wide search", "at most once", "consume its output",
+            "do not use repository-wide search", "consume its output",
             "actual loaded and unloaded material", "narrowly relevant additional file",
-            "declined, ambiguous, missing, or non-exact treatment ids", "zero writes",
-            "excludes unrelated dirty changes", "draft-only",
+            "declined, ambiguous, missing, or non-exact ids", "zero writes",
+            "unrelated dirty changes", "draft-only",
             "after approval", "preview the proposed path", "plan-only request",
             "exact proposed tree", "vendor-neutral", "network-free",
-            "no required database", "no required embeddings", "no required daemon",
+            "no required database", "embeddings", "daemon",
         ):
             self.assertIn(phrase, doctor)
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
