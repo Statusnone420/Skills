@@ -77,7 +77,7 @@ Re-check, show the diff, and stop before commit
 
 ## Install and compatibility
 
-Codex is the primary tested path and invokes the skill explicitly as `$docs …`. The core follows the Agent Skills structure, and generated adapters exist for Claude, Grok, Copilot, Cursor, Gemini, OpenCode, generic web prompts, and a Codex plugin preview.
+Codex is the primary tested path and invokes the skill explicitly as `$docs …`. The core follows the Agent Skills structure. Claude can install the same product through the repository's thin marketplace shim; generated adapters also exist for Grok, Copilot, Cursor, Gemini, OpenCode, generic web prompts, and a Codex plugin preview.
 
 Compatibility is evidence-tiered—not universal. Static adapter validation is not the same as a live harness test. See the dated [compatibility matrix](COMPATIBILITY.md) before relying on a preview adapter.
 

@@ -29,7 +29,26 @@ test -f "$dest/SKILL.md" && printf '%s\n' "Installed: $dest/SKILL.md"
 
 The exact layout check is `$HOME/.agents/skills/docs/SKILL.md`. Restart the host or start a new task if the skill list is cached, then run `$docs help` and confirm it returns the command list.
 
-The canonical OpenAI references are [Skills](https://developers.openai.com/codex/skills) and [Plugins](https://developers.openai.com/codex/plugins/build). Plugins are the distribution layer; this repository does not claim a marketplace or plugin installation exists yet.
+The canonical OpenAI references are [Skills](https://developers.openai.com/codex/skills) and [Plugins](https://developers.openai.com/codex/plugins/build). The checked-in Codex plugin bundle remains a preview; installing the canonical skill directory is the supported Codex path during alpha.
+
+## Claude
+
+Claude's repository-sync interface installs from a marketplace manifest. Statusnone Skills includes that thin installation metadata while keeping `skills/docs` authoritative; this does not create a separate Claude edition of Diátaxis Docs.
+
+In Claude Code, add this repository and install the adapter:
+
+```text
+/plugin marketplace add Statusnone420/Skills
+/plugin install diataxis-docs@statusnone-skills
+```
+
+Restart Claude if its plugin list is cached, then verify the namespaced skill:
+
+```text
+/diataxis-docs:docs help
+```
+
+Claude's built-in `/documentation` command remains separate. Use Diátaxis Docs when you want its repository map, bounded memory, evidence rules, health checks, or approval-gated Doctor workflow. This installation path is structurally tested; live Claude sync is still an alpha compatibility check.
 
 Set `policy.allow_implicit_invocation: false` to keep invocation explicit. Other harnesses use the generated adapters and their documented enforcement tiers; see [compatibility](COMPATIBILITY.md).
 
