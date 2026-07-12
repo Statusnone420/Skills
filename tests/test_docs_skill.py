@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,67 @@ SKILL = ROOT / "skills" / "docs"
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    def test_doctor_routes_directly_and_stays_explicit(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
+        self.assertIn("[doctor.md](references/doctor.md)", skill)
+        self.assertIn("initial `doctor`", skill)
+        self.assertIn("later, separate", skill)
+        self.assertLessEqual(len(skill.split("---", 2)[-1].split()), 500)
+
+    def test_doctor_contract_closes_the_safe_loop(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "minimum sufficient treatment", "healthy repository", "treatment ids",
+            "current-workspace risk", "before approval", "only in the response",
+            "complete affected-file list", "stop before commit", "verified truth",
+            "direct commands remain",
+        ):
+            self.assertIn(phrase, doctor)
+        for phrase in ("facts", "inference", "candidates", "unrelated changes", "missing capabilities", "no-memory", "same-message"):
+            self.assertIn(phrase, doctor)
+
+    def test_doctor_has_bounded_retrieval_and_exact_route_order(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        headings = [line for line in doctor.splitlines() if line.startswith("## ")]
+        self.assertEqual(headings, [
+            "## diagnose", "## treatment manifest", "## approval and isolation",
+            "## execute minimum treatment", "## verify and review",
+            "## close repository memory", "## capability limits",
+        ])
+        for phrase in (
+            "16,384 bytes", "bounded conventional fallback", "do not recursively inventory",
+            "do not use repository-wide search", "at most once", "consume its output",
+            "actual loaded and unloaded material", "narrowly relevant additional file",
+            "declined, ambiguous, missing, or non-exact treatment ids", "zero writes",
+            "excludes unrelated dirty changes", "draft-only",
+            "after approval", "preview the proposed path", "plan-only request",
+            "exact proposed tree", "vendor-neutral", "network-free",
+            "no required database", "no required embeddings", "no required daemon",
+        ):
+            self.assertIn(phrase, doctor)
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        markdown_link = re.compile(r"\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*\)")
+
+        def has_local_doctor_link(markdown):
+            for match in markdown_link.finditer(markdown):
+                target = match.group(1).strip().strip("<>")
+                has_scheme = re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+                is_windows_path = re.match(r"^[A-Za-z]:[\\/]", target)
+                if (has_scheme and not is_windows_path) or target.startswith("//"):
+                    continue
+                target = target.split("#", 1)[0].split("?", 1)[0].replace("\\", "/")
+                if target.rsplit("/", 1)[-1].lower() == "doctor.md":
+                    return True
+            return False
+
+        self.assertFalse(has_local_doctor_link(commands))
+        for prohibited in (
+            "[x](../references/doctor.md)", "[x](docs\\doctor.md#route)",
+            "[Any label](<C:/repo/references/Doctor.MD?raw=1> \"title\")",
+        ):
+            self.assertTrue(has_local_doctor_link(prohibited), prohibited)
+        self.assertFalse(has_local_doctor_link("Plain text doctor.md is not a link."))
+
     @staticmethod
     def _junction(link, target):
         command = f"New-Item -ItemType Junction -Path '{str(link).replace(chr(39), chr(39)*2)}' -Target '{str(target).replace(chr(39), chr(39)*2)}' | Out-Null"
