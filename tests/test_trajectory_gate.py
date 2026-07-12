@@ -408,6 +408,29 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_combined_read", result["errors"])
 
+    def test_doctor_missing_map_fallback_precedes_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3], actions[2]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.invalid_map_route", result["errors"])
+
+    def test_doctor_missing_map_fallback_rejects_forbidden_paths(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        forbidden = ["src/main.py", "tests/test_app.py", "docs/generated/api.md"]
+        receipt["retrieval"]["actions"][1]["paths"] = forbidden
+        receipt["retrieval"]["actions"][2]["paths"] = forbidden
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.forbidden_path", result["errors"])
+
     def test_map_rejects_unknown_action_kinds(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"][2]["kind"] = "bulk-read"

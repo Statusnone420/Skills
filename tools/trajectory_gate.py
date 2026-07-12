@@ -216,11 +216,16 @@ def evaluate(receipt: Mapping) -> dict:
         if first_map_read.get("status") == "missing":
             combined_seen = False
             probe_seen = False
+            checker_seen = False
             for kind in kinds:
-                if kind == "combined-read":
+                if kind == "checker":
+                    checker_seen = True
+                elif kind == "combined-read":
+                    if checker_seen:
+                        errors.append("retrieval.invalid_map_route")
                     combined_seen = True
                 elif kind == "bounded-probe":
-                    if combined_seen:
+                    if combined_seen or checker_seen:
                         errors.append("retrieval.invalid_map_route")
                     probe_seen = True
             if not combined_seen:
@@ -262,7 +267,7 @@ def evaluate(receipt: Mapping) -> dict:
                 errors.append("retrieval.invalid_action_paths")
             elif len(paths) > MAX_COMBINED_READ_PATHS:
                 errors.append("retrieval.action_path_budget")
-    if command == "map" and first_map_read is not None and first_map_read.get("status") == "missing":
+    if command in MAP_READING_COMMANDS and first_map_read is not None and first_map_read.get("status") == "missing":
         for item in docs_actions:
             if item.get("kind") not in {"bounded-probe", "combined-read"}:
                 continue
