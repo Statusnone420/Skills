@@ -145,6 +145,17 @@ class DocsSkillContractTests(unittest.TestCase):
         )
         self.assertIn("unrelated status and rollback limits", doctor)
 
+    def test_doctor_prefers_exact_safe_isolation_before_current_workspace_risk(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertIn("when git worktree isolation is available", doctor)
+        self.assertIn("must propose the exact safe worktree destination", doctor)
+        self.assertIn("exact branch name before approval", doctor)
+        self.assertIn(
+            "current-workspace risk only when git or safe isolation is unavailable",
+            doctor,
+        )
+        self.assertIn("explicit risk acceptance", doctor)
+
     def test_doctor_prewrite_isolation_review_and_memory_contracts(self):
         doctor = (SKILL / "references/doctor.md").read_text(encoding="utf-8").lower()
         isolation = (SKILL / "references/isolation.md").read_text(encoding="utf-8").lower()

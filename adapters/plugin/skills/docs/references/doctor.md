@@ -18,6 +18,8 @@ Return a plain-English diagnosis with stable treatment IDs and the minimum suffi
 
 Later approval selects exact IDs; declined, ambiguous, missing, or non-exact IDs produce zero writes. For a possible Git write, one bounded identity/status action binds to the host/user-selected repository root (`git -C <selected-root>` or equivalent). Normalize paths; the normalized `--show-toplevel` exactly equals that selected root. Reject parent-repository discovery. No isolation creation before approval. Approved Doctor writes follow `isolation.md`.
 
+When Git worktree isolation is available, Doctor must propose the exact safe worktree destination/boundary and exact branch name before approval. Use current-workspace risk only when Git or safe isolation is unavailable; require explicit risk acceptance.
+
 When Git/isolation is unavailable, state this combined gate in the initial diagnosis: later writes require exact selected IDs plus explicit current-workspace risk acceptance; ordinary approval is insufficient. Name unrelated status and rollback limits. Without write capability, treatments remain draft-only. Persist a plan only after approval for multi-step, structural, review-heavy, or resumable work; follow repository convention. If none exists, preview the proposed path. A plan-only request authorizes only that plan file; simple repairs need no plan file.
 
 ## Execute minimum treatment
