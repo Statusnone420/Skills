@@ -190,6 +190,18 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.broad_action", result["errors"])
 
+    def test_check_rejects_reads_outside_map_routes(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "check"
+        actions = receipt["retrieval"]["actions"]
+        source_read = dict(actions[0], paths=["src/main.py"], status="complete")
+        receipt["retrieval"]["actions"] = [source_read, actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.forbidden_path", result["errors"])
+
     def test_context_counts_loaded_paths_across_read_actions(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "context"
@@ -451,6 +463,37 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.doctor_precheck_budget", result["errors"])
+
+    def test_doctor_rejects_unknown_action_kinds_before_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        actions = receipt["retrieval"]["actions"]
+        first_read = dict(actions[0], status="complete")
+        source_read = dict(actions[0], kind="source-read", paths=["src/main.py"], status="complete")
+        receipt["retrieval"]["actions"] = [first_read, source_read, actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.unknown_action_kind:source-read", result["errors"])
+
+    def test_doctor_caps_total_postcheck_opened_files(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        actions = receipt["retrieval"]["actions"]
+        first_read = dict(actions[0], status="complete")
+        postcheck_read = {
+            "owner": "docs",
+            "kind": "post-check-read",
+            "paths": ["README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"],
+            "status": "complete",
+        }
+        receipt["retrieval"]["actions"] = [first_read, actions[3], postcheck_read]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.doctor_postcheck_file_budget", result["errors"])
 
     def test_doctor_missing_map_requires_fallback_before_checker(self):
         receipt = self.load("bulwark-map-accepted.json")

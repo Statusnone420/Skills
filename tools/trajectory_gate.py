@@ -189,6 +189,10 @@ def evaluate(receipt: Mapping) -> dict:
         errors.append("presentation.raw_exit_code")
     map_read_actions = [item for item in docs_actions if item.get("kind") == "read-map"]
     first_map_read = docs_actions[0] if docs_actions and docs_actions[0].get("kind") == "read-map" else None
+    first_checker_index = next(
+        (index for index, item in enumerate(docs_actions) if item.get("kind") == "checker"),
+        None,
+    )
     docs_action_budget = MAX_DOCS_ACTIONS[command]
     if command == "map" and (first_map_read is None or first_map_read.get("status") != "missing"):
         docs_action_budget = 3
@@ -197,9 +201,8 @@ def evaluate(receipt: Mapping) -> dict:
     if (
         command == "doctor"
         and first_map_read is not None
-        and first_map_read.get("status") == "complete"
-        and checker_actions
-        and next(index for index, item in enumerate(docs_actions) if item.get("kind") == "checker") > 2
+        and first_checker_index is not None
+        and first_checker_index > (2 if first_map_read.get("status") == "complete" else 3)
     ):
         errors.append("retrieval.doctor_precheck_budget")
     if command == "context" and sum(
@@ -221,6 +224,17 @@ def evaluate(receipt: Mapping) -> dict:
         for item in docs_actions:
             if item.get("kind") not in MAP_ACTION_KINDS:
                 errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
+    if command == "doctor" and first_checker_index is not None:
+        for item in docs_actions[:first_checker_index]:
+            if item.get("kind") not in MAP_ACTION_KINDS:
+                errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
+        postcheck_file_count = sum(
+            len(item["paths"])
+            for item in docs_actions[first_checker_index + 1 :]
+            if isinstance(item.get("paths"), list)
+        )
+        if postcheck_file_count > 4:
+            errors.append("retrieval.doctor_postcheck_file_budget")
     if command in MAP_READING_COMMANDS and first_map_read is not None:
         kinds = [item.get("kind") for item in docs_actions]
         if first_map_read.get("status") == "complete" and any(
@@ -278,6 +292,15 @@ def evaluate(receipt: Mapping) -> dict:
         for item in docs_actions
     ):
         errors.append("retrieval.preflight_action")
+    if command == "check":
+        for item in docs_actions:
+            if "paths" not in item:
+                continue
+            paths = item.get("paths")
+            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
+                errors.append("retrieval.invalid_action_paths")
+            elif any(not _is_allowed_map_fallback_path(path) for path in paths):
+                errors.append("retrieval.forbidden_path")
     for item in docs_actions:
         if command in MAP_READING_COMMANDS and item.get("kind") == "combined-read":
             paths = item.get("paths")
