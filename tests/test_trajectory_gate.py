@@ -285,6 +285,19 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_combined_read", result["errors"])
 
+    def test_missing_map_fallback_requires_completed_retrieval_actions(self):
+        for kind, status in (("bounded-probe", "error"), ("combined-read", "missing")):
+            with self.subTest(kind=kind, status=status):
+                receipt = self.load("bulwark-map-accepted.json")
+                for action in receipt["retrieval"]["actions"]:
+                    if action["kind"] == kind:
+                        action["status"] = status
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.fallback_action_failed", result["errors"])
+
     def test_mapped_budget_uses_first_read_map_status(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]

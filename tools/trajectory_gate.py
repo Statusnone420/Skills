@@ -227,6 +227,13 @@ def evaluate(receipt: Mapping) -> dict:
                 errors.append("retrieval.missing_combined_read")
             elif not probe_seen:
                 errors.append("retrieval.invalid_map_route")
+            fallback_actions = [
+                item
+                for item in docs_actions
+                if item.get("kind") in {"bounded-probe", "combined-read"}
+            ]
+            if any(item.get("status") != "complete" for item in fallback_actions):
+                errors.append("retrieval.fallback_action_failed")
         if first_map_read.get("status") == "complete":
             for item in docs_actions[1:]:
                 if item.get("kind") != "read-map":
