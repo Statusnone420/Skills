@@ -79,6 +79,28 @@ class DocsSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, contract)
 
+    def test_map_missing_map_fallback_is_bounded_and_uses_maintained_candidate(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        start = commands.index("\n`map`:") + 1
+        end = commands.index("`classify`", start)
+        contract = commands[start:end].lower()
+        for phrase in (
+            "at most three further repository-evidence actions",
+            "root readme.md/state.md/product.md/design.md/plan.md",
+            "immediate docs children names and byte sizes",
+            "choose an existing maintained entry file",
+            "one combined read of the chosen map plus at most two current-state candidates",
+            "within the 16 kib hot-path budget",
+            "execute one checker using the selected repository-relative map and selected hot paths",
+            "the checker is the third and final further action",
+            "supplies all selected hot-path bytes and findings for either selected map path",
+            "stop without remeasuring, relisting, or corroborating",
+            "if no candidate map exists, stop and state that",
+            "never recurse into source, archives, tests, evals, or generated directories",
+            "suggest docs/readme only when no existing maintained file can serve",
+        ):
+            self.assertIn(phrase, contract)
+
     def test_shared_bounded_retrieval_contract(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8").lower()
         for phrase in (
