@@ -397,6 +397,17 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn(error, result["errors"])
 
+    def test_doctor_missing_map_requires_fallback_before_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.missing_combined_read", result["errors"])
+
     def test_map_rejects_unknown_action_kinds(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"][2]["kind"] = "bulk-read"

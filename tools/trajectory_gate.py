@@ -207,7 +207,7 @@ def evaluate(receipt: Mapping) -> dict:
         for item in docs_actions:
             if item.get("kind") not in MAP_ACTION_KINDS:
                 errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
-    if command == "map" and first_map_read is not None:
+    if command in MAP_READING_COMMANDS and first_map_read is not None:
         kinds = [item.get("kind") for item in docs_actions]
         if first_map_read.get("status") == "complete" and any(
             kind in {"bounded-probe", "combined-read"} for kind in kinds
