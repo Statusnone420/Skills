@@ -52,13 +52,19 @@ class DocsSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, doctor)
 
-    def test_doctor_resolves_routes_without_inventory_or_postcheck_expansion(self):
+    def test_doctor_resolves_routes_without_inventory_or_unbounded_postcheck_expansion(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
         for phrase in (
             "resolve relative links from the linking file's directory",
             "do not list its parent",
-            "after the checker, open at most one explicit-goal-relevant additional file",
-            "report unrelated findings without opening them",
+            "post-check evidence group",
+            "explicit goal: at most one goal-relevant group",
+            "bare `doctor`: at most two highest-priority actionable groups",
+            "one finding plus up to two directly linked/paired corroboration files",
+            "total post-check opens: at most four files",
+            "a checker finding needing no extra read consumes no file opening",
+            "report all other checker diagnostics unresolved and unopened",
+            "without explicit scope, keep untracked/unrelated material cold",
         ):
             self.assertIn(phrase, doctor)
 
@@ -136,7 +142,7 @@ class DocsSkillContractTests(unittest.TestCase):
         for phrase in (
             "16,384 bytes", "bounded conventional fallback", "do not recursively inventory",
             "do not use repository-wide search", "consume its output",
-            "actual loaded and unloaded material", "narrowly relevant additional file",
+            "actual loaded and unloaded material", "post-check evidence group",
             "declined, ambiguous, missing, or non-exact ids", "zero writes",
             "unrelated dirty changes", "draft-only",
             "after approval", "preview the proposed path", "plan-only request",
@@ -223,9 +229,9 @@ class DocsSkillContractTests(unittest.TestCase):
             "complete this bounded command directly without a separate planning phase",
             "the first repository-evidence action is a direct read of `docs/readme.md`",
             "only a missing read activates bounded map discovery",
-            "exactly three repository-evidence actions",
-            "read the existing documentation map directly",
-            "read only the current-state hot-path files it names",
+            "at most three evidence actions, in order",
+            "read the existing map",
+            "only if it names existing current-state hot-path files, read them",
             "<python> <checker-path> <repository-root> --json --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",
@@ -234,6 +240,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "label unresolved relationships",
         ):
             self.assertIn(phrase, contract)
+        self.assertNotIn("exactly three repository-evidence actions", contract)
 
     def test_map_missing_map_fallback_is_bounded_and_uses_maintained_candidate(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -366,6 +373,50 @@ class DocsSkillContractTests(unittest.TestCase):
                 places=2,
             )
 
+    def test_checker_omitted_hot_is_map_only_and_explicit_hot_includes_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            map_file = docs / "README.md"
+            state_file = docs / "STATE.md"
+            map_file.write_text("# Map\n", encoding="utf-8")
+            state_file.write_bytes(b"x" * (17 * 1024))
+            base = [
+                sys.executable,
+                str(SKILL / "scripts" / "check.py"),
+                str(root),
+                "--json",
+                "--map",
+                "docs/README.md",
+            ]
+
+            omitted = subprocess.run(base, capture_output=True, text=True)
+            self.assertEqual(omitted.returncode, 1, omitted.stdout + omitted.stderr)
+            omitted_payload = json.loads(omitted.stdout)
+            self.assertEqual(
+                omitted_payload["hot_path"]["files"],
+                [{"path": "docs/README.md", "bytes": map_file.stat().st_size}],
+            )
+            self.assertFalse(
+                any(finding["kind"] == "hot-path-bytes" for finding in omitted_payload["findings"])
+            )
+
+            explicit = subprocess.run(
+                [*base, "--hot", "docs/STATE.md"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(explicit.returncode, 1, explicit.stdout + explicit.stderr)
+            explicit_payload = json.loads(explicit.stdout)
+            self.assertEqual(
+                [item["path"] for item in explicit_payload["hot_path"]["files"]],
+                ["docs/README.md", "docs/STATE.md"],
+            )
+            self.assertTrue(
+                any(finding["kind"] == "hot-path-bytes" for finding in explicit_payload["findings"])
+            )
+
     def test_checker_rejects_outside_root(self):
         proc = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), ".."], capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(proc.returncode, 2)
@@ -400,7 +451,18 @@ class DocsSkillContractTests(unittest.TestCase):
             (docs / "README.md").write_text("# Same\n## Repeat\n", encoding="utf-8")
             (docs / "other.md").write_text("# Same\n## Repeat\n", encoding="utf-8")
             (docs / "STATE.md").write_bytes(b"x" * (16 * 1024 - (len((docs / "README.md").read_bytes())) + 1))
-            proc = subprocess.run([sys.executable, str(SKILL / "scripts" / "check.py"), str(root), "--json"], capture_output=True, text=True)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL / "scripts" / "check.py"),
+                    str(root),
+                    "--json",
+                    "--hot",
+                    "docs/STATE.md",
+                ],
+                capture_output=True,
+                text=True,
+            )
             payload = json.loads(proc.stdout)
             self.assertTrue(any(f["kind"] == "duplicate-title" for f in payload["findings"]))
             self.assertTrue(any(f["kind"] == "hot-path-bytes" for f in payload["findings"]))

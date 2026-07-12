@@ -80,7 +80,7 @@ def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
     _assert_no_reparse_components(root)
     if Path(map_path).is_absolute() or any(x == '..' for x in Path(map_path).parts): raise ValueError("map must be repo-relative")
     if hot_paths and any(Path(x).is_absolute() or any(y == '..' for y in Path(x).parts) for x in hot_paths): raise ValueError("hot paths must be repo-relative")
-    hot_paths = unique_relative_paths([map_path] + (hot_paths or ["docs/STATE.md"]))
+    hot_paths = unique_relative_paths([map_path] + (hot_paths or []))
     if Path(scope).is_absolute() or any(x == '..' for x in Path(scope).parts): raise ValueError("scope must be repo-relative")
     scope_path = safe_path(root / scope, root)
     if scope_path.exists() and not scope_path.is_dir(): raise ValueError("scope must be a directory")
