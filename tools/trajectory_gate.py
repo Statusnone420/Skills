@@ -125,6 +125,8 @@ def evaluate(receipt: Mapping) -> dict:
         errors.append("retrieval.docs_action_budget")
     if checker_runs > 1:
         errors.append("retrieval.repeated_checker")
+    if command == "check" and checker_runs == 0:
+        errors.append("retrieval.missing_checker")
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
 

@@ -52,7 +52,7 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertIn("presentation.missing_tree_feature:cold_collapsed", result["errors"])
 
     def test_non_map_commands_do_not_require_documentation_tree(self):
-        for command in ("check", "context", "doctor"):
+        for command in ("context", "doctor"):
             with self.subTest(command=command):
                 receipt = self.load("bulwark-map-accepted.json")
                 receipt["command"] = command
@@ -64,6 +64,25 @@ class TrajectoryGateTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "PASS")
                 self.assertNotIn("presentation.missing_tree", result["errors"])
+
+    def test_check_receipts_require_one_checker_run(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "check"
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["metrics"]["checker_runs"], 1)
+
+        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[2]]
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.missing_checker", result["errors"])
 
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
