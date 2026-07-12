@@ -29,9 +29,9 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("exact `map`/`check` entry in `commands.md`", doctor)
         self.assertIn("scripts/check.py` exactly once", doctor)
         self.assertIn("never use repo-local checker", doctor)
-        for phrase in ("id/outcome", "responsible command", "tree/hot-path impact", "approval"):
+        for phrase in ("responsible command", "tree/hot-path impact", "approval"):
             self.assertIn(phrase, doctor)
-        self.assertIn("future writes require exact selected ids", doctor)
+        self.assertIn("later writes require exact selected ids", doctor)
         self.assertIn("ordinary approval is insufficient", doctor)
         self.assertIn("every loaded path", doctor)
         self.assertIn("failed/preflight attempts", doctor)
@@ -47,10 +47,52 @@ class DocsSkillContractTests(unittest.TestCase):
             "plan-only request authorizes only that plan file", "simple repairs need no plan file",
             "no required database", "no required embeddings", "no required daemon",
             "no background process", "no new dependency",
-            "<python> <installed-skill>/scripts/check.py <repository-root> --json --map <repository-relative-map> --hot <comma-separated-repository-relative-current-state-paths>",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --map <repository-relative-map>",
             "never use repo-local checker, --help, bare-script invocation, availability preflight, or retry",
         ):
             self.assertIn(phrase, doctor)
+
+    def test_doctor_resolves_routes_without_inventory_or_postcheck_expansion(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "resolve relative links from the linking file's directory",
+            "do not list its parent",
+            "after the checker, open at most one explicit-goal-relevant additional file",
+            "report unrelated findings without opening them",
+        ):
+            self.assertIn(phrase, doctor)
+
+    def test_doctor_checker_hot_paths_are_existing_current_state_only(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "`--hot` contains only existing current-state files selected from map evidence",
+            "never the map itself or a missing path",
+            "omit `--hot` when none exists",
+            "checker runs exactly once",
+        ):
+            self.assertIn(phrase, doctor)
+
+    def test_doctor_treatment_manifest_has_stable_literal_fields(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+        self.assertIn("stable treatment IDs", doctor)
+        for label in (
+            "ID:", "Outcome:", "Evidence:", "Exact files:",
+            "Responsible command:", "Tree/hot-path impact:", "Risk:",
+            "Verification:", "Approval:",
+        ):
+            self.assertIn(label, doctor)
+
+    def test_doctor_no_git_gate_requires_ids_and_current_workspace_risk_acceptance(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertIn(
+            "when git/isolation is unavailable, state this combined gate in the initial diagnosis",
+            doctor,
+        )
+        self.assertIn(
+            "later writes require exact selected ids plus explicit current-workspace risk acceptance",
+            doctor,
+        )
+        self.assertIn("unrelated status and rollback limits", doctor)
 
     def test_doctor_prewrite_isolation_review_and_memory_contracts(self):
         doctor = (SKILL / "references/doctor.md").read_text(encoding="utf-8").lower()
@@ -184,10 +226,11 @@ class DocsSkillContractTests(unittest.TestCase):
             "exactly three repository-evidence actions",
             "read the existing documentation map directly",
             "read only the current-state hot-path files it names",
-            "<python> <checker-path> <repository-root> --json --map docs/readme.md --hot <comma-separated-repository-relative-current-state-paths>",
+            "<python> <checker-path> <repository-root> --json --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",
             "never include skill or playbook files in `--hot`",
+            "omit `--hot` when no existing current-state file is selected",
             "label unresolved relationships",
         ):
             self.assertIn(phrase, contract)
@@ -229,6 +272,8 @@ class DocsSkillContractTests(unittest.TestCase):
             "execute a documented bundled tool invocation once",
             "do not preflight its path or availability",
             "inspect source or help only when it cannot execute or returns malformed output",
+            "resolve relative links from the linking file's directory",
+            "report a missing target without listing its parent",
         ):
             self.assertIn(phrase, commands)
 
@@ -278,7 +323,8 @@ class DocsSkillContractTests(unittest.TestCase):
         for phrase in (
             "make no edits",
             "execute the bundled checker once",
-            "<python> <checker-path> <repository-root> --json --map docs/readme.md --hot <comma-separated-repository-relative-current-state-paths>",
+            "<python> <checker-path> <repository-root> --json --map docs/readme.md",
+            "omit `--hot` when no existing current-state file is selected",
             "exit 1 means findings, not an execution failure",
             "from its json",
             "smallest scriptless equivalent",
