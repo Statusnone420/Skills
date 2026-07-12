@@ -35,8 +35,26 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertIn("external.failed_lookup", result["warnings"])
         self.assertNotIn("external.action_budget", result["errors"])
 
+    def test_incomplete_outcomes_cannot_pass(self):
+        for status in ("error", "partial", None):
+            with self.subTest(status=status):
+                receipt = self.load("bulwark-map-accepted.json")
+                if status is None:
+                    receipt["outcome"].pop("status")
+                else:
+                    receipt["outcome"]["status"] = status
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("outcome.incomplete", result["errors"])
+
     def test_common_exit_status_diagnostics_fail(self):
-        for diagnostic in ("checker exit status 1", "non-zero exit status 1"):
+        for diagnostic in (
+            "checker exit status 1",
+            "non-zero exit status 1",
+            "checker exit code 0",
+        ):
             with self.subTest(diagnostic=diagnostic):
                 receipt = self.load("bulwark-map-accepted.json")
                 receipt["presentation"]["visible_diagnostics"] = [diagnostic]
@@ -181,6 +199,43 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_map_read", result["errors"])
 
+    def test_map_requires_read_map_as_first_docs_action(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[1], actions[0], actions[2], actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.map_read_not_first", result["errors"])
+
+    def test_map_read_targets_docs_readme_with_valid_status(self):
+        mutations = (
+            ("wrong-path", lambda action: action.update(paths=["README.md"])),
+            ("invalid-status", lambda action: action.update(status="error")),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                actions = receipt["retrieval"]["actions"]
+                mutate(actions[0])
+                receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.invalid_map_read", result["errors"])
+
+    def test_map_requires_checker_as_final_docs_action(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        receipt["retrieval"]["actions"] = [actions[0], actions[3], actions[1], actions[2]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.checker_not_final", result["errors"])
+
     def test_mapped_budget_uses_first_read_map_status(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -207,6 +262,25 @@ class TrajectoryGateTests(unittest.TestCase):
 
                     self.assertEqual(result["status"], "FAIL")
                     self.assertIn("retrieval.preflight_action", result["errors"])
+
+    def test_combined_read_paths_are_bounded(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"][2]["paths"] = ["README.md"] * 1_000
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.action_path_budget", result["errors"])
+
+    def test_map_rejects_unknown_action_kinds(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"][2]["kind"] = "bulk-read"
+        receipt["retrieval"]["actions"][2]["paths"] = ["README.md"] * 1_000
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.unknown_action_kind:bulk-read", result["errors"])
 
     def test_host_growth_is_only_attributed_with_a_paired_control(self):
         receipt = self.load("bulwark-map-accepted.json")
@@ -251,6 +325,31 @@ class TrajectoryGateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
             trajectory_gate.evaluate(receipt)
+
+    def test_public_receipts_reject_private_markers_in_values(self):
+        for value in (
+            "chain_of_thought: private",
+            "reasoning_content: private",
+            "session_id synthetic-private-id",
+            "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+        ):
+            with self.subTest(value=value):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["note"] = value
+
+                with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
+                    trajectory_gate.evaluate(receipt)
+
+    def test_public_receipts_allow_private_marker_substrings(self):
+        for value in ("obsession_id is a public field", "reasoning_contents are summarized"):
+            with self.subTest(value=value):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["note"] = value
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "PASS")
 
     def test_public_receipts_allow_urls_and_prose_slashes(self):
         receipt = self.load("bulwark-map-accepted.json")
@@ -332,11 +431,47 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["status"], "INVALID")
         self.assertEqual(result.stderr, "")
 
+    def test_cli_rejects_duplicate_json_keys(self):
+        raw = (ROOT / "evals" / "trajectory" / "bulwark-map-accepted.json").read_text(encoding="utf-8")
+        raw = raw.replace(
+            '{\n  "schema_version"',
+            '{\n  "note": "-----BEGIN PRIVATE KEY-----",\n  "note": "public",\n  "schema_version"',
+            1,
+        )
+        with tempfile.TemporaryDirectory() as td:
+            duplicate = Path(td) / "duplicate.json"
+            duplicate.write_text(raw, encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "trajectory_gate.py"), str(duplicate)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 2)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "INVALID")
+        self.assertIn("duplicate JSON key", payload["error"])
+
     def test_release_campaign_is_capped_and_requires_explicit_approval(self):
         campaign = self.load("release-canary-example.json")
         campaign["approved"] = True
         trajectory_gate.validate_campaign(campaign)
 
+        campaign["commands"] = ["delete-production-data"]
+        with self.assertRaisesRegex(ValueError, "allowed values: map, context, check, doctor"):
+            trajectory_gate.validate_campaign(campaign)
+
+        campaign["commands"] = ["map"]
+        campaign["fixtures"] = ["production"]
+        with self.assertRaisesRegex(
+            ValueError,
+            "allowed values: mapped-repository, missing-map-repository, hostile-repository",
+        ):
+            trajectory_gate.validate_campaign(campaign)
+
+        campaign["fixtures"] = ["mapped-repository", "missing-map-repository", "hostile-repository"]
         campaign["max_runs"] = 13
         with self.assertRaisesRegex(ValueError, "maximum of 12"):
             trajectory_gate.validate_campaign(campaign)
@@ -345,6 +480,16 @@ class TrajectoryGateTests(unittest.TestCase):
         campaign["approved"] = False
         with self.assertRaisesRegex(ValueError, "explicit approval"):
             trajectory_gate.validate_campaign(campaign)
+
+    def test_release_campaign_requires_non_empty_allowlists(self):
+        campaign = self.load("release-canary-example.json")
+        campaign["approved"] = True
+        for field in ("commands", "fixtures"):
+            with self.subTest(field=field):
+                campaign[field] = []
+
+                with self.assertRaisesRegex(ValueError, "must contain at least one"):
+                    trajectory_gate.validate_campaign(campaign)
 
     def test_skill_translates_checker_findings_for_humans(self):
         skill = (ROOT / "skills" / "docs" / "SKILL.md").read_text(encoding="utf-8")
