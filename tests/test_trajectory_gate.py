@@ -275,6 +275,18 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.forbidden_path", result["errors"])
 
+    def test_mapped_route_rejects_duplicate_map_rereads(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        actions = receipt["retrieval"]["actions"]
+        first_read = dict(actions[0], status="complete")
+        duplicate_read = dict(actions[0], status="complete")
+        receipt["retrieval"]["actions"] = [first_read, duplicate_read, actions[3]]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.duplicate_map_read", result["errors"])
+
     def test_missing_map_requires_combined_read_before_checker(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -543,6 +555,28 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "INVALID")
         self.assertEqual(result.stderr, "")
+
+    def test_cli_returns_invalid_for_non_string_command(self):
+        for command in (["map"], {"name": "map"}):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                with tempfile.TemporaryDirectory() as td:
+                    malformed = Path(td) / "non-string-command.json"
+                    malformed.write_text(json.dumps(receipt), encoding="utf-8")
+
+                    result = subprocess.run(
+                        [sys.executable, str(ROOT / "tools" / "trajectory_gate.py"), str(malformed)],
+                        cwd=ROOT,
+                        capture_output=True,
+                        text=True,
+                    )
+
+                self.assertEqual(result.returncode, 2)
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["status"], "INVALID")
+                self.assertIn("unsupported trajectory command", payload["error"])
+                self.assertEqual(result.stderr, "")
 
     def test_cli_rejects_duplicate_json_keys(self):
         raw = (ROOT / "evals" / "trajectory" / "bulwark-map-accepted.json").read_text(encoding="utf-8")

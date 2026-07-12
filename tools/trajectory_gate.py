@@ -142,7 +142,7 @@ def evaluate(receipt: Mapping) -> dict:
         raise ValueError("unsupported public trajectory receipt schema")
 
     command = receipt.get("command")
-    if command not in MAX_DOCS_ACTIONS:
+    if not isinstance(command, str) or command not in MAX_DOCS_ACTIONS:
         raise ValueError("unsupported trajectory command")
     outcome = _require_mapping(receipt.get("outcome"), "outcome")
     retrieval = _require_mapping(receipt.get("retrieval"), "retrieval")
@@ -241,6 +241,8 @@ def evaluate(receipt: Mapping) -> dict:
                 paths = item.get("paths")
                 if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
                     errors.append("retrieval.invalid_action_paths")
+                elif paths == first_map_read.get("paths"):
+                    errors.append("retrieval.duplicate_map_read")
                 elif any(not _is_allowed_map_fallback_path(path) for path in paths):
                     errors.append("retrieval.forbidden_path")
     if command in {"context", "map", "check", "doctor"} and any(
