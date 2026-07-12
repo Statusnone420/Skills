@@ -245,10 +245,14 @@ def evaluate(receipt: Mapping) -> dict:
             ]
             if any(item.get("status") != "complete" for item in fallback_actions):
                 errors.append("retrieval.fallback_action_failed")
+            if any(item.get("paths") == [] for item in fallback_actions):
+                errors.append("retrieval.empty_fallback_paths")
         if first_map_read.get("status") == "complete":
             for item in docs_actions[1:]:
                 if item.get("kind") != "read-map":
                     continue
+                if item.get("status") != "complete":
+                    errors.append("retrieval.mapped_read_failed")
                 paths = item.get("paths")
                 if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
                     errors.append("retrieval.invalid_action_paths")

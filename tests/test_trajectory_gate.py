@@ -304,6 +304,20 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.duplicate_map_read", result["errors"])
 
+    def test_mapped_route_requires_completed_hot_path_reads(self):
+        for status in ("missing", "error"):
+            with self.subTest(status=status):
+                receipt = self.load("bulwark-map-accepted.json")
+                actions = receipt["retrieval"]["actions"]
+                first_read = dict(actions[0], status="complete")
+                hot_path_read = dict(actions[0], paths=["STATE.md"], status=status)
+                receipt["retrieval"]["actions"] = [first_read, hot_path_read, actions[3]]
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.mapped_read_failed", result["errors"])
+
     def test_missing_map_requires_combined_read_before_checker(self):
         receipt = self.load("bulwark-map-accepted.json")
         actions = receipt["retrieval"]["actions"]
@@ -326,6 +340,16 @@ class TrajectoryGateTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("retrieval.fallback_action_failed", result["errors"])
+
+    def test_missing_map_fallback_rejects_empty_path_lists(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"][1]["paths"] = []
+        receipt["retrieval"]["actions"][2]["paths"] = []
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.empty_fallback_paths", result["errors"])
 
     def test_mapped_budget_uses_first_read_map_status(self):
         receipt = self.load("bulwark-map-accepted.json")
