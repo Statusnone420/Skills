@@ -98,6 +98,52 @@ class AdapterBuilderTests(unittest.TestCase):
                 else:
                     self.assertNotIn(doctor, text)
 
+    def test_check_detects_web_prompt_parity_drift(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"
+            subprocess.run(
+                [sys.executable, str(BUILDER), "generate", "--output", str(out)],
+                cwd=ROOT,
+                check=True,
+            )
+            (out / "web" / "docs-doctor.txt").write_text(
+                "BROKEN WEB PROMPT",
+                encoding="utf-8",
+            )
+
+            check = subprocess.run(
+                [sys.executable, str(BUILDER), "--check", "--output", str(out)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(check.returncode, 0)
+            self.assertIn("web parity doctor", check.stderr)
+
+    def test_check_detects_web_prompt_over_budget(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"
+            subprocess.run(
+                [sys.executable, str(BUILDER), "generate", "--output", str(out)],
+                cwd=ROOT,
+                check=True,
+            )
+            (out / "web" / "docs-doctor.txt").write_text(
+                "x" * 16_001,
+                encoding="utf-8",
+            )
+
+            check = subprocess.run(
+                [sys.executable, str(BUILDER), "--check", "--output", str(out)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(check.returncode, 0)
+            self.assertIn("web budget doctor", check.stderr)
+
     def test_doctor_is_generated_and_reference_resources_have_parity(self):
         import tools.build_adapters as builder
         self.assertIn("doctor", builder.COMMANDS)

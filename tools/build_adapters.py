@@ -145,7 +145,13 @@ def validate(output: Path) -> list[str]:
         wrapper = (output/v/"docs.md").read_text(encoding="utf-8")
         if "raw trailing text" not in wrapper.lower() or "$(" in wrapper or "`$" in wrapper: errors.append(f"wrapper {v}")
     for c in COMMANDS:
-        if not (output/"web"/f"docs-{c}.txt").exists(): errors.append(f"web command {c}")
+        prompt = output/"web"/f"docs-{c}.txt"
+        if not prompt.exists():
+            errors.append(f"web command {c}")
+            continue
+        prompt_bytes = prompt.read_bytes()
+        if prompt_bytes != web_prompt(c).encode("utf-8"): errors.append(f"web parity {c}")
+        if len(prompt_bytes) > 16_000: errors.append(f"web budget {c}: {len(prompt_bytes)} bytes")
     if not (output/"plugin/skills/docs/SKILL.md").exists(): errors.append("plugin skill")
     elif (output/"plugin/skills/docs/SKILL.md").read_text(encoding="utf-8") != canonical: errors.append("plugin parity")
     expected = {MARKER_NAME} | {f"{v}/SKILL.md" for v in ("claude","copilot","grok","cursor")} | {f"{v}/{r}" for v in ("claude","copilot","grok","cursor") for r in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), *(f"assets/{name}" for name in ASSETS))} | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
