@@ -721,6 +721,23 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.checker_failed", result["errors"])
 
+    def test_mapped_routes_reject_map_files_in_batched_hot_reads(self):
+        for command in ("map", "check", "doctor"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                actions = self.mapped_actions(True)
+                actions[1]["paths"] = ["docs/README.md", "STATE.md"]
+                receipt["retrieval"]["actions"] = actions
+                if command != "map":
+                    receipt["presentation"].pop("tree")
+                    receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.duplicate_map_read", result["errors"])
+
     def test_map_receipts_require_read_map_action(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"] = [receipt["retrieval"]["actions"][3]]

@@ -169,9 +169,13 @@ def _validate_mapped_route(actions, errors, *, precheck=False):
         _append(errors, "retrieval.invalid_map_route")
     if len(actions) >= 2 and actions[1].get("kind") == "read-map":
         hot = actions[1]
+        hot_paths = hot.get("paths")
         if hot.get("status") != "complete":
             _append(errors, "retrieval.mapped_read_failed")
-        if hot.get("paths") == actions[0].get("paths"):
+        if hot_paths == actions[0].get("paths") or (
+            _valid_path_list(hot)
+            and any(path.replace("\\", "/") == "docs/README.md" for path in hot_paths)
+        ):
             _append(errors, "retrieval.duplicate_map_read")
         if not _valid_path_list(hot) or not hot.get("paths"):
             _append(errors, "retrieval.invalid_action_paths")
