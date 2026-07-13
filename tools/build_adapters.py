@@ -221,11 +221,14 @@ def validate(output: Path) -> list[str]:
         if not target.is_file(): errors.append(f"missing reference {link}")
         elif re.search(r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")):
             errors.append(f"reference exceeds one hop {link}")
+    expected_slash_skill = slash_skill(canonical)
     for v in ("claude","copilot","grok","cursor"):
         p=adapter_skill_root(output, v)/"SKILL.md"
-        parsed=frontmatter(p.read_text(encoding="utf-8")) if p.exists() else None
+        text=p.read_text(encoding="utf-8") if p.exists() else None
+        parsed=frontmatter(text) if text is not None else None
         if parsed is None or parsed.get("user-invocable") != "true" or parsed.get("disable-model-invocation") != "true": errors.append(f"frontmatter {v}")
-        elif content(p.read_text(encoding="utf-8")) != body: errors.append(f"body parity {v}")
+        elif content(text) != body: errors.append(f"body parity {v}")
+        elif text != expected_slash_skill: errors.append(f"skill parity {v}")
     claude_manifest_path = output / "claude" / ".claude-plugin" / "plugin.json"
     try:
         claude_manifest = json.loads(claude_manifest_path.read_text(encoding="utf-8"))

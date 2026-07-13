@@ -311,6 +311,26 @@ class AdapterBuilderTests(unittest.TestCase):
             self.assertIn("codex plugin manifest parity", check.stderr)
             self.assertIn("wrapper parity gemini", check.stderr)
 
+    def test_check_detects_static_skill_version_drift(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            out = Path(td) / "out"
+            subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
+            skill_path = out / "copilot/SKILL.md"
+            skill_path.write_text(
+                skill_path.read_text(encoding="utf-8").replace('version: "0.1.0"', 'version: "9.9.9"'),
+                encoding="utf-8",
+            )
+
+            check = subprocess.run(
+                [sys.executable, str(BUILDER), "--check", "--output", str(out)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(check.returncode, 0)
+            self.assertIn("skill parity copilot", check.stderr)
+
     def test_slash_frontmatter_rejects_unknown_and_malformed_lines(self):
         import tools.build_adapters as builder
         canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
