@@ -219,6 +219,8 @@ def validate_context_route(actions):
         _append(errors, "retrieval.context_file_budget")
     for action in actions:
         kind = action.get("kind")
+        if kind == "checker" and action.get("status") not in CHECKER_SUCCESS_STATUSES:
+            _append(errors, "retrieval.checker_failed")
         if kind in {"read-map", "bounded-probe", "combined-read"} and action.get("status") not in {
             "complete",
             "missing",

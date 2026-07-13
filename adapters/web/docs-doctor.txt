@@ -87,7 +87,7 @@ Return a plain-English diagnosis with stable treatment IDs and minimum sufficien
 
 ## Approval and isolation
 
-Later approval selects exact IDs; declined, ambiguous, missing, or non-exact IDs produce zero writes. For a possible Git write, one bounded identity/status action binds to host/user-selected repository root (`git -c <selected-root>` or equivalent). Normalize paths; normalized `--show-toplevel` exactly equals that selected root. Reject parent-repository discovery. Check the destination's nearest existing ancestor; a different Git top-level rejects it before approval. No isolation creation before approval.
+Later approval selects exact IDs; declined, ambiguous, missing, or non-exact IDs produce zero writes. For a possible Git write, one bounded identity/status action binds to host/user-selected repository root (`git -C <selected-root>` or equivalent). Normalize paths; normalized `--show-toplevel` exactly equals that selected root. Reject parent-repository discovery. Check the destination's nearest existing ancestor; a different Git top-level rejects it before approval. No isolation creation before approval.
 
 With worktree isolation, propose exact destination/boundary and branch outside selected/unrelated Git worktrees; reject symlink/junction/reparse chains before approval. If unprovable, ask for safe boundary. Current-workspace risk only if Git/safe isolation unavailable; require explicit acceptance.
 

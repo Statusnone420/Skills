@@ -547,6 +547,25 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.context_file_budget", result["errors"])
 
+    def test_context_rejects_an_errored_optional_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "checker",
+                "count": 1,
+                "status": "error",
+            }
+        ]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.checker_failed", result["errors"])
+
     def test_map_receipts_require_read_map_action(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["retrieval"]["actions"] = [receipt["retrieval"]["actions"][3]]

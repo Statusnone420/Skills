@@ -53,6 +53,12 @@ class DocsSkillContractTests(unittest.TestCase):
         context_end = commands.index("`write <need>`", context_start)
         self.assertIn("must not run the checker solely to calculate health", commands[context_start:context_end])
 
+    def test_doctor_approval_isolation_binds_git_to_the_selected_root(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+
+        self.assertIn("git -C <selected-root>", doctor)
+        self.assertNotIn("git -c <selected-root>", doctor)
+
     def test_evaluation_documents_rubric_version_and_property_testing_attribution(self):
         evaluation = (ROOT / "EVALUATION.md").read_text(encoding="utf-8").lower()
         for phrase in (
@@ -199,7 +205,7 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertIn(label, doctor)
 
     def test_doctor_binds_isolation_to_verified_repository_identity(self):
-        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
         isolation_path = SKILL / "references" / "isolation.md"
         self.assertTrue(isolation_path.is_file(), "approved writes need a canonical isolation playbook")
@@ -210,7 +216,6 @@ class DocsSkillContractTests(unittest.TestCase):
             "verified selected root",
             "no isolation creation before approval",
             "host/user-selected repository root",
-            "`git -c <selected-root>`",
             "normalized `--show-toplevel` exactly equals that selected root",
             "reject parent-repository discovery",
             "exact destination/boundary",
@@ -218,7 +223,8 @@ class DocsSkillContractTests(unittest.TestCase):
             "current-workspace risk",
             "draft-only",
         ):
-            self.assertIn(phrase, doctor)
+            self.assertIn(phrase, doctor.lower())
+        self.assertIn("`git -C <selected-root>`", doctor)
         for phrase in (
             "bind every git command to it",
             "`git -c <repository-root>`",
