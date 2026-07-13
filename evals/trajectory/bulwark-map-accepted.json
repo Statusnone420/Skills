@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "visibility": "public-sanitized",
+  "run_id": "bulwark-map-accepted",
+  "command": "map",
+  "harness": {
+    "name": "Codex Desktop",
+    "model": "Luna Max",
+    "date": "2026-07-11"
+  },
+  "target": {
+    "fixture": "missing-map-repository",
+    "snapshot": "sha256:18cff1df75cb9a70a9c6c5dd3e5bb942baa69e25367eab304a0225897017475c"
+  },
+  "outcome": {
+    "status": "complete",
+    "read_only": true,
+    "files_changed": 0,
+    "findings": 2,
+    "answers": [
+      "start",
+      "trust",
+      "current_truth",
+      "generated_or_cold",
+      "needs_attention",
+      "deliberately_unloaded"
+    ]
+  },
+  "retrieval": {
+    "actions": [
+      {"owner": "docs", "kind": "read-map", "paths": ["docs/README.md"], "status": "missing"},
+      {"owner": "docs", "kind": "bounded-probe", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
+      {"owner": "docs", "kind": "combined-read", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
+      {
+        "owner": "docs",
+        "kind": "checker",
+        "count": 1,
+        "status": "findings",
+        "health": {
+          "rubric_version": 1,
+          "percentage": 100,
+          "meter": "Docs [████████████████████] 100%"
+        }
+      },
+      {"owner": "host", "kind": "startup-skill", "name": "using-superpowers", "status": "loaded"},
+      {"owner": "host", "kind": "startup-reference", "name": "codex-tools", "status": "loaded"}
+    ],
+    "deliberately_unloaded": ["source", "tests", "archives", "generated-output"]
+  },
+  "usage": {
+    "duration_ms": 125500,
+    "responses": 5,
+    "cumulative_input_tokens": 123182,
+    "cached_input_tokens": 111129,
+    "output_tokens": 918,
+    "reasoning_tokens": 3971
+  },
+  "presentation": {
+    "title": "Documentation map",
+    "tree": true,
+    "tree_features": ["real_paths", "hierarchy", "source_annotations", "hot_cold_labels", "cold_collapsed", "findings_inline"],
+    "plain_english": true,
+    "health_meter": "Docs [████████████████████] 100%",
+    "raw_exit_code_visible": false,
+    "visible_diagnostics": ["Two documentation issues found"]
+  }
+}

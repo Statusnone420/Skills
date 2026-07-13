@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "visibility": "public-sanitized",
+  "run_id": "bulwark-map-regression",
+  "command": "map",
+  "harness": {
+    "name": "Codex Desktop",
+    "model": "Luna Max",
+    "date": "2026-07-12"
+  },
+  "target": {
+    "fixture": "missing-map-repository",
+    "snapshot": "sha256:18cff1df75cb9a70a9c6c5dd3e5bb942baa69e25367eab304a0225897017475c"
+  },
+  "outcome": {
+    "status": "complete",
+    "read_only": true,
+    "files_changed": 0,
+    "findings": 4,
+    "answers": [
+      "start",
+      "trust",
+      "current_truth",
+      "generated_or_cold",
+      "needs_attention",
+      "deliberately_unloaded"
+    ]
+  },
+  "retrieval": {
+    "actions": [
+      {"owner": "docs", "kind": "read-map", "paths": ["docs/README.md"], "status": "missing"},
+      {"owner": "docs", "kind": "bounded-probe", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
+      {"owner": "docs", "kind": "combined-read", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
+      {"owner": "docs", "kind": "checker", "count": 1, "status": "findings"},
+      {"owner": "docs", "kind": "remeasure", "paths": ["README.md"], "status": "complete"},
+      {"owner": "docs", "kind": "checker", "count": 1, "status": "findings"},
+      {"owner": "host", "kind": "startup-skill", "name": "using-superpowers", "status": "loaded"},
+      {"owner": "host", "kind": "startup-skill", "name": "using-superpowers-old-path", "status": "failed-lookup"}
+    ],
+    "deliberately_unloaded": ["source", "tests", "archives", "generated-output"]
+  },
+  "usage": {
+    "duration_ms": 170740,
+    "responses": 10,
+    "cumulative_input_tokens": 407376,
+    "cached_input_tokens": 353792,
+    "output_tokens": 7632,
+    "reasoning_tokens": 6087
+  },
+  "presentation": {
+    "title": "Documentation map",
+    "tree": true,
+    "tree_features": ["real_paths", "hierarchy", "source_annotations", "hot_cold_labels", "cold_collapsed", "findings_inline"],
+    "plain_english": true,
+    "raw_exit_code_visible": true,
+    "visible_diagnostics": ["checker exit code 1"]
+  }
+}
