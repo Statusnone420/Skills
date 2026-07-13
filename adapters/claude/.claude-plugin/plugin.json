@@ -12,5 +12,6 @@
   ],
   "license": "Apache-2.0",
   "name": "diataxis-docs",
-  "repository": "https://github.com/Statusnone420/Skills"
+  "repository": "https://github.com/Statusnone420/Skills",
+  "version": "0.1.0"
 }

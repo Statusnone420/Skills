@@ -32,7 +32,7 @@ class ClaudeDistributionContractTests(unittest.TestCase):
         self.assertFalse((ROOT / source / "SKILL.md").exists())
         self.assertTrue((ROOT / source / "skills" / "docs" / "SKILL.md").is_file())
 
-    def test_generated_claude_plugin_is_a_thin_unversioned_wrapper(self):
+    def test_generated_claude_plugin_uses_the_canonical_version(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             output = Path(td) / "out"
             subprocess.run(
@@ -47,7 +47,7 @@ class ClaudeDistributionContractTests(unittest.TestCase):
             self.assertEqual(manifest["description"], "Bounded repository memory. Evidence-backed documentation.")
             self.assertEqual(manifest["repository"], "https://github.com/Statusnone420/Skills")
             self.assertEqual(manifest["license"], "Apache-2.0")
-            self.assertNotIn("version", manifest)
+            self.assertEqual(manifest["version"], "0.1.0")
             skill_root = output / "claude" / "skills" / "docs"
             self.assertFalse((output / "claude" / "SKILL.md").exists())
             generated_skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
