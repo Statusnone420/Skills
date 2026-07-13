@@ -1413,6 +1413,8 @@ class TrajectoryGateTests(unittest.TestCase):
     def test_public_receipts_reject_sensitive_or_hidden_material_recursively(self):
         bad_values = [
             ("absolute path", {"note": r"C:\Users\person\repo"}),
+            ("rooted Windows user path", {"note": r"\Users\person\repo"}),
+            ("rooted Windows workspace path", {"note": r"\workspace\Skills"}),
             ("UNC path", {"note": r"\\server\share\repo"}),
             ("POSIX workspace path", {"note": "/workspace/Skills"}),
             ("POSIX temporary path", {"note": "/tmp/private"}),
@@ -1485,6 +1487,7 @@ class TrajectoryGateTests(unittest.TestCase):
         receipt["presentation"]["visible_diagnostics"] = [
             "See https://docs.example.test/map",
             "links / anchors checked",
+            r"relative docs\README.md remains public",
         ]
 
         result = trajectory_gate.evaluate(receipt)
