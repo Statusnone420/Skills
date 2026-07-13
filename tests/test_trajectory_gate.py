@@ -208,6 +208,36 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["checker_runs"], 1)
         self.assertIn("usage.unpaired_host_baseline", result["warnings"])
 
+    def test_external_repository_actions_cannot_hide_as_host_overhead(self):
+        cases = (
+            (
+                "path-bearing-read",
+                {
+                    "owner": "host",
+                    "kind": "read-map",
+                    "paths": ["src/main.py"],
+                    "status": "complete",
+                },
+            ),
+            (
+                "broad-search",
+                {
+                    "owner": "host",
+                    "kind": "repo-wide-search",
+                    "status": "complete",
+                },
+            ),
+        )
+        for name, action in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["retrieval"]["actions"].append(action)
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.external_repository_action", result["errors"])
+
     def test_map_check_and_doctor_require_health_meter(self):
         for command in ("map", "check", "doctor"):
             with self.subTest(command=command):
@@ -248,6 +278,45 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("presentation.invalid_health_meter", result["errors"])
+
+    def test_health_meter_is_bound_to_checker_evidence(self):
+        cases = (
+            (
+                "missing-checker-health",
+                lambda receipt: receipt["retrieval"]["actions"][3].pop("health"),
+                "presentation.missing_checker_health",
+            ),
+            (
+                "different-displayed-percentage",
+                lambda receipt: receipt["presentation"].update(
+                    health_meter="Docs [█████░░░░░░░░░░░░░░░] 25%"
+                ),
+                "presentation.health_meter_mismatch",
+            ),
+            (
+                "checker-percentage-disagrees-with-meter",
+                lambda receipt: receipt["retrieval"]["actions"][3]["health"].update(
+                    percentage=25
+                ),
+                "presentation.invalid_checker_health",
+            ),
+            (
+                "unsupported-checker-rubric",
+                lambda receipt: receipt["retrieval"]["actions"][3]["health"].update(
+                    rubric_version=2
+                ),
+                "presentation.invalid_checker_health",
+            ),
+        )
+        for name, mutate, expected in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                mutate(receipt)
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn(expected, result["errors"])
 
     def test_context_does_not_require_health_meter(self):
         receipt = self.load("bulwark-map-accepted.json")
@@ -1392,6 +1461,15 @@ class TrajectoryGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
                     trajectory_gate.evaluate(receipt)
 
+    def test_public_receipts_reject_all_github_token_prefixes(self):
+        for prefix in ("ghp_", "github_pat_", "gho_", "ghu_", "ghs_", "ghr_"):
+            with self.subTest(prefix=prefix):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["note"] = prefix + "synthetic_token_value"
+
+                with self.assertRaisesRegex(ValueError, "public trajectory receipt"):
+                    trajectory_gate.evaluate(receipt)
+
     def test_public_receipts_allow_private_marker_substrings(self):
         for value in ("obsession_id is a public field", "reasoning_contents are summarized"):
             with self.subTest(value=value):
@@ -1419,6 +1497,41 @@ class TrajectoryGateTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "retrieval.actions entries"):
             trajectory_gate.evaluate(receipt)
+
+    def test_receipt_rejects_malformed_action_metadata(self):
+        for field in ("owner", "kind", "status"):
+            for value in (None, "", [], {}):
+                with self.subTest(field=field, value=repr(value)):
+                    receipt = self.load("bulwark-map-accepted.json")
+                    receipt["retrieval"]["actions"][0][field] = value
+
+                    with self.assertRaisesRegex(
+                        ValueError, f"action.{field} must be a non-empty string"
+                    ):
+                        trajectory_gate.evaluate(receipt)
+
+    def test_receipt_rejects_malformed_used_scalar_fields(self):
+        cases = (
+            (
+                "outcome.files_changed",
+                lambda receipt: receipt["outcome"].update(files_changed=False),
+                "outcome.files_changed must be a non-negative integer",
+            ),
+            (
+                "presentation.raw_exit_code_visible",
+                lambda receipt: receipt["presentation"].update(
+                    raw_exit_code_visible=1
+                ),
+                "presentation.raw_exit_code_visible must be a boolean",
+            ),
+        )
+        for name, mutate, expected in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                mutate(receipt)
+
+                with self.assertRaisesRegex(ValueError, expected):
+                    trajectory_gate.evaluate(receipt)
 
     def test_malformed_receipt_arrays_raise_value_error(self):
         mutations = (
@@ -1481,6 +1594,42 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "INVALID")
         self.assertEqual(result.stderr, "")
+
+    def test_cli_fails_closed_for_pathological_receipt_inputs(self):
+        accepted = (
+            ROOT / "evals" / "trajectory" / "bulwark-map-accepted.json"
+        ).read_text(encoding="utf-8")
+        deep_receipt = accepted.replace(
+            "{",
+            '{"deep":' + "[" * 1_500 + '"value"' + "]" * 1_500 + ",",
+            1,
+        )
+        huge_counter = self.load("bulwark-map-accepted.json")
+        huge_counter["usage"]["cumulative_input_tokens"] = 10**4_000
+        cases = (
+            ("deep-receipt", deep_receipt),
+            ("huge-counter", json.dumps(huge_counter)),
+        )
+        with tempfile.TemporaryDirectory() as td:
+            for name, contents in cases:
+                with self.subTest(name=name):
+                    malformed = Path(td) / f"{name}.json"
+                    malformed.write_text(contents, encoding="utf-8")
+
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(ROOT / "tools" / "trajectory_gate.py"),
+                            str(malformed),
+                        ],
+                        cwd=ROOT,
+                        capture_output=True,
+                        text=True,
+                    )
+
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(json.loads(result.stdout)["status"], "INVALID")
+                    self.assertEqual(result.stderr, "")
 
     def test_cli_returns_invalid_for_non_string_command(self):
         for command in (["map"], {"name": "map"}):

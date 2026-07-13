@@ -10,6 +10,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from trajectory_routes import (
+    ALL_ACTION_KINDS,
+    BROAD_RETRIEVAL_KINDS,
+    CHECKER_PREFLIGHT_KINDS,
     MAX_DOCS_ACTIONS,
     validate_route,
 )
@@ -35,6 +38,10 @@ ALLOWED_CAMPAIGN_COMMANDS = ("map", "context", "check", "doctor")
 ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hostile-repository")
 PUBLIC_SCHEMA_VERSION = 1
 PUBLIC_VISIBILITY = "public-sanitized"
+HEALTH_RUBRIC_VERSION = 1
+REPOSITORY_ACTION_KINDS = (
+    ALL_ACTION_KINDS | BROAD_RETRIEVAL_KINDS | CHECKER_PREFLIGHT_KINDS
+)
 _ABSOLUTE_PATH = re.compile(
     r"(?i)(?:"
     r"\b[A-Z]:[\\/]"
@@ -45,7 +52,7 @@ _ABSOLUTE_PATH = re.compile(
     r")"
 )
 _SECRET_KEY = re.compile(r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|credential|private[_-]?key)(?:$|[_-])")
-_SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
+_SECRET_VALUE = re.compile(r"(?i)(?:\b(?:sk|rk|gh[opusr]|github_pat|xox[baprs]-)[a-z0-9_-]{8,}\b|bearer\s+[a-z0-9._-]{12,})")
 _PRIVATE_KEY = re.compile(
     r"(?i)(?<![A-Za-z0-9])(?:hidden[\s_-]?reasoning|chain[\s_-]?of[\s_-]?thought|reasoning[\s_-]?content|session[\s_-]?id)(?![A-Za-z0-9])"
 )
@@ -138,21 +145,54 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
-def _validate_health_meter(presentation, command, errors):
+def _health_meter_matches(meter, percentage=None):
+    if not isinstance(meter, str):
+        return False
+    match = _HEALTH_METER.fullmatch(meter)
+    if match is None:
+        return False
+    meter_percentage = int(match.group("percentage"))
+    if percentage is not None and meter_percentage != percentage:
+        return False
+    filled = meter_percentage // 5
+    expected_cells = "█" * filled + "░" * (20 - filled)
+    return match.group("cells") == expected_cells
+
+
+def _validate_health_meter(presentation, checker_actions, command, errors):
     if command not in {"map", "check", "doctor"}:
         return
     meter = presentation.get("health_meter")
     if not isinstance(meter, str):
         errors.append("presentation.missing_health_meter")
         return
-    match = _HEALTH_METER.fullmatch(meter)
-    if match is None:
+    if not _health_meter_matches(meter):
         errors.append("presentation.invalid_health_meter")
         return
-    filled = int(match.group("percentage")) // 5
-    expected_cells = "█" * filled + "░" * (20 - filled)
-    if match.group("cells") != expected_cells:
-        errors.append("presentation.invalid_health_meter")
+    if not checker_actions:
+        errors.append("presentation.missing_checker_health")
+        return
+    checker_health = checker_actions[0].get("health")
+    if checker_health is None:
+        errors.append("presentation.missing_checker_health")
+        return
+    if not isinstance(checker_health, Mapping):
+        errors.append("presentation.invalid_checker_health")
+        return
+    rubric_version = checker_health.get("rubric_version")
+    percentage = checker_health.get("percentage")
+    checker_meter = checker_health.get("meter")
+    if (
+        type(rubric_version) is not int
+        or rubric_version != HEALTH_RUBRIC_VERSION
+        or type(percentage) is not int
+        or not 0 <= percentage <= 100
+        or not _health_meter_matches(checker_meter, percentage)
+    ):
+        errors.append("presentation.invalid_checker_health")
+        return
+    if meter != checker_meter:
+        errors.append("presentation.health_meter_mismatch")
 
 
 def evaluate(receipt: Mapping) -> dict:
@@ -171,11 +211,21 @@ def evaluate(receipt: Mapping) -> dict:
         raise ValueError("retrieval.actions must be an array")
     if any(not isinstance(item, Mapping) for item in actions):
         raise ValueError("retrieval.actions entries must be objects")
+    for item in actions:
+        for field in ("owner", "kind", "status"):
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"action.{field} must be a non-empty string")
 
     errors = []
     warnings = []
     docs_actions = [item for item in actions if isinstance(item, Mapping) and item.get("owner") == "docs"]
     external_actions = [item for item in actions if isinstance(item, Mapping) and item.get("owner") != "docs"]
+    external_repository_actions = [
+        item
+        for item in external_actions
+        if "paths" in item or item.get("kind") in REPOSITORY_ACTION_KINDS
+    ]
     checker_actions = [item for item in docs_actions if item.get("kind") == "checker"]
     checker_runs = sum(
         _positive_int(item.get("count", 1), "action.count")
@@ -184,7 +234,8 @@ def evaluate(receipt: Mapping) -> dict:
 
     if outcome.get("status") != "complete":
         errors.append("outcome.incomplete")
-    if outcome.get("read_only") is not True or outcome.get("files_changed") != 0:
+    files_changed = _positive_int(outcome.get("files_changed"), "outcome.files_changed")
+    if outcome.get("read_only") is not True or files_changed != 0:
         errors.append("safety.read_only_violation")
     answers = set(_string_array(outcome.get("answers", []), "outcome.answers"))
     if command == "map":
@@ -199,9 +250,14 @@ def evaluate(receipt: Mapping) -> dict:
     if presentation.get("plain_english") is not True:
         errors.append("presentation.not_plain_english")
     visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
-    if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
+    raw_exit_code_visible = presentation.get("raw_exit_code_visible", False)
+    if not isinstance(raw_exit_code_visible, bool):
+        raise ValueError("presentation.raw_exit_code_visible must be a boolean")
+    if raw_exit_code_visible or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
-    _validate_health_meter(presentation, command, errors)
+    _validate_health_meter(presentation, checker_actions, command, errors)
+    if external_repository_actions:
+        errors.append("retrieval.external_repository_action")
     errors.extend(validate_route(command, docs_actions))
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
@@ -262,7 +318,7 @@ def main(argv=None) -> int:
             object_pairs_hook=_reject_duplicate_json_keys,
         )
         result = evaluate(receipt)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, ValueError, OverflowError, RecursionError) as exc:
         print(json.dumps({"status": "INVALID", "error": str(exc)}, ensure_ascii=False))
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

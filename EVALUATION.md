@@ -16,7 +16,7 @@ Validate a receipt locally:
 python tools/trajectory_gate.py evals/trajectory/bulwark-map-accepted.json
 ```
 
-The gate checks reader outcomes rather than exact prose: where to start, what to trust, current truth, generated/cold material, needs attention, and deliberately unloaded material. It separately counts documentation-owned and host/external actions. Cumulative token totals without a paired host control are labeled unattributed rather than charged entirely to Diátaxis Docs.
+The gate checks reader outcomes rather than exact prose: where to start, what to trust, current truth, generated/cold material, needs attention, and deliberately unloaded material. It separately counts documentation-owned and host/external actions, but rejects repository-evidence actions mislabeled as external overhead. The checker action carries sanitized rubric version, percentage, and meter evidence; the displayed health meter must match it. Cumulative token totals without a paired host control are labeled unattributed rather than charged entirely to Diátaxis Docs.
 
 ## Documentation-health rubric v1
 

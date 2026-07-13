@@ -31,7 +31,17 @@
       {"owner": "docs", "kind": "read-map", "paths": ["docs/README.md"], "status": "missing"},
       {"owner": "docs", "kind": "bounded-probe", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
       {"owner": "docs", "kind": "combined-read", "paths": ["README.md", "PRODUCT.md", "PLAN.md"], "status": "complete"},
-      {"owner": "docs", "kind": "checker", "count": 1, "status": "findings"},
+      {
+        "owner": "docs",
+        "kind": "checker",
+        "count": 1,
+        "status": "findings",
+        "health": {
+          "rubric_version": 1,
+          "percentage": 100,
+          "meter": "Docs [████████████████████] 100%"
+        }
+      },
       {"owner": "host", "kind": "startup-skill", "name": "using-superpowers", "status": "loaded"},
       {"owner": "host", "kind": "startup-reference", "name": "codex-tools", "status": "loaded"}
     ],
