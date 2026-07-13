@@ -240,6 +240,15 @@ class TrajectoryGateTests(unittest.TestCase):
                 self.assertEqual(result["status"], "FAIL")
                 self.assertIn("presentation.invalid_health_meter", result["errors"])
 
+    def test_health_meter_requires_filled_cells_before_empty_cells(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["presentation"]["health_meter"] = "Docs [" + "░" * 6 + "█" * 14 + "] 70%"
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("presentation.invalid_health_meter", result["errors"])
+
     def test_context_does_not_require_health_meter(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "context"
@@ -461,6 +470,17 @@ class TrajectoryGateTests(unittest.TestCase):
             "non-zero exit status 1",
             "checker exit code 0",
         ):
+            with self.subTest(diagnostic=diagnostic):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["presentation"]["visible_diagnostics"] = [diagnostic]
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("presentation.raw_exit_code", result["errors"])
+
+    def test_compact_returncode_diagnostics_fail(self):
+        for diagnostic in ("returncode=1", "returncode 1"):
             with self.subTest(diagnostic=diagnostic):
                 receipt = self.load("bulwark-map-accepted.json")
                 receipt["presentation"]["visible_diagnostics"] = [diagnostic]

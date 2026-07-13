@@ -50,7 +50,7 @@ _PRIVATE_KEY = re.compile(
     r"(?i)(?<![A-Za-z0-9])(?:hidden[\s_-]?reasoning|chain[\s_-]?of[\s_-]?thought|reasoning[\s_-]?content|session[\s_-]?id)(?![A-Za-z0-9])"
 )
 _PRIVATE_KEY_BLOCK = re.compile(r"(?i)-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY(?: BLOCK)?-----")
-_RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:code|status))?|return\s+code)\s*[:=]?\s*\d+\b")
+_RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:code|status))?|return\s*code)\s*[:=]?\s*\d+\b")
 _HEALTH_METER = re.compile(
     r"^Docs \[(?P<cells>[█░]{20})\] (?P<percentage>0|[1-9][0-9]?|100)%$"
 )
@@ -146,7 +146,12 @@ def _validate_health_meter(presentation, command, errors):
         errors.append("presentation.missing_health_meter")
         return
     match = _HEALTH_METER.fullmatch(meter)
-    if match is None or match.group("cells").count("█") != int(match.group("percentage")) // 5:
+    if match is None:
+        errors.append("presentation.invalid_health_meter")
+        return
+    filled = int(match.group("percentage")) // 5
+    expected_cells = "█" * filled + "░" * (20 - filled)
+    if match.group("cells") != expected_cells:
         errors.append("presentation.invalid_health_meter")
 
 
