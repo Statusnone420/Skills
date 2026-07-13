@@ -10,11 +10,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "skills" / "docs"
+sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(SKILL / "scripts"))
 import check as docs_checker
+import build_adapters
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    def test_canonical_command_sentence_matches_generator_registry(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        match = re.search(r"Commands:\s+([a-z ]+)\.", skill)
+
+        self.assertIsNotNone(match)
+        self.assertEqual(tuple(match.group(1).split()), build_adapters.COMMANDS)
+
     def test_health_meter_contract_is_plain_and_command_scoped(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")

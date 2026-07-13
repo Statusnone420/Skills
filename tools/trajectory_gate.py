@@ -33,6 +33,8 @@ REQUIRED_TREE_FEATURES = {
 MAX_RELEASE_RUNS = 12
 ALLOWED_CAMPAIGN_COMMANDS = ("map", "context", "check", "doctor")
 ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hostile-repository")
+PUBLIC_SCHEMA_VERSION = 1
+PUBLIC_VISIBILITY = "public-sanitized"
 _ABSOLUTE_PATH = re.compile(
     r"(?i)(?:"
     r"\b[A-Z]:[\\/]"
@@ -90,6 +92,16 @@ def _require_mapping(value, name):
     return value
 
 
+def _validate_public_artifact(value, name):
+    artifact = _require_mapping(value, name)
+    _validate_public(artifact)
+    if type(artifact.get("schema_version")) is not int or artifact["schema_version"] != PUBLIC_SCHEMA_VERSION:
+        raise ValueError(f"unsupported public trajectory {name} schema")
+    if artifact.get("visibility") != PUBLIC_VISIBILITY:
+        raise ValueError(f"unsupported public trajectory {name} visibility")
+    return artifact
+
+
 def _positive_int(value, name):
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ValueError(f"{name} must be a non-negative integer")
@@ -140,10 +152,7 @@ def _validate_health_meter(presentation, command, errors):
 
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
-    _require_mapping(receipt, "receipt")
-    _validate_public(receipt)
-    if receipt.get("schema_version") != 1 or receipt.get("visibility") != "public-sanitized":
-        raise ValueError("unsupported public trajectory receipt schema")
+    receipt = _validate_public_artifact(receipt, "receipt")
 
     command = receipt.get("command")
     if not isinstance(command, str) or command not in MAX_DOCS_ACTIONS:
@@ -226,8 +235,7 @@ def evaluate(receipt: Mapping) -> dict:
 
 
 def validate_campaign(campaign: Mapping) -> None:
-    _require_mapping(campaign, "campaign")
-    _validate_public(campaign)
+    campaign = _validate_public_artifact(campaign, "campaign")
     _validate_allowlist(campaign.get("commands"), "campaign.commands", ALLOWED_CAMPAIGN_COMMANDS)
     _validate_allowlist(campaign.get("fixtures"), "campaign.fixtures", ALLOWED_CAMPAIGN_FIXTURES)
     runs = _positive_int(campaign.get("max_runs"), "max_runs")

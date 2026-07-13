@@ -1534,6 +1534,29 @@ class TrajectoryGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "explicit approval"):
             trajectory_gate.validate_campaign(campaign)
 
+    def test_public_receipt_requires_exact_schema_version_type(self):
+        for value in (True, 1.0, 2):
+            with self.subTest(value=repr(value)):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["schema_version"] = value
+
+                with self.assertRaisesRegex(ValueError, "unsupported public trajectory receipt schema"):
+                    trajectory_gate.evaluate(receipt)
+
+    def test_release_campaign_requires_public_artifact_envelope(self):
+        for field, values in (
+            ("schema_version", (True, 1.0, 2, None)),
+            ("visibility", (None, "private", 1)),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=repr(value)):
+                    campaign = self.load("release-canary-example.json")
+                    campaign["approved"] = True
+                    campaign[field] = value
+
+                    with self.assertRaises(ValueError):
+                        trajectory_gate.validate_campaign(campaign)
+
     def test_release_campaign_requires_non_empty_allowlists(self):
         campaign = self.load("release-canary-example.json")
         campaign["approved"] = True
