@@ -606,13 +606,45 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.context_file_budget", result["errors"])
 
+    def test_context_requires_repository_evidence(self):
+        cases = (
+            ("empty", []),
+            (
+                "checker-only",
+                [{"owner": "docs", "kind": "checker", "count": 1, "status": "clean"}],
+            ),
+            (
+                "external-only",
+                [{"owner": "host", "kind": "tool-call", "status": "complete"}],
+            ),
+        )
+        for name, actions in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = "context"
+                receipt["retrieval"]["actions"] = actions
+                receipt["presentation"].pop("tree")
+                receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.missing_context_evidence", result["errors"])
+
     def test_context_checker_is_optional_but_executes_at_most_once(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "context"
         receipt["presentation"].pop("tree")
         receipt["presentation"].pop("tree_features")
 
+        evidence = {
+            "owner": "docs",
+            "kind": "combined-read",
+            "paths": ["README.md"],
+            "status": "complete",
+        }
         receipt["retrieval"]["actions"] = [
+            evidence,
             {"owner": "docs", "kind": "checker", "count": 1, "status": "clean"}
         ]
         self.assertEqual(trajectory_gate.evaluate(receipt)["status"], "PASS")
@@ -639,7 +671,7 @@ class TrajectoryGateTests(unittest.TestCase):
         )
         for name, actions, expected in cases:
             with self.subTest(name=name):
-                receipt["retrieval"]["actions"] = actions
+                receipt["retrieval"]["actions"] = [evidence, *actions]
 
                 result = trajectory_gate.evaluate(receipt)
 
@@ -668,6 +700,12 @@ class TrajectoryGateTests(unittest.TestCase):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "context"
         receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["README.md"],
+                "status": "complete",
+            },
             {
                 "owner": "docs",
                 "kind": "checker",

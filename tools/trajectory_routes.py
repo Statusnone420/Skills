@@ -254,6 +254,8 @@ def _validate_context_aggregate(actions, errors):
         ):
             _append(errors, "retrieval.invalid_checker_count")
 
+    if path_references == 0:
+        _append(errors, "retrieval.missing_context_evidence")
     if path_references > MAX_DOCS_ACTIONS["context"]:
         _append(errors, "retrieval.context_file_budget")
 
