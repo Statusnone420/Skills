@@ -10,9 +10,120 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "skills" / "docs"
+sys.path.insert(0, str(SKILL / "scripts"))
+import check as docs_checker
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    def test_health_meter_contract_is_plain_and_command_scoped(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+        expected = "Docs [██████████████░░░░░░] 70%"
+        self.assertIn(expected, skill)
+        self.assertIn("health.meter", commands)
+        self.assertIn("health.meter", doctor)
+        self.assertIn("plain Markdown line", skill)
+        self.assertIn("never inside a code fence", skill)
+        self.assertIn("one cell per five percentage points", skill)
+        self.assertIn("checker evidence", commands)
+        self.assertIn("checker evidence", doctor)
+
+    def test_health_routing_and_remediation_are_explicit(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8").lower()
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8").lower()
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "map`, `check`, and `doctor",
+            "other commands must not perform hidden retrieval solely to calculate it",
+            "percentage comes from checker evidence",
+            "missing documentation recommends `$docs init`",
+            "smallest relevant doctor/treatment action",
+        ):
+            self.assertIn(phrase, skill + "\n" + commands + "\n" + doctor)
+        for phrase in (
+            "same bounded fallback route as `map`",
+            "no repository read is permitted after the checker",
+            "only doctor permits bounded post-check evidence",
+            "exact treatment approval action",
+            "recommend `$docs doctor` to establish the next comparable baseline",
+        ):
+            self.assertIn(phrase, commands + "\n" + doctor)
+        context_start = commands.index("`context <task>`")
+        context_end = commands.index("`write <need>`", context_start)
+        self.assertIn("must not run the checker solely to calculate health", commands[context_start:context_end])
+
+    def test_evaluation_documents_rubric_version_and_property_testing_attribution(self):
+        evaluation = (ROOT / "EVALUATION.md").read_text(encoding="utf-8").lower()
+        for phrase in (
+            "rubric v1",
+            "raw counts",
+            "earned weight",
+            "available weight",
+            "hypothesis",
+            "property-based testing",
+            "not a universal diátaxis score",
+        ):
+            self.assertIn(phrase, evaluation)
+
+    def test_health_meter_is_exact_plain_markdown_with_twenty_cells(self):
+        expected = "Docs [██████████████░░░░░░] 70%"
+        self.assertEqual(docs_checker.health_meter(70), expected)
+        for percentage in (0, 5, 73, 100):
+            with self.subTest(percentage=percentage):
+                meter = docs_checker.health_meter(percentage)
+                cells = meter[meter.index("[") + 1 : meter.index("]")]
+                self.assertEqual(len(cells), 20)
+                self.assertEqual(cells.count("█"), percentage // 5)
+                self.assertEqual(meter, f"Docs [{cells}] {percentage}%")
+                self.assertNotIn("`", meter)
+
+    def test_health_summary_uses_versioned_weighted_evidence(self):
+        partial = {
+            "map_exists": True,
+            "maintained_files": 4,
+            "maintained_paths": 4,
+            "safe_maintained_paths": 4,
+            "checked_links": 4,
+            "valid_links": 3,
+            "checked_anchors": 2,
+            "valid_anchors": 1,
+            "reachable_files": 3,
+            "usable_unique_titles": 4,
+            "hot_bytes": 8192,
+        }
+        summary = docs_checker.health_summary(partial)
+
+        self.assertEqual(summary["rubric_version"], 1)
+        self.assertEqual(summary["percentage"], 86)
+        self.assertEqual(summary["meter"], "Docs [█████████████████░░░] 86%")
+        self.assertEqual(summary["earned_weight"], 86.25)
+        self.assertEqual(summary["available_weight"], 100)
+        self.assertEqual(summary["categories"]["links"]["raw"], {"valid": 3, "checked": 4})
+        self.assertEqual(summary["categories"]["links"]["earned"], 11.25)
+
+    def test_health_summary_handles_missing_map_and_improves_when_a_defect_is_fixed(self):
+        missing = {
+            "map_exists": False,
+            "maintained_files": 2,
+            "maintained_paths": 2,
+            "safe_maintained_paths": 2,
+            "checked_links": 1,
+            "valid_links": 0,
+            "checked_anchors": 0,
+            "valid_anchors": 0,
+            "reachable_files": 0,
+            "usable_unique_titles": 1,
+            "hot_bytes": 0,
+        }
+        unhealthy = docs_checker.health_summary(missing)
+        fixed = docs_checker.health_summary(dict(missing, map_exists=True, valid_links=1, reachable_files=2, hot_bytes=1))
+
+        self.assertEqual(unhealthy["percentage"], 30)
+        self.assertEqual(unhealthy["categories"]["anchors"]["earned"], 10)
+        self.assertGreater(fixed["percentage"], unhealthy["percentage"])
+        self.assertEqual(fixed["rubric_version"], 1)
+
     def test_doctor_goal_routing_and_evidence_floors(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
         self.assertIn("classify the explicit goal before general diagnosis", doctor)
@@ -499,6 +610,46 @@ class DocsSkillContractTests(unittest.TestCase):
                 payload["hot_path"]["percentage"],
                 payload["hot_path"]["bytes"] / (16 * 1024) * 100,
                 places=2,
+            )
+
+    def test_checker_json_contains_versioned_health_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            (docs / "README.md").write_text(
+                "# Map\n\n[Guide](guide.md)\n\n[External](https://example.test)\n",
+                encoding="utf-8",
+            )
+            (docs / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL / "scripts" / "check.py"),
+                    str(root),
+                    "--json",
+                    "--map",
+                    "docs/README.md",
+                    "--hot",
+                    "docs/guide.md",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            health = payload["health"]
+            self.assertEqual(health["rubric_version"], 1)
+            self.assertEqual(health["meter"], docs_checker.health_meter(health["percentage"]))
+            self.assertEqual(health["available_weight"], 100)
+            self.assertEqual(
+                health["categories"]["entry"]["raw"],
+                {"map_exists": True},
+            )
+            self.assertEqual(
+                health["categories"]["links"]["raw"],
+                {"valid": 1, "checked": 1},
             )
 
     def test_checker_omitted_hot_is_map_only_and_explicit_hot_includes_state(self):

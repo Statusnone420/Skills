@@ -18,6 +18,24 @@ python tools/trajectory_gate.py evals/trajectory/bulwark-map-accepted.json
 
 The gate checks reader outcomes rather than exact prose: where to start, what to trust, current truth, generated/cold material, needs attention, and deliberately unloaded material. It separately counts documentation-owned and host/external actions. Cumulative token totals without a paired host control are labeled unattributed rather than charged entirely to Diátaxis Docs.
 
+## Documentation-health rubric v1
+
+The canonical checker emits a versioned `health` object with raw counts, earned weight, available weight, a deterministic percentage, and the plain-text meter. This is a reproducible structural baseline according to `$docs`, not a universal Diátaxis score and not evidence of factual accuracy.
+
+| Category | Weight | Evidence |
+| --- | ---: | --- |
+| Maintained entry point | 20 | selected map exists and is readable |
+| Path safety | 15 | maintained paths remain confined and avoid reparse or outside-link findings |
+| Link integrity | 15 | valid local targets / checked local targets; no checked links earns zero |
+| Anchor integrity | 10 | valid referenced anchors / checked anchors; no references is neutral/full |
+| Reachability | 20 | maintained documents reachable from the selected map / maintained documents |
+| Title clarity | 10 | usable, unique primary titles / maintained documents |
+| Current-truth hot path | 10 | proportional credit while selected map/current-state bytes stay within 16 KiB |
+
+Every division is zero-guarded, category weights sum to 100, and the percentage rounds by `int(earned_weight + 0.5)`. The meter fills `floor(percentage / 5)` of exactly 20 literal cells. Health repairs must improve the measured evidence; model judgment does not change the number.
+
+Route tests use generated one-change mutations, invariant checks, deterministic cases, and retained named regressions. This applies Hypothesis/property-based testing ideas without adding Hypothesis, copying its source, or adding any runtime dependency.
+
 ## Shared-engine dogfood
 
 Fresh isolated Codex agents ran the same canonical skill against the same repository state on Windows 11 on 2026-07-11:

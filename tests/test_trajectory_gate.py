@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,9 +12,164 @@ sys.path.insert(0, str(ROOT / "tools"))
 import trajectory_gate
 
 
+def route_mutations(actions):
+    """Return deterministic, independently named one-change route counterexamples."""
+    base = deepcopy(actions)
+    mutations = []
+
+    def add(name, expected, mutate):
+        candidate = deepcopy(base)
+        mutate(candidate)
+        mutations.append((name, candidate, expected))
+
+    first_kind = base[0].get("status") if base else None
+    add(
+        "remove-first-map-read",
+        "retrieval.invalid_map_read" if first_kind == "complete" and len(base) > 2 else "retrieval.missing_map_read",
+        lambda candidate: candidate.pop(0),
+    )
+    add(
+        "duplicate-first-map-read",
+        "retrieval.duplicate_map_read" if first_kind == "complete" else "retrieval.invalid_map_route",
+        lambda candidate: candidate.insert(1, deepcopy(candidate[0])),
+    )
+    add(
+        "swap-map-and-checker",
+        "retrieval.map_read_not_first",
+        lambda candidate: candidate.__setitem__(
+            slice(0, len(candidate)), [candidate[-1], *candidate[1:-1], candidate[0]]
+        ),
+    )
+    add(
+        "late-repository-read-after-checker",
+        "retrieval.checker_not_final",
+        lambda candidate: candidate.append(dict(candidate[0], paths=["STATE.md"], status="complete")),
+    )
+    unknown_index = 1 if len(base) > 1 else 0
+    add(
+        "unknown-action-kind",
+        "retrieval.unknown_action_kind:unknown-action",
+        lambda candidate: candidate[unknown_index].update(kind="unknown-action"),
+    )
+    checker_index = next(index for index, action in enumerate(base) if action.get("kind") == "checker")
+    add(
+        "failed-checker-status",
+        "retrieval.checker_failed",
+        lambda candidate: candidate[checker_index].update(status="error"),
+    )
+    add(
+        "checker-count-plus-one",
+        "retrieval.repeated_checker",
+        lambda candidate: candidate[checker_index].update(count=2),
+    )
+    add(
+        "forbidden-source-path",
+        "retrieval.forbidden_path",
+        lambda candidate: candidate[0].update(paths=["src/main.py"]),
+    )
+    malformed_index = next(
+        index for index, action in enumerate(base) if isinstance(action.get("paths"), list)
+    )
+    add(
+        "malformed-path-array",
+        "retrieval.invalid_action_paths",
+        lambda candidate: candidate[malformed_index].update(paths=[7]),
+    )
+    if first_kind == "missing":
+        probe_index = next(index for index, action in enumerate(base) if action.get("kind") == "bounded-probe")
+        combined_index = next(index for index, action in enumerate(base) if action.get("kind") == "combined-read")
+        add(
+            "empty-fallback-paths",
+            "retrieval.empty_fallback_paths",
+            lambda candidate: candidate[probe_index].update(paths=[]),
+        )
+        add(
+            "failed-fallback-status",
+            "retrieval.fallback_action_failed",
+            lambda candidate: candidate[probe_index].update(status="error"),
+        )
+        add(
+            "fallback-order-swap",
+            "retrieval.invalid_map_route",
+            lambda candidate: candidate.__setitem__(
+                slice(probe_index, combined_index + 1),
+                [candidate[combined_index], candidate[probe_index]],
+            ),
+        )
+        add(
+            "combined-path-plus-one",
+            "retrieval.action_path_budget",
+            lambda candidate: candidate[combined_index]["paths"].append("docs/extra.md"),
+        )
+        add(
+            "remove-combined-read",
+            "retrieval.missing_combined_read",
+            lambda candidate: candidate.pop(combined_index),
+        )
+    else:
+        hot_index = next(index for index, action in enumerate(base) if index and action.get("kind") == "read-map")
+        add(
+            "failed-hot-path-status",
+            "retrieval.mapped_read_failed",
+            lambda candidate: candidate[hot_index].update(status="missing"),
+        )
+        add(
+            "duplicate-hot-path-target",
+            "retrieval.duplicate_map_read",
+            lambda candidate: candidate[hot_index].update(paths=candidate[0]["paths"]),
+        )
+        add(
+            "empty-hot-paths",
+            "retrieval.invalid_action_paths",
+            lambda candidate: candidate[hot_index].update(paths=[]),
+        )
+    add(
+        "remove-checker",
+        "retrieval.missing_checker",
+        lambda candidate: candidate.pop(checker_index),
+    )
+    add(
+        "checker-before-orientation",
+        "retrieval.checker_not_final",
+        lambda candidate: candidate.insert(0, candidate.pop(checker_index)),
+    )
+    add(
+        "action-budget-plus-one",
+        "retrieval.docs_action_budget",
+        lambda candidate: candidate.append(dict(candidate[0], paths=["DESIGN.md"], status="complete")),
+    )
+    return mutations
+
+
 class TrajectoryGateTests(unittest.TestCase):
     def load(self, name):
         return json.loads((ROOT / "evals" / "trajectory" / name).read_text(encoding="utf-8"))
+
+    def mapped_actions(self, hot=True):
+        base = self.load("bulwark-map-accepted.json")["retrieval"]["actions"]
+        result = [dict(deepcopy(base[0]), status="complete")]
+        if hot:
+            result.append(dict(deepcopy(base[0]), paths=["STATE.md"], status="complete"))
+        result.append(deepcopy(base[3]))
+        return result
+
+    def missing_map_actions(self):
+        base = self.load("bulwark-map-accepted.json")["retrieval"]["actions"]
+        return [deepcopy(base[index]) for index in (0, 1, 2, 3)]
+
+    def doctor_actions(self, groups=()):
+        actions = self.mapped_actions()
+        for name, paths in groups:
+            actions.append(
+                {
+                    "owner": "docs",
+                    "kind": "post-check-read",
+                    "group": name,
+                    "paths": list(paths),
+                    "status": "complete",
+                }
+            )
+        return actions
 
     def test_accepted_map_receipt_passes_with_host_overhead_separated(self):
         result = trajectory_gate.evaluate(self.load("bulwark-map-accepted.json"))
@@ -24,6 +180,167 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["external_actions"], 2)
         self.assertEqual(result["metrics"]["checker_runs"], 1)
         self.assertIn("usage.unpaired_host_baseline", result["warnings"])
+
+    def test_valid_route_factories_cover_each_command_boundary(self):
+        cases = (
+            ("mapped-map", "map", self.mapped_actions(False), True),
+            ("mapped-map-hot", "map", self.mapped_actions(True), True),
+            ("missing-map", "map", self.missing_map_actions(), True),
+            ("mapped-check", "check", self.mapped_actions(True), False),
+            ("missing-check", "check", self.missing_map_actions(), False),
+            (
+                "bounded-context",
+                "context",
+                [
+                    {
+                        "owner": "docs",
+                        "kind": "combined-read",
+                        "paths": ["docs/README.md", "STATE.md"],
+                        "status": "complete",
+                    }
+                ],
+                False,
+            ),
+            ("doctor-zero-groups", "doctor", self.doctor_actions(), False),
+            (
+                "doctor-one-group",
+                "doctor",
+                self.doctor_actions((("finding-1", ("README.md", "STATE.md")),)),
+                False,
+            ),
+            (
+                "doctor-boundary-groups",
+                "doctor",
+                self.doctor_actions(
+                    (
+                        ("finding-1", ("README.md", "STATE.md")),
+                        ("finding-2", ("PRODUCT.md", "DESIGN.md")),
+                    )
+                ),
+                False,
+            ),
+        )
+        for name, command, actions, needs_tree in cases:
+            with self.subTest(name=name):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                receipt["retrieval"]["actions"] = actions
+                if not needs_tree:
+                    receipt["presentation"].pop("tree")
+                    receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "PASS", result["errors"])
+
+    def test_generated_single_mutations_are_deterministic_and_rejected(self):
+        routes = (
+            ("mapped", self.mapped_actions(True)),
+            ("missing", self.missing_map_actions()),
+        )
+        for state, actions in routes:
+            first_mutations = list(route_mutations(actions))
+            second_mutations = list(route_mutations(actions))
+            self.assertEqual(first_mutations, second_mutations)
+
+            def observations(mutations, command):
+                result = []
+                for name, mutated, _ in mutations:
+                    receipt = self.load("bulwark-map-accepted.json")
+                    receipt["command"] = command
+                    receipt["retrieval"]["actions"] = mutated
+                    if command == "check":
+                        receipt["presentation"].pop("tree")
+                        receipt["presentation"].pop("tree_features")
+                    evaluated = trajectory_gate.evaluate(receipt)
+                    result.append((name, evaluated["status"], tuple(evaluated["errors"])))
+                return result
+
+            for command in ("map", "check"):
+                first_results = observations(first_mutations, command)
+                second_results = observations(second_mutations, command)
+                self.assertEqual(len(first_results), len(second_results))
+                self.assertEqual(first_results, second_results)
+                for name, mutated, expected in first_mutations:
+                    with self.subTest(state=state, command=command, mutation=name):
+                        receipt = self.load("bulwark-map-accepted.json")
+                        receipt["command"] = command
+                        receipt["retrieval"]["actions"] = mutated
+                        if command == "check":
+                            receipt["presentation"].pop("tree")
+                            receipt["presentation"].pop("tree_features")
+
+                        result = trajectory_gate.evaluate(receipt)
+
+                        self.assertEqual(result["status"], "FAIL")
+                        self.assertIn(expected, result["errors"])
+
+    def test_context_and_doctor_file_boundaries_are_explicit(self):
+        context = self.load("bulwark-map-accepted.json")
+        context["command"] = "context"
+        context["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["README.md", "STATE.md", "PRODUCT.md", "DESIGN.md"],
+                "status": "complete",
+            }
+        ]
+        context["presentation"].pop("tree")
+        context["presentation"].pop("tree_features")
+        self.assertEqual(trajectory_gate.evaluate(context)["status"], "PASS")
+
+        context["retrieval"]["actions"][0]["paths"].append("PLAN.md")
+        result = trajectory_gate.evaluate(context)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.context_file_budget", result["errors"])
+
+        doctor = self.load("bulwark-map-accepted.json")
+        doctor["command"] = "doctor"
+        doctor["retrieval"]["actions"] = self.doctor_actions(
+            (
+                ("finding-1", ("README.md", "STATE.md")),
+                ("finding-2", ("PRODUCT.md", "DESIGN.md")),
+            )
+        )
+        doctor["presentation"].pop("tree")
+        doctor["presentation"].pop("tree_features")
+        self.assertEqual(trajectory_gate.evaluate(doctor)["status"], "PASS")
+
+        doctor["retrieval"]["actions"].append(
+            {
+                "owner": "docs",
+                "kind": "post-check-read",
+                "group": "finding-3",
+                "paths": ["PLAN.md"],
+                "status": "complete",
+            }
+        )
+        result = trajectory_gate.evaluate(doctor)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.doctor_postcheck_file_budget", result["errors"])
+
+    def test_map_and_check_reject_doctor_postcheck_reads_after_checker(self):
+        for command in ("map", "check"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                receipt["retrieval"]["actions"] = self.mapped_actions(False) + [
+                    {
+                        "owner": "docs",
+                        "kind": "post-check-read",
+                        "paths": ["STATE.md"],
+                        "status": "complete",
+                    }
+                ]
+                if command == "check":
+                    receipt["presentation"].pop("tree")
+                    receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("retrieval.checker_not_final", result["errors"])
 
     def test_regression_receipt_reports_behavior_cost_and_hci_failures(self):
         result = trajectory_gate.evaluate(self.load("bulwark-map-regression.json"))
@@ -97,8 +414,8 @@ class TrajectoryGateTests(unittest.TestCase):
     def test_check_receipts_require_one_checker_run(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "check"
-        actions = receipt["retrieval"]["actions"]
-        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+        actions = self.missing_map_actions()
+        receipt["retrieval"]["actions"] = actions
         receipt["presentation"].pop("tree")
         receipt["presentation"].pop("tree_features")
 
@@ -107,11 +424,23 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["metrics"]["checker_runs"], 1)
 
-        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[2]]
+        receipt["retrieval"]["actions"] = actions[:3]
         result = trajectory_gate.evaluate(receipt)
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.missing_checker", result["errors"])
+
+    def test_check_rejects_repository_reads_after_checker(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "check"
+        actions = receipt["retrieval"]["actions"]
+        late_read = dict(actions[0], paths=["STATE.md"], status="complete")
+        receipt["retrieval"]["actions"] = [actions[3], late_read]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.checker_not_final", result["errors"])
 
     def test_map_and_check_require_successful_checker_status(self):
         for command in ("map", "check"):
@@ -134,8 +463,7 @@ class TrajectoryGateTests(unittest.TestCase):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "check"
         receipt["outcome"].pop("answers")
-        actions = receipt["retrieval"]["actions"]
-        receipt["retrieval"]["actions"] = [actions[0], actions[1], actions[3]]
+        receipt["retrieval"]["actions"] = self.missing_map_actions()
         receipt["presentation"].pop("tree")
         receipt["presentation"].pop("tree_features")
 

@@ -9,6 +9,11 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from trajectory_routes import (
+    MAX_DOCS_ACTIONS,
+    validate_route,
+)
+
 REQUIRED_ANSWERS = {
     "start",
     "trust",
@@ -25,17 +30,9 @@ REQUIRED_TREE_FEATURES = {
     "cold_collapsed",
     "findings_inline",
 }
-MAX_DOCS_ACTIONS = {"map": 4, "check": 3, "context": 4, "doctor": 8}
 MAX_RELEASE_RUNS = 12
 ALLOWED_CAMPAIGN_COMMANDS = ("map", "context", "check", "doctor")
 ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hostile-repository")
-MAX_COMBINED_READ_PATHS = 3
-MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
-MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
-MAP_READING_COMMANDS = {"map", "doctor"}
-CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
-BROAD_RETRIEVAL_KINDS = {"repo-wide-search", "inventory", "name-only-inventory", "recursive-inventory"}
-CHECKER_PREFLIGHT_KINDS = {"preflight", "availability-probe"}
 _ABSOLUTE_PATH = re.compile(
     r"(?i)(?:"
     r"\b[A-Z]:[\\/]"
@@ -126,14 +123,6 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
-def _is_allowed_map_fallback_path(path):
-    if path in MAP_FALLBACK_ROOT_PATHS:
-        return True
-    if not path.startswith("docs/") or path.count("/") != 1:
-        return False
-    return "." in path.rsplit("/", 1)[1]
-
-
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
     _require_mapping(receipt, "receipt")
@@ -163,10 +152,6 @@ def evaluate(receipt: Mapping) -> dict:
         _positive_int(item.get("count", 1), "action.count")
         for item in checker_actions
     )
-    checker_failed = any(
-        not isinstance(item.get("status"), str) or item.get("status") not in CHECKER_SUCCESS_STATUSES
-        for item in checker_actions
-    )
 
     if outcome.get("status") != "complete":
         errors.append("outcome.incomplete")
@@ -187,142 +172,7 @@ def evaluate(receipt: Mapping) -> dict:
     visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
     if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
-    map_read_actions = [item for item in docs_actions if item.get("kind") == "read-map"]
-    first_map_read = docs_actions[0] if docs_actions and docs_actions[0].get("kind") == "read-map" else None
-    first_checker_index = next(
-        (index for index, item in enumerate(docs_actions) if item.get("kind") == "checker"),
-        None,
-    )
-    docs_action_budget = MAX_DOCS_ACTIONS[command]
-    if command == "map" and (first_map_read is None or first_map_read.get("status") != "missing"):
-        docs_action_budget = 3
-    if len(docs_actions) > docs_action_budget:
-        errors.append("retrieval.docs_action_budget")
-    if (
-        command == "doctor"
-        and first_map_read is not None
-        and first_checker_index is not None
-        and first_checker_index > (2 if first_map_read.get("status") == "complete" else 3)
-    ):
-        errors.append("retrieval.doctor_precheck_budget")
-    if command == "context" and sum(
-        len(item["paths"])
-        for item in docs_actions
-        if item.get("kind") != "bounded-probe" and isinstance(item.get("paths"), list)
-    ) > MAX_DOCS_ACTIONS["context"]:
-        errors.append("retrieval.context_file_budget")
-    if command in MAP_READING_COMMANDS and not map_read_actions:
-        errors.append("retrieval.missing_map_read")
-    if command in MAP_READING_COMMANDS and map_read_actions and first_map_read is None:
-        errors.append("retrieval.map_read_not_first")
-    if command in MAP_READING_COMMANDS and first_map_read is not None:
-        if first_map_read.get("paths") != ["docs/README.md"] or first_map_read.get("status") not in {"missing", "complete"}:
-            errors.append("retrieval.invalid_map_read")
-    if command == "map" and checker_actions and docs_actions[-1].get("kind") != "checker":
-        errors.append("retrieval.checker_not_final")
-    if command == "map":
-        for item in docs_actions:
-            if item.get("kind") not in MAP_ACTION_KINDS:
-                errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
-    if command == "doctor" and first_checker_index is not None:
-        for item in docs_actions[:first_checker_index]:
-            if item.get("kind") not in MAP_ACTION_KINDS:
-                errors.append(f"retrieval.unknown_action_kind:{item.get('kind')}")
-        postcheck_file_count = sum(
-            len(item["paths"])
-            for item in docs_actions[first_checker_index + 1 :]
-            if isinstance(item.get("paths"), list)
-        )
-        if postcheck_file_count > 4:
-            errors.append("retrieval.doctor_postcheck_file_budget")
-    if command in MAP_READING_COMMANDS and first_map_read is not None:
-        kinds = [item.get("kind") for item in docs_actions]
-        if first_map_read.get("status") == "complete" and any(
-            kind in {"bounded-probe", "combined-read"} for kind in kinds
-        ):
-            errors.append("retrieval.invalid_map_route")
-        if first_map_read.get("status") == "missing":
-            combined_seen = False
-            probe_seen = False
-            checker_seen = False
-            for kind in kinds:
-                if kind == "checker":
-                    checker_seen = True
-                elif kind == "combined-read":
-                    if checker_seen:
-                        errors.append("retrieval.invalid_map_route")
-                    combined_seen = True
-                elif kind == "bounded-probe":
-                    if combined_seen or checker_seen:
-                        errors.append("retrieval.invalid_map_route")
-                    probe_seen = True
-            if not combined_seen:
-                errors.append("retrieval.missing_combined_read")
-            elif not probe_seen:
-                errors.append("retrieval.invalid_map_route")
-            fallback_actions = [
-                item
-                for item in docs_actions
-                if item.get("kind") in {"bounded-probe", "combined-read"}
-            ]
-            if any(item.get("status") != "complete" for item in fallback_actions):
-                errors.append("retrieval.fallback_action_failed")
-            if any(item.get("paths") == [] for item in fallback_actions):
-                errors.append("retrieval.empty_fallback_paths")
-        if first_map_read.get("status") == "complete":
-            for item in docs_actions[1:]:
-                if item.get("kind") != "read-map":
-                    continue
-                if item.get("status") != "complete":
-                    errors.append("retrieval.mapped_read_failed")
-                paths = item.get("paths")
-                if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-                    errors.append("retrieval.invalid_action_paths")
-                elif paths == first_map_read.get("paths"):
-                    errors.append("retrieval.duplicate_map_read")
-                elif any(not _is_allowed_map_fallback_path(path) for path in paths):
-                    errors.append("retrieval.forbidden_path")
-    if command in {"context", "map", "check", "doctor"} and any(
-        isinstance(item.get("kind"), str) and item.get("kind") in BROAD_RETRIEVAL_KINDS
-        for item in docs_actions
-    ):
-        errors.append("retrieval.broad_action")
-    if command in {"context", "map", "check", "doctor"} and any(
-        isinstance(item.get("kind"), str) and item.get("kind") in CHECKER_PREFLIGHT_KINDS
-        for item in docs_actions
-    ):
-        errors.append("retrieval.preflight_action")
-    if command == "check":
-        for item in docs_actions:
-            if "paths" not in item:
-                continue
-            paths = item.get("paths")
-            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-                errors.append("retrieval.invalid_action_paths")
-            elif any(not _is_allowed_map_fallback_path(path) for path in paths):
-                errors.append("retrieval.forbidden_path")
-    for item in docs_actions:
-        if command in MAP_READING_COMMANDS and item.get("kind") == "combined-read":
-            paths = item.get("paths")
-            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-                errors.append("retrieval.invalid_action_paths")
-            elif len(paths) > MAX_COMBINED_READ_PATHS:
-                errors.append("retrieval.action_path_budget")
-    if command in MAP_READING_COMMANDS and first_map_read is not None and first_map_read.get("status") == "missing":
-        for item in docs_actions:
-            if item.get("kind") not in {"bounded-probe", "combined-read"}:
-                continue
-            paths = item.get("paths")
-            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-                errors.append("retrieval.invalid_action_paths")
-            elif any(not _is_allowed_map_fallback_path(path) for path in paths):
-                errors.append("retrieval.forbidden_path")
-    if checker_runs > 1:
-        errors.append("retrieval.repeated_checker")
-    if command in {"map", "check", "doctor"} and checker_runs == 0:
-        errors.append("retrieval.missing_checker")
-    if command in {"map", "check", "doctor"} and checker_failed:
-        errors.append("retrieval.checker_failed")
+    errors.extend(validate_route(command, docs_actions))
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
 
