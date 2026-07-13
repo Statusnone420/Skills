@@ -50,6 +50,7 @@
     "tree": true,
     "tree_features": ["real_paths", "hierarchy", "source_annotations", "hot_cold_labels", "cold_collapsed", "findings_inline"],
     "plain_english": true,
+    "health_meter": "Docs [████████████████████] 100%",
     "raw_exit_code_visible": false,
     "visible_diagnostics": ["Two documentation issues found"]
   }

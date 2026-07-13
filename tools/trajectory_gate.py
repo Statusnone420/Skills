@@ -49,6 +49,9 @@ _PRIVATE_KEY = re.compile(
 )
 _PRIVATE_KEY_BLOCK = re.compile(r"(?i)-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY(?: BLOCK)?-----")
 _RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:code|status))?|return\s+code)\s*[:=]?\s*\d+\b")
+_HEALTH_METER = re.compile(
+    r"^Docs \[(?P<cells>[█░]{20})\] (?P<percentage>0|[1-9][0-9]?|100)%$"
+)
 
 
 def _walk(value, path=()):
@@ -123,6 +126,18 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
+def _validate_health_meter(presentation, command, errors):
+    if command not in {"map", "check", "doctor"}:
+        return
+    meter = presentation.get("health_meter")
+    if not isinstance(meter, str):
+        errors.append("presentation.missing_health_meter")
+        return
+    match = _HEALTH_METER.fullmatch(meter)
+    if match is None or match.group("cells").count("█") != int(match.group("percentage")) // 5:
+        errors.append("presentation.invalid_health_meter")
+
+
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
     _require_mapping(receipt, "receipt")
@@ -172,6 +187,7 @@ def evaluate(receipt: Mapping) -> dict:
     visible = "\n".join(_string_array(presentation.get("visible_diagnostics", []), "presentation.visible_diagnostics"))
     if presentation.get("raw_exit_code_visible") is True or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
+    _validate_health_meter(presentation, command, errors)
     errors.extend(validate_route(command, docs_actions))
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")

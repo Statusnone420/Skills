@@ -208,6 +208,57 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["checker_runs"], 1)
         self.assertIn("usage.unpaired_host_baseline", result["warnings"])
 
+    def test_map_check_and_doctor_require_health_meter(self):
+        for command in ("map", "check", "doctor"):
+            with self.subTest(command=command):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["command"] = command
+                receipt["presentation"].pop("health_meter", None)
+                if command != "map":
+                    receipt["presentation"].pop("tree")
+                    receipt["presentation"].pop("tree_features")
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("presentation.missing_health_meter", result["errors"])
+
+    def test_health_meter_requires_exact_cells_and_percentage(self):
+        valid = "Docs [" + "█" * 14 + "░" * 6 + "] 70%"
+        invalid = (
+            valid.replace("░" * 6, "░" * 5),
+            f"```{valid}```",
+            "Docs [" + "█" * 15 + "░" * 5 + "] 70%",
+        )
+        for meter in invalid:
+            with self.subTest(meter=meter):
+                receipt = self.load("bulwark-map-accepted.json")
+                receipt["presentation"]["health_meter"] = meter
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("presentation.invalid_health_meter", result["errors"])
+
+    def test_context_does_not_require_health_meter(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["presentation"].pop("health_meter", None)
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["README.md"],
+                "status": "complete",
+            }
+        ]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS", result["errors"])
+
     def test_valid_route_factories_cover_each_command_boundary(self):
         cases = (
             ("mapped-map", "map", self.mapped_actions(False), True),
