@@ -17,6 +17,23 @@ import build_adapters
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    def test_canonical_public_alpha_version_and_help_identity(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.0\"", skill)
+        self.assertIn("Diátaxis Docs v<metadata.version>", commands)
+
+    def test_canonical_version_is_strict_semver(self):
+        skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.0")
+        for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
+            with self.subTest(invalid=invalid):
+                malformed = skill.replace('version: "0.1.0"', f'version: "{invalid}"')
+                with self.assertRaises(ValueError):
+                    build_adapters.canonical_version(malformed)
+
     def test_canonical_command_sentence_matches_generator_registry(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         match = re.search(r"Commands:\s+([a-z ]+)\.", skill)

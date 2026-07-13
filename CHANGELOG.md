@@ -1,7 +1,8 @@
 # Changelog
 
-## Public alpha candidate (2026-07-12)
+## 0.1.0 — Public alpha (2026-07-13)
 
+- Established one canonical semantic version across Agent Skills metadata, native plugin manifests, generated wrappers, and help output.
 - Added a thin Claude marketplace installation shim that routes to the generated adapter without forking the canonical skill.
 - Added Doctor as the guided read-only diagnosis and approval-gated treatment workflow.
 - Hardened repository identity, worktree isolation, junction/reparse confinement, dirty-worktree preservation, and verification failure reporting.

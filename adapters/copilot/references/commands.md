@@ -15,7 +15,7 @@ For `context`, `map`, and `check`, orient from existing map/current-state files;
 `migrate`: preview exact moves and the resulting tree without moving, writing, or deleting; later, separate user message must accept the exact preview and revalidate evidence, proposal, and worktree.
 `check`: make no edits. Orient from the map and named current-state hot path; execute the bundled checker once as `<python> <checker-path> <repository-root> --json --agent --map docs/README.md`. A missing map uses the same bounded fallback route as `map`; omit `--hot` when no existing current-state file is selected. `has_findings: true` is a findings result. The checker must be the final repository-evidence action: no repository read is permitted after the checker. Summarize the JSON in plain English. Without execution, use the smallest scriptless equivalent and state the limitation. Use the shared health output and remediation route.
 `cleanup`: preview splits, merges, archives, removals, and estimated context savings without changing files; later, separate user message must accept the exact preview and revalidate evidence, proposal, and worktree.
-`help [all]`: provide compact command help without inspecting the repository.
+`help [all]`: `Diátaxis Docs v<metadata.version>`; compact help; no repo I/O.
 
 `doctor [goal]`: bounded read-only diagnosis; later exact approval selects treatment IDs. Only Doctor permits bounded post-check evidence after the checker; map and check reject repository reads after it. Print `health.meter` once from checker evidence, explain measured evidence, and provide one exact treatment approval action when work remains. After initialization or treatment, recommend `$docs doctor` to establish the next comparable baseline.
 
