@@ -8,7 +8,6 @@ from collections.abc import Mapping
 MAX_DOCS_ACTIONS = {"map": 4, "check": 4, "context": 4, "doctor": 8}
 MAX_COMBINED_READ_PATHS = 3
 MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
-CONTEXT_ACTION_KINDS = MAP_ACTION_KINDS
 DOCTOR_POSTCHECK_KIND = "post-check-read"
 ALL_ACTION_KINDS = MAP_ACTION_KINDS | {DOCTOR_POSTCHECK_KIND}
 MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
@@ -20,6 +19,30 @@ BROAD_RETRIEVAL_KINDS = {
 }
 CHECKER_PREFLIGHT_KINDS = {"preflight", "availability-probe"}
 CHECKER_SUCCESS_STATUSES = {"clean", "findings"}
+CONTEXT_ACTION_POLICY = {
+    "read-map": {
+        "counts_paths": True,
+        "statuses": {"complete", "missing"},
+        "status_error": "retrieval.context_action_failed",
+    },
+    "bounded-probe": {
+        "counts_paths": True,
+        "statuses": {"complete", "missing"},
+        "status_error": "retrieval.context_action_failed",
+    },
+    "combined-read": {
+        "counts_paths": True,
+        "statuses": {"complete", "missing"},
+        "status_error": "retrieval.context_action_failed",
+    },
+    "checker": {
+        "counts_paths": False,
+        "statuses": CHECKER_SUCCESS_STATUSES,
+        "status_error": "retrieval.checker_failed",
+        "exactly_one_count": True,
+    },
+}
+CONTEXT_ACTION_KINDS = frozenset(CONTEXT_ACTION_POLICY)
 _WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
@@ -99,6 +122,10 @@ def _checker_runs(actions):
         if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
             total += count
     return total, indexes
+
+
+def _is_exactly_one_count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value == 1
 
 
 def _validate_checker_boundary(actions, *, allow_postcheck=False):
@@ -203,6 +230,38 @@ def _dedupe(errors):
     return result
 
 
+def _validate_context_aggregate(actions, errors):
+    path_references = 0
+    checker_actions = []
+    for action in actions:
+        kind = action.get("kind")
+        policy = CONTEXT_ACTION_POLICY.get(kind)
+        if policy is None:
+            continue
+        if policy["counts_paths"]:
+            if not _valid_path_list(action) or not action.get("paths"):
+                _append(errors, "retrieval.invalid_action_paths")
+            else:
+                path_references += len(action["paths"])
+        else:
+            if "paths" in action:
+                _append(errors, "retrieval.invalid_action_paths")
+            checker_actions.append(action)
+        if action.get("status") not in policy["statuses"]:
+            _append(errors, policy["status_error"])
+        if policy.get("exactly_one_count") and not _is_exactly_one_count(
+            action.get("count", 1)
+        ):
+            _append(errors, "retrieval.invalid_checker_count")
+
+    if path_references > MAX_DOCS_ACTIONS["context"]:
+        _append(errors, "retrieval.context_file_budget")
+
+    checker_runs, _ = _checker_runs(checker_actions)
+    if len(checker_actions) > 1 or checker_runs > 1:
+        _append(errors, "retrieval.repeated_checker")
+
+
 def validate_context_route(actions):
     """Validate bounded context reads without requiring a checker."""
     actions = _normalize_actions(actions)
@@ -210,22 +269,7 @@ def validate_context_route(actions):
     if len(actions) > MAX_DOCS_ACTIONS["context"]:
         _append(errors, "retrieval.docs_action_budget")
     errors.extend(_validate_path_categories(actions, allowed=_is_safe_relative_path, reject_empty=True))
-    loaded_files = sum(
-        len(action.get("paths", []))
-        for action in actions
-        if action.get("kind") != "bounded-probe" and _valid_path_list(action)
-    )
-    if loaded_files > MAX_DOCS_ACTIONS["context"]:
-        _append(errors, "retrieval.context_file_budget")
-    for action in actions:
-        kind = action.get("kind")
-        if kind == "checker" and action.get("status") not in CHECKER_SUCCESS_STATUSES:
-            _append(errors, "retrieval.checker_failed")
-        if kind in {"read-map", "bounded-probe", "combined-read"} and action.get("status") not in {
-            "complete",
-            "missing",
-        }:
-            _append(errors, "retrieval.context_action_failed")
+    _validate_context_aggregate(actions, errors)
     return _dedupe(errors)
 
 

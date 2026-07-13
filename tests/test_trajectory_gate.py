@@ -402,7 +402,19 @@ class TrajectoryGateTests(unittest.TestCase):
             with self.subTest(command=command):
                 receipt = self.load("bulwark-map-accepted.json")
                 receipt["command"] = command
-                receipt["retrieval"]["actions"] = receipt["retrieval"]["actions"][: trajectory_gate.MAX_DOCS_ACTIONS[command]]
+                if command == "context":
+                    receipt["retrieval"]["actions"] = [
+                        {
+                            "owner": "docs",
+                            "kind": "combined-read",
+                            "paths": ["README.md", "STATE.md", "PRODUCT.md", "DESIGN.md"],
+                            "status": "complete",
+                        }
+                    ]
+                else:
+                    receipt["retrieval"]["actions"] = receipt["retrieval"]["actions"][
+                        : trajectory_gate.MAX_DOCS_ACTIONS[command]
+                    ]
                 receipt["presentation"].pop("tree")
                 receipt["presentation"].pop("tree_features")
 
@@ -546,6 +558,111 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("retrieval.context_file_budget", result["errors"])
+
+    def test_context_counts_bounded_probe_paths_toward_file_budget(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "bounded-probe",
+                "paths": ["README.md", "STATE.md", "PRODUCT.md", "DESIGN.md"],
+                "status": "complete",
+            }
+        ]
+        self.assertEqual(trajectory_gate.evaluate(receipt)["status"], "PASS")
+
+        receipt["retrieval"]["actions"][0]["paths"].append("PLAN.md")
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.context_file_budget", result["errors"])
+
+    def test_context_aggregates_path_budget_across_read_actions(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["README.md", "STATE.md"],
+                "status": "complete",
+            },
+            {
+                "owner": "docs",
+                "kind": "bounded-probe",
+                "paths": ["PRODUCT.md", "DESIGN.md", "PLAN.md"],
+                "status": "complete",
+            },
+        ]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.context_file_budget", result["errors"])
+
+    def test_context_checker_is_optional_but_executes_at_most_once(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        receipt["retrieval"]["actions"] = [
+            {"owner": "docs", "kind": "checker", "count": 1, "status": "clean"}
+        ]
+        self.assertEqual(trajectory_gate.evaluate(receipt)["status"], "PASS")
+
+        cases = (
+            (
+                "count-plus-one",
+                [{"owner": "docs", "kind": "checker", "count": 2, "status": "clean"}],
+                "retrieval.repeated_checker",
+            ),
+            (
+                "duplicate-checker",
+                [
+                    {"owner": "docs", "kind": "checker", "count": 1, "status": "clean"},
+                    {"owner": "docs", "kind": "checker", "count": 1, "status": "findings"},
+                ],
+                "retrieval.repeated_checker",
+            ),
+            (
+                "zero-count-checker",
+                [{"owner": "docs", "kind": "checker", "count": 0, "status": "clean"}],
+                "retrieval.invalid_checker_count",
+            ),
+        )
+        for name, actions, expected in cases:
+            with self.subTest(name=name):
+                receipt["retrieval"]["actions"] = actions
+
+                result = trajectory_gate.evaluate(receipt)
+
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn(expected, result["errors"])
+
+    def test_context_retrieval_actions_require_nonempty_path_lists(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "context"
+        receipt["retrieval"]["actions"] = [
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "status": "complete",
+            }
+        ]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.invalid_action_paths", result["errors"])
 
     def test_context_rejects_an_errored_optional_checker(self):
         receipt = self.load("bulwark-map-accepted.json")
