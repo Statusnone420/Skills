@@ -11,6 +11,9 @@ MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
 DOCTOR_POSTCHECK_KIND = "post-check-read"
 ALL_ACTION_KINDS = MAP_ACTION_KINDS | {DOCTOR_POSTCHECK_KIND}
 MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
+COLD_DOC_PATH_COMPONENTS = frozenset(
+    {"generated", "archive", "archives", "tests", "evals", "source"}
+)
 BROAD_RETRIEVAL_KINDS = {
     "repo-wide-search",
     "inventory",
@@ -67,7 +70,7 @@ def _is_safe_relative_path(path):
     return all(part not in {"", ".", ".."} for part in parts)
 
 
-def _is_allowed_map_path(path):
+def _is_allowed_fallback_path(path):
     if not _is_safe_relative_path(path):
         return False
     normalized = path.replace("\\", "/")
@@ -76,6 +79,18 @@ def _is_allowed_map_path(path):
     if not normalized.startswith("docs/") or normalized.count("/") != 1:
         return False
     return "." in normalized.rsplit("/", 1)[1]
+
+
+def _is_allowed_hot_path(path):
+    if not _is_safe_relative_path(path):
+        return False
+    normalized = path.replace("\\", "/")
+    if normalized in MAP_FALLBACK_ROOT_PATHS:
+        return True
+    if not normalized.startswith("docs/") or "." not in normalized.rsplit("/", 1)[1]:
+        return False
+    parts = normalized.split("/")
+    return not any(part.casefold() in COLD_DOC_PATH_COMPONENTS for part in parts[1:-1])
 
 
 def _valid_path_list(action):
@@ -95,6 +110,8 @@ def _common_errors(actions, allowed_kinds):
             _append(errors, "retrieval.preflight_action")
         if "paths" in action and not _valid_path_list(action):
             _append(errors, "retrieval.invalid_action_paths")
+        if kind == "checker" and "paths" in action:
+            _append(errors, "retrieval.invalid_action_paths")
     return errors
 
 
@@ -104,6 +121,9 @@ def _validate_path_categories(actions, *, allowed, reject_empty=False):
         if "paths" not in action or not _valid_path_list(action):
             continue
         paths = action["paths"]
+        normalized_paths = [path.replace("\\", "/") for path in paths]
+        if len(normalized_paths) != len(set(normalized_paths)):
+            _append(errors, "retrieval.invalid_action_paths")
         if reject_empty and not paths:
             _append(errors, "retrieval.invalid_action_paths")
         if any(not allowed(path) for path in paths):
@@ -179,7 +199,7 @@ def _validate_mapped_route(actions, errors, *, precheck=False):
             _append(errors, "retrieval.duplicate_map_read")
         if not _valid_path_list(hot) or not hot.get("paths"):
             _append(errors, "retrieval.invalid_action_paths")
-        elif any(not _is_allowed_map_path(path) for path in hot["paths"]):
+        elif any(not _is_allowed_hot_path(path) for path in hot["paths"]):
             _append(errors, "retrieval.forbidden_path")
 
 
@@ -197,6 +217,24 @@ def _validate_missing_route(actions, errors, *, precheck=False):
     combined_index = kinds.index("combined-read")
     if probe_index > combined_index:
         _append(errors, "retrieval.invalid_map_route")
+    probe = actions[probe_index]
+    combined = actions[combined_index]
+    if (
+        _valid_path_list(probe)
+        and probe.get("paths")
+        and _valid_path_list(combined)
+        and combined.get("paths")
+    ):
+        probe_paths = {path.replace("\\", "/") for path in probe["paths"]}
+        combined_paths = {path.replace("\\", "/") for path in combined["paths"]}
+        selected_map = combined["paths"][0].replace("\\", "/")
+        if (
+            selected_map not in probe_paths
+            or not combined_paths.issubset(probe_paths)
+            or "docs/README.md" in probe_paths
+            or "docs/README.md" in combined_paths
+        ):
+            _append(errors, "retrieval.invalid_map_route")
     for action in actions:
         if action.get("kind") not in {"bounded-probe", "combined-read"}:
             continue
@@ -214,8 +252,9 @@ def validate_map_or_check_route(actions, command, *, precheck=False):
         raise ValueError("unsupported trajectory command")
     actions = _normalize_actions(actions)
     errors = _common_errors(actions, MAP_ACTION_KINDS)
-    errors.extend(_validate_path_categories(actions, allowed=_is_allowed_map_path, reject_empty=False))
     state = _first_map_state(actions, errors)
+    path_policy = _is_allowed_hot_path if state == "complete" else _is_allowed_fallback_path
+    errors.extend(_validate_path_categories(actions, allowed=path_policy, reject_empty=False))
     checker_errors, _ = _validate_checker_boundary(actions)
     errors.extend(checker_errors)
     if state == "complete":
@@ -292,7 +331,7 @@ def _validate_doctor_postcheck(actions, errors):
         if not _valid_path_list(action) or not action.get("paths"):
             _append(errors, "retrieval.invalid_action_paths")
             continue
-        if any(not _is_allowed_map_path(path) for path in action["paths"]):
+        if any(not _is_allowed_hot_path(path) for path in action["paths"]):
             _append(errors, "retrieval.forbidden_path")
         group = action.get("group", "default")
         if not isinstance(group, str) or not group:
