@@ -1370,6 +1370,121 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
             self.assertEqual(no_git["reason"], "local-map-git-protection-unavailable")
             self.assertFalse(no_git["git_ignore_protected"])
 
+    def test_git_proof_recovers_from_windows_safe_directory_rejection(self):
+        io_module = self.module("lifecycle_io")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            try:
+                subprocess.run(
+                    ["git", "init", "-q"],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                )
+            except (OSError, subprocess.CalledProcessError):
+                self.skipTest("Git unavailable")
+
+            probes = []
+            original_run = io_module.subprocess.run
+
+            def capture(command, *args, **kwargs):
+                result = original_run(command, *args, **kwargs)
+                rendered = [
+                    "<repo>"
+                    if str(part) in {str(root), root.as_posix()}
+                    else "safe.directory=<repo>"
+                    if str(part).startswith("safe.directory=")
+                    else str(part)
+                    for part in command
+                ]
+                stderr = (result.stderr or "").replace(str(root), "<repo>")
+                stderr = stderr.replace(root.as_posix(), "<repo>")
+                probes.append(
+                    {
+                        "command": rendered,
+                        "returncode": result.returncode,
+                        "stderr": stderr[:512],
+                    }
+                )
+                return result
+
+            with mock.patch.dict(
+                os.environ,
+                {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
+            ), mock.patch.object(
+                io_module.subprocess,
+                "run",
+                side_effect=capture,
+            ):
+                status = io_module._git_ignore_status(root)
+
+            self.assertEqual(status, "not-ignored", msg=json.dumps(probes, sort_keys=True))
+            serialized_probes = json.dumps(probes, sort_keys=True)
+            self.assertNotIn(str(root), serialized_probes)
+            self.assertNotIn(root.as_posix(), serialized_probes)
+            self.assertTrue(
+                any(
+                    probe["returncode"] == 128
+                    and "dubious ownership" in probe["stderr"]
+                    for probe in probes
+                ),
+                msg=json.dumps(probes, sort_keys=True),
+            )
+            self.assertTrue(
+                any(
+                    probe["command"][:2] == ["git", "-c"]
+                    and any(
+                        part.startswith("safe.directory=")
+                        for part in probe["command"]
+                    )
+                    for probe in probes
+                ),
+                msg=json.dumps(probes, sort_keys=True),
+            )
+            (root / ".gitignore").write_text(
+                ".diataxis/local-map.json\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                os.environ,
+                {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
+            ):
+                self.assertEqual(io_module._git_ignore_status(root), "ignored")
+
+    def test_unavailable_git_proof_fails_closed_without_writing_local_map(self):
+        io_module = self.module("lifecycle_io")
+        verify = self.api("verify_local_route_hashes")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            route = local_route(".local/private-plan.md")
+            path = root / route["route"]
+            path.parent.mkdir()
+            path.write_text("# Private plan\n", encoding="utf-8")
+            verified = verify(
+                root,
+                [route],
+                selected_scope=".local",
+                byte_limit=64 * 1024,
+            )
+            local_map = {
+                "schema_version": 2,
+                "repository_identity": "a" * 64,
+                "worktree_identity": "b" * 64,
+                "routes": verified["routes"],
+            }
+            before = tree_bytes(root)
+            with mock.patch.object(
+                io_module.subprocess,
+                "run",
+                side_effect=FileNotFoundError("git unavailable"),
+            ):
+                result = self.prepare(root, local_map=local_map)
+            self.assertEqual(result["status"], "requires_user_action")
+            self.assertEqual(result["reason"], "local-map-git-protection-unavailable")
+            self.assertFalse(result["git_ignore_protected"])
+            self.assertEqual(tree_bytes(root), before)
+
     def test_tracked_local_map_cannot_be_reclassified_as_safe_by_gitignore(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

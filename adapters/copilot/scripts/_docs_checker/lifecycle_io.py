@@ -221,14 +221,43 @@ def _validate_local_map(local_map):
     return encoded
 
 
+def _safe_directory_rejection(result):
+    stderr = result.stderr if isinstance(result.stderr, str) else ""
+    detail = stderr.casefold()
+    return result.returncode == 128 and (
+        "dubious ownership" in detail or "safe.directory" in detail
+    )
+
+
+def _run_git_probe(root, *arguments):
+    root_text = os.fspath(root)
+    result = subprocess.run(
+        ["git", "-C", root_text, *arguments],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if not _safe_directory_rejection(result):
+        return result
+    safe_root = os.path.abspath(root_text).replace("\\", "/")
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            f"safe.directory={safe_root}",
+            "-C",
+            root_text,
+            *arguments,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
 def _git_ignore_status(root):
     try:
-        top = subprocess.run(
-            ["git", "-C", os.fspath(root), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        top = _run_git_probe(root, "rev-parse", "--show-toplevel")
     except (OSError, subprocess.SubprocessError):
         return "no-git"
     if top.returncode != 0:
@@ -241,35 +270,23 @@ def _git_ignore_status(root):
     if selected != discovered:
         return "no-git"
     try:
-        tracked = subprocess.run(
-            [
-                "git",
-                "-C",
-                os.fspath(root),
-                "ls-files",
-                "--error-unmatch",
-                "--",
-                LOCAL_MAP_PATH,
-            ],
-            capture_output=True,
-            timeout=5,
+        tracked = _run_git_probe(
+            root,
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            LOCAL_MAP_PATH,
         )
         if tracked.returncode == 0:
             return "not-ignored"
         if tracked.returncode != 1:
             return "not-ignored"
-        ignored = subprocess.run(
-            [
-                "git",
-                "-C",
-                os.fspath(root),
-                "check-ignore",
-                "-q",
-                "--",
-                LOCAL_MAP_PATH,
-            ],
-            capture_output=True,
-            timeout=5,
+        ignored = _run_git_probe(
+            root,
+            "check-ignore",
+            "-q",
+            "--",
+            LOCAL_MAP_PATH,
         )
     except (OSError, subprocess.SubprocessError):
         return "not-ignored"
