@@ -1401,6 +1401,20 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                     )
                 else:
                     result = original_run(command, *args, **kwargs)
+                    if (
+                        "rev-parse" in command
+                        and "--show-toplevel" in command
+                        and os.name == "nt"
+                    ):
+                        root_text = root.as_posix()
+                        if len(root_text) >= 3 and root_text[1] == ":":
+                            root_text = f"/{root_text[0].lower()}{root_text[2:]}"
+                        result = subprocess.CompletedProcess(
+                            command,
+                            result.returncode,
+                            root_text + "\n",
+                            result.stderr,
+                        )
                 rendered = [
                     "<repo>"
                     if str(part) in {str(root), root.as_posix()}
@@ -1415,6 +1429,7 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                     {
                         "command": rendered,
                         "returncode": result.returncode,
+                        "stdout": (result.stdout or "")[:512],
                         "stderr": stderr[:512],
                     }
                 )

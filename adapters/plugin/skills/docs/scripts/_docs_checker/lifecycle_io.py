@@ -229,6 +229,23 @@ def _safe_directory_rejection(result):
     )
 
 
+def _normalize_git_root(value):
+    text = os.fspath(value).strip()
+    if os.name == "nt":
+        if text.startswith("//?/"):
+            text = text[4:]
+        elif text.startswith("\\\\?\\"):
+            text = text[4:]
+        elif (
+            len(text) >= 3
+            and text[0] == "/"
+            and text[2] == "/"
+            and text[1].isalpha()
+        ):
+            text = f"{text[1].upper()}:{text[2:]}"
+    return os.path.normcase(os.path.abspath(text))
+
+
 def _run_git_probe(root, *arguments):
     root_text = os.fspath(root)
     result = subprocess.run(
@@ -263,8 +280,8 @@ def _git_ignore_status(root):
     if top.returncode != 0:
         return "no-git"
     try:
-        selected = os.path.normcase(os.path.abspath(os.fspath(root)))
-        discovered = os.path.normcase(os.path.abspath(top.stdout.strip()))
+        selected = _normalize_git_root(root)
+        discovered = _normalize_git_root(top.stdout)
     except (OSError, ValueError):
         return "no-git"
     if selected != discovered:
