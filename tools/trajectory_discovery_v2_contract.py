@@ -362,12 +362,44 @@ def _valid_v2_content_window(action, expected_content_batch):
     )
 
 
+def _project_v1_prune_evidence(projected):
+    """Remove only valid v2-local prune evidence from the frozen v1 view."""
+    exclusions = projected.get("applied_exclusions")
+    prunes = projected.get("prunes")
+    if type(exclusions) is not list or type(prunes) is not dict:
+        return
+    local_paths = set()
+    retained_exclusions = []
+    for item in exclusions:
+        if (
+            type(item) is dict
+            and set(item) == {"path", "reason"}
+            and type(item["path"]) is str
+            and item["reason"] == "local-sensitive-prune"
+        ):
+            local_paths.add(item["path"])
+        else:
+            retained_exclusions.append(item)
+    if not local_paths:
+        return
+    projected["applied_exclusions"] = retained_exclusions
+    applied_paths = prunes.get("applied_paths")
+    if type(applied_paths) is list:
+        projected["prunes"] = {
+            **prunes,
+            "applied_paths": [
+                path for path in applied_paths if path not in local_paths
+            ],
+        }
+
+
 def _v1_compatibility_action(action, profile, expected_content_batch):
     """Project only v2-only semantics while retaining the approved v1 proof core."""
     projected = {
         field: action[field]
         for field in DOCTOR_DISCOVERY_RECEIPT_FIELDS
     }
+    _project_v1_prune_evidence(projected)
     projected["schema_version"] = 1
     if profile in {"root-documents", "local-candidates"}:
         projected.update(

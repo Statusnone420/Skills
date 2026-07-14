@@ -1371,116 +1371,43 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
             self.assertEqual(no_git["reason"], "local-map-git-protection-unavailable")
             self.assertFalse(no_git["git_ignore_protected"])
 
-    def test_git_proof_recovers_from_windows_safe_directory_rejection(self):
+    def test_git_proof_rejects_dubious_ownership_without_bypass_or_write(self):
         io_module = self.module("lifecycle_io")
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            try:
-                subprocess.run(
-                    ["git", "init", "-q"],
-                    cwd=root,
-                    check=True,
-                    capture_output=True,
-                )
-            except (OSError, subprocess.CalledProcessError):
-                self.skipTest("Git unavailable")
+            create_repository(root)
+            local_map = {
+                "schema_version": 2,
+                "repository_identity": "a" * 64,
+                "worktree_identity": "b" * 64,
+                "routes": [],
+            }
+            before = tree_bytes(root)
+            calls = []
 
-            probes = []
-            original_run = io_module.subprocess.run
-
-            def capture(command, *args, **kwargs):
-                if "-c" not in command:
-                    result = subprocess.CompletedProcess(
-                        command,
-                        128,
-                        "",
-                        "fatal: detected dubious ownership in repository at "
-                        f"'{root.as_posix()}'\n"
-                        "To add an exception for this directory, call:\n"
-                        "\n\tgit config --global --add safe.directory "
-                        f"{root.as_posix()}\n",
-                    )
-                else:
-                    result = original_run(command, *args, **kwargs)
-                    if (
-                        "rev-parse" in command
-                        and "--show-toplevel" in command
-                        and os.name == "nt"
-                    ):
-                        root_text = root.as_posix()
-                        if len(root_text) >= 3 and root_text[1] == ":":
-                            root_text = f"/{root_text[0].lower()}{root_text[2:]}"
-                        result = subprocess.CompletedProcess(
-                            command,
-                            result.returncode,
-                            root_text + "\n",
-                            result.stderr,
-                        )
-                rendered = [
-                    "<repo>"
-                    if str(part) in {str(root), root.as_posix()}
-                    else "safe.directory=<repo>"
-                    if str(part).startswith("safe.directory=")
-                    else str(part)
-                    for part in command
-                ]
-                stderr = (result.stderr or "").replace(str(root), "<repo>")
-                stderr = stderr.replace(root.as_posix(), "<repo>")
-                stdout = (result.stdout or "").replace(str(root), "<repo>")
-                stdout = stdout.replace(root.as_posix(), "<repo>")
-                if os.name == "nt":
-                    root_text = root.as_posix()
-                    if len(root_text) >= 3 and root_text[1] == ":":
-                        stdout = stdout.replace(
-                            f"/{root_text[0].lower()}{root_text[2:]}",
-                            "<repo>",
-                        )
-                probes.append(
-                    {
-                        "command": rendered,
-                        "returncode": result.returncode,
-                        "stdout": stdout[:512],
-                        "stderr": stderr[:512],
-                    }
+            def reject(command, *args, **kwargs):
+                calls.append(list(command))
+                return subprocess.CompletedProcess(
+                    command,
+                    128,
+                    "",
+                    "fatal: detected dubious ownership; safe.directory required",
                 )
-                return result
 
             with mock.patch.object(
                 io_module.subprocess,
                 "run",
-                side_effect=capture,
+                side_effect=reject,
             ):
-                status = io_module._git_ignore_status(root)
-                (root / ".gitignore").write_text(
-                    ".diataxis/local-map.json\n",
-                    encoding="utf-8",
-                )
-                ignored_status = io_module._git_ignore_status(root)
+                result = self.prepare(root, local_map=local_map)
 
-            self.assertEqual(status, "not-ignored", msg=json.dumps(probes, sort_keys=True))
-            self.assertEqual(ignored_status, "ignored")
-            serialized_probes = json.dumps(probes, sort_keys=True)
-            self.assertNotIn(str(root), serialized_probes)
-            self.assertNotIn(root.as_posix(), serialized_probes)
-            self.assertTrue(
-                any(
-                    probe["returncode"] == 128
-                    and "dubious ownership" in probe["stderr"]
-                    for probe in probes
-                ),
-                msg=json.dumps(probes, sort_keys=True),
-            )
-            self.assertTrue(
-                any(
-                    probe["command"][:2] == ["git", "-c"]
-                    and any(
-                        part.startswith("safe.directory=")
-                        for part in probe["command"]
-                    )
-                    for probe in probes
-                ),
-                msg=json.dumps(probes, sort_keys=True),
-            )
+            self.assertEqual(result["status"], "requires_user_action")
+            self.assertEqual(result["reason"], "local-map-git-protection-unavailable")
+            self.assertFalse(result["git_ignore_protected"])
+            self.assertFalse(any("-c" in command for command in calls))
+            self.assertEqual(tree_bytes(root), before)
+
+
     def test_unavailable_git_proof_fails_closed_without_writing_local_map(self):
         io_module = self.module("lifecycle_io")
         verify = self.api("verify_local_route_hashes")

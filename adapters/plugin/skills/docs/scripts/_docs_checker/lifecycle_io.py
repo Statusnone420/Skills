@@ -221,14 +221,6 @@ def _validate_local_map(local_map):
     return encoded
 
 
-def _safe_directory_rejection(result):
-    stderr = result.stderr if isinstance(result.stderr, str) else ""
-    detail = stderr.casefold()
-    return result.returncode == 128 and (
-        "dubious ownership" in detail or "safe.directory" in detail
-    )
-
-
 def _normalize_git_root(value):
     text = os.fspath(value).strip()
     if os.name == "nt":
@@ -248,24 +240,8 @@ def _normalize_git_root(value):
 
 def _run_git_probe(root, *arguments):
     root_text = os.fspath(root)
-    result = subprocess.run(
-        ["git", "-C", root_text, *arguments],
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
-    if not _safe_directory_rejection(result):
-        return result
-    safe_root = os.path.abspath(root_text).replace("\\", "/")
     return subprocess.run(
-        [
-            "git",
-            "-c",
-            f"safe.directory={safe_root}",
-            "-C",
-            root_text,
-            *arguments,
-        ],
+        ["git", "-C", root_text, *arguments],
         capture_output=True,
         text=True,
         timeout=5,

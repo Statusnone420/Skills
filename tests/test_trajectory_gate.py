@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import trajectory_gate
 import trajectory_discovery_contract
+import trajectory_discovery_capture
 import trajectory_routes
 from skills.docs.scripts._docs_checker import discovery as discovery_module
 from skills.docs.scripts._docs_checker.discovery import (
@@ -3875,6 +3876,90 @@ class TrajectoryGateTests(unittest.TestCase):
                 )
 
                 self.assertEqual(errors, [])
+
+    def test_v2_local_prunes_survive_v1_compatibility_projection(self):
+        cases = (
+            ("credentials-and-cache", (".local/credentials", ".local/cache")),
+            ("mixed-shared-and-local", ("docs/.cache", ".local/credentials")),
+        )
+        for name, pruned_paths in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                _write_markdown(root, ".local/0.3.0-campaign/KICKOFF-PROMPT.md")
+                for relative in pruned_paths:
+                    (root / relative).mkdir(parents=True)
+                action = trajectory_discovery_capture.build_doctor_discovery_action(
+                    discovery_module.discover_init_scope(root, contract_version=2)
+                )
+                self.assertTrue(
+                    any(
+                        item["reason"] == "local-sensitive-prune"
+                        for item in action["applied_exclusions"]
+                    )
+                )
+                original_local_paths = {
+                    item["path"]
+                    for item in action["applied_exclusions"]
+                    if item["reason"] == "local-sensitive-prune"
+                }
+                original_local_prunes = {
+                    path
+                    for path in action["prunes"]["applied_paths"]
+                    if path in original_local_paths
+                }
+                errors = []
+                trajectory_discovery_contract.validate_doctor_discovery_action(
+                    action,
+                    errors,
+                )
+                self.assertEqual(errors, [])
+                self.assertEqual(
+                    {
+                        item["path"]
+                        for item in action["applied_exclusions"]
+                        if item["reason"] == "local-sensitive-prune"
+                    },
+                    original_local_paths,
+                )
+                self.assertEqual(
+                    {
+                        path
+                        for path in action["prunes"]["applied_paths"]
+                        if path in original_local_paths
+                    },
+                    original_local_prunes,
+                )
+
+    def test_v2_malformed_local_prune_evidence_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write_markdown(root, ".local/0.3.0-campaign/KICKOFF-PROMPT.md")
+            (root / ".local" / "credentials").mkdir(parents=True)
+            action = trajectory_discovery_capture.build_doctor_discovery_action(
+                discovery_module.discover_init_scope(root, contract_version=2)
+            )
+            action["applied_exclusions"][0]["extra"] = "malformed"
+            payload = {
+                field: action[field]
+                for field in trajectory_discovery_capture.DOCTOR_DISCOVERY_RECEIPT_FIELDS_V2
+            }
+            action["receipt_checksum"] = (
+                trajectory_discovery_capture._canonical_receipt_checksum(payload)
+            )
+            errors = []
+            trajectory_discovery_contract.validate_doctor_discovery_action(
+                action,
+                errors,
+            )
+            self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
+
+    def test_shared_v1_prune_receipt_remains_unchanged(self):
+        errors = []
+        trajectory_discovery_contract.validate_doctor_discovery_action(
+            actual_doctor_prune_payload(),
+            errors,
+        )
+        self.assertEqual(errors, [])
 
     def test_fable5_receipt_checksum_is_coherence_not_authentication(self):
         original = deepcopy(actual_doctor_cross_parent_limit_payload())
