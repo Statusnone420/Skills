@@ -1,5 +1,6 @@
-"""Bounded, metadata-only first-contact documentation discovery."""
+"""Bounded, metadata-first first-contact documentation discovery."""
 
+import hashlib
 import os
 import re
 import stat
@@ -319,6 +320,22 @@ def _empty_continuation(*, blocked=False):
     }
 
 
+def _content_identity_factory(state):
+    cache = {}
+
+    def content_identity(evidence):
+        path = evidence["path"]
+        if path not in cache:
+            digest = hashlib.sha256()
+            with (state["root"] / Path(path)).open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            cache[path] = digest.hexdigest()
+        return cache[path]
+
+    return content_identity
+
+
 def _plan_content_batch(
     state,
     scope_metadata,
@@ -327,16 +344,25 @@ def _plan_content_batch(
 ):
     if scope_metadata["truncated"]:
         return _empty_content_batch(blocked=True), _empty_continuation(blocked=True)
-    batch, continuation_result = plan_content_batch(
-        scope_metadata["paths"],
-        state["selected_evidence"],
-        selected_scope,
-        continuation=continuation,
-        discovery_contract_version=state["contract_version"],
-        repository_identity=state["repository_identity"],
-        file_limit=INIT_DISCOVERY_LIMITS["content_files"],
-        byte_limit=INIT_DISCOVERY_LIMITS["content_bytes"],
-    )
+    try:
+        batch, continuation_result = plan_content_batch(
+            scope_metadata["paths"],
+            state["selected_evidence"],
+            selected_scope,
+            continuation=continuation,
+            discovery_contract_version=state["contract_version"],
+            repository_identity=state["repository_identity"],
+            file_limit=INIT_DISCOVERY_LIMITS["content_files"],
+            byte_limit=INIT_DISCOVERY_LIMITS["content_bytes"],
+            content_identity=(
+                _content_identity_factory(state)
+                if state["contract_version"] == DISCOVERY_CONTRACT_V2
+                else None
+            ),
+        )
+    except OSError:
+        state["content_blocked"] = True
+        return _empty_content_batch(blocked=True), _empty_continuation(blocked=True)
     if continuation_result["status"] == "rejected":
         state["continuation_rejected"] = True
     elif continuation_result["status"] == "blocked" and scope_metadata["paths"]:
@@ -438,7 +464,7 @@ def discover_init_scope(
     *,
     contract_version=DISCOVERY_CONTRACT_V1,
 ):
-    """Return deterministic first-contact metadata without opening file content."""
+    """Return deterministic first-contact metadata with bounded content identity."""
     discovery_fields(contract_version)
     if contract_version == DISCOVERY_CONTRACT_V1 and continuation is not None:
         raise ValueError("discovery contract version 1 does not support continuation")
@@ -466,9 +492,11 @@ def discover_init_scope(
         selection_reason = "discovery-truncated"
         metadata_phases = 1
     elif explicit_narrow or (
-        contract_version == DISCOVERY_CONTRACT_V2 and explicit_scope is not None
+        contract_version == DISCOVERY_CONTRACT_V2
+        and explicit_scope is not None
+        and normalized_scope != "."
     ):
-        if normalized_scope == "." or contract_version == DISCOVERY_CONTRACT_V2:
+        if contract_version == DISCOVERY_CONTRACT_V2:
             inspect_root_entries(
                 state,
                 is_root_document=is_maintained_root_document,
@@ -634,6 +662,9 @@ def discover_init_scope(
                 if state["io_errors"]
                 or state["candidate_truncated"]
                 or state["scope_truncated"]
+                or state["content_truncated"]
+                or state["content_blocked"]
+                or state["continuation_rejected"]
                 else "complete"
             ),
             "errors": list(state["io_errors"]),

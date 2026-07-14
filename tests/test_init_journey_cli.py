@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -77,6 +78,26 @@ class InitJourneyCliTests(unittest.TestCase):
             self.assertNotIn(str(fixture.root), json.dumps(payload, sort_keys=True))
             self.assertEqual(snapshot_repository(fixture.root), before)
 
+    def test_cli_normalized_dot_scope_uses_automatic_fallback(self):
+        with tempfile.TemporaryDirectory() as td:
+            fixture = build_small_init_fixture(
+                Path(td),
+                shared_roots=("docs", "documentation"),
+            )
+            before = snapshot_repository(fixture.root)
+
+            payload = run_init_cli(fixture.root, scope=".")
+
+            self.assertEqual(payload["status"], "choice-required")
+            self.assertEqual(payload["selection_reason"], "choice-required")
+            self.assertEqual(
+                [item["path"] for item in payload["candidates"]],
+                ["docs", "documentation"],
+            )
+            self.assertIsNone(payload["selected_scope"])
+            self.assertEqual(payload["content_batch"]["paths"], [])
+            self.assertEqual(snapshot_repository(fixture.root), before)
+
     def test_cli_private_only_repository_stays_zero_write_and_supplementary(self):
         with tempfile.TemporaryDirectory() as td:
             fixture = build_small_init_fixture(
@@ -151,6 +172,28 @@ class InitJourneyCliTests(unittest.TestCase):
             fresh = run_init_cli(fixture.root)
             self.assertEqual(fresh["status"], "batch-limited")
             self.assertNotEqual(fresh["continuation"]["token"], old_token)
+
+    def test_cli_restarts_after_same_size_content_change_with_restored_timestamp(self):
+        with tempfile.TemporaryDirectory() as td:
+            fixture = build_small_init_fixture(Path(td), files_per_root=13)
+            first = run_init_cli(fixture.root)
+            old_token = first["continuation"]["token"]
+            changed = fixture.root / "docs" / "guide-00.md"
+            original_stat = changed.stat()
+            changed.write_bytes(b"X" * original_stat.st_size)
+            os.utime(
+                changed,
+                ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+            )
+
+            stale = run_init_cli_process(fixture.root, token=old_token)
+            stale_payload = json.loads(stale.stdout)
+
+            self.assertEqual(stale.returncode, 0)
+            self.assertEqual(stale_payload["status"], "stopped")
+            self.assertEqual(stale_payload["continuation"]["status"], "rejected")
+            self.assertTrue(stale_payload["continuation"]["fresh_preview_required"])
+            self.assertEqual(stale_payload["content_batch"]["paths"], [])
 
     def test_cli_restarts_after_next_evidence_disappears(self):
         with tempfile.TemporaryDirectory() as td:

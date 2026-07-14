@@ -54,7 +54,11 @@ def _context_from_action(action, validated_context):
 def _valid_root_document_scope(action, normalize_scope):
     """Validate the v2 root-document selection that has no v1 equivalent."""
     requested_scope = action["requested_scope"]
-    explicit_root = requested_scope is not None
+    explicit_root = (
+        requested_scope is not None
+        and normalize_scope(requested_scope) != "."
+    )
+    requested_root = requested_scope is not None
     root_documents = action["root_documents"]
     root_paths = root_documents["paths"]
     expected_candidates = (
@@ -86,7 +90,7 @@ def _valid_root_document_scope(action, normalize_scope):
                 and normalize_scope(requested_scope) == "."
             )
         )
-        and action["normalized_scope"] == ("." if explicit_root else None)
+        and action["normalized_scope"] == ("." if requested_root else None)
         and action["jurisdiction_scope"] == "."
         and action["candidates"] == expected_candidates
         and action["recommended_scope"] == ("." if explicit_root else None)
@@ -508,7 +512,11 @@ def _validate_adoption_preview(
 ):
     """Validate the v2-only empty-root terminal via the approved v1 core."""
     requested_scope = action["requested_scope"]
-    explicit_root = requested_scope is not None
+    requested_root = requested_scope is not None
+    explicit_root = (
+        requested_root
+        and normalize_scope(requested_scope) != "."
+    )
     expected_selection_reason = (
         "explicit-scope" if explicit_root else "no-maintained-documentation"
     )
@@ -521,7 +529,7 @@ def _validate_adoption_preview(
     if (
         not (requested_scope is None or type(requested_scope) is str)
         or (explicit_root and normalize_scope(requested_scope) != ".")
-        or action["normalized_scope"] != ("." if explicit_root else None)
+        or action["normalized_scope"] != ("." if requested_root else None)
         or action["jurisdiction_scope"] != "."
         or action["candidates"] != expected_candidates
         or action["recommended_scope"] != ("." if explicit_root else None)

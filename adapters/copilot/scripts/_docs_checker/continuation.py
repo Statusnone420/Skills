@@ -95,9 +95,10 @@ def decode_continuation_token(token: str) -> dict:
         raise ValueError("content continuation token is invalid") from exc
 
 
-def corpus_fingerprint(evidence):
-    stable = [
-        {
+def corpus_fingerprint(evidence, *, content_identity=None):
+    stable = []
+    for item in evidence:
+        entry = {
             "path": item["path"],
             "bytes": item["bytes"],
             "modified_ns": item["modified_ns"],
@@ -105,8 +106,9 @@ def corpus_fingerprint(evidence):
             "device": item["device"],
             "inode": item["inode"],
         }
-        for item in evidence
-    ]
+        if content_identity is not None:
+            entry["content_sha256"] = content_identity(item)
+        stable.append(entry)
     return _canonical_digest(
         {
             "ordering_version": CONTINUATION_ORDERING_VERSION,
@@ -300,6 +302,7 @@ def plan_content_batch(
     repository_identity,
     file_limit,
     byte_limit,
+    content_identity=None,
 ):
     """Plan one exact slice and return its next state-free cursor."""
     fingerprint = corpus_fingerprint(evidence)
@@ -308,6 +311,16 @@ def plan_content_batch(
         total_batches = _total_batches(paths, file_limit, byte_limit)
     except ValueError:
         total_batches = None
+    if (
+        continuation is not None
+        and content_identity is not None
+        and validate_continuation_cursor(continuation)
+        and continuation["next_index"] < len(evidence)
+    ):
+        fingerprint = corpus_fingerprint(
+            evidence,
+            content_identity=content_identity,
+        )
     start = _validated_start(
         continuation,
         selected_scope,
@@ -391,6 +404,11 @@ def plan_content_batch(
         token = None
         status = "complete"
     elif batch_paths:
+        if content_identity is not None:
+            fingerprint = corpus_fingerprint(
+                evidence,
+                content_identity=content_identity,
+            )
         cursor = _build_cursor(
             selected_scope,
             index,

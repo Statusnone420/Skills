@@ -59,7 +59,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
                     self.assertEqual(payload["adoption_preview"]["writes"], 0)
 
             self.assertEqual(automatic["selection_reason"], "sole-root-document-scope")
-            self.assertEqual(explicit["selection_reason"], "explicit-scope")
+            self.assertEqual(explicit["selection_reason"], "sole-root-document-scope")
 
     def test_selected_corpus_exposes_executable_exact_once_continuation(self):
         with tempfile.TemporaryDirectory() as td:
@@ -80,8 +80,10 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             first_paths = [item["path"] for item in first["content_batch"]["paths"]]
             second_paths = [item["path"] for item in second["content_batch"]["paths"]]
             self.assertEqual(first["continuation"]["status"], "available")
+            self.assertEqual(first["completeness"]["status"], "incomplete")
             self.assertIsInstance(cursor, dict)
             self.assertEqual(second["continuation"]["status"], "complete")
+            self.assertEqual(second["completeness"]["status"], "complete")
             self.assertEqual(len(first_paths), 12)
             self.assertEqual(len(second_paths), 1)
             self.assertEqual(len(set(first_paths + second_paths)), 13)
@@ -400,7 +402,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             self.assertEqual(payload["user_action"], "review-no-doc-adoption-preview")
             self.assertEqual(payload["adoption_preview"]["writes"], 0)
 
-    def test_mixed_root_and_docs_requires_choice_while_explicit_root_is_direct(self):
+    def test_mixed_root_and_docs_use_automatic_fallback_for_dot_scope(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "docs").mkdir()
@@ -421,12 +423,69 @@ class Task51RootAndContinuationTests(unittest.TestCase):
                 [item["path"] for item in automatic["root_documents"]["paths"]],
                 ["README.md"],
             )
-            self.assertEqual(explicit["selected_scope"], ".")
-            self.assertEqual(explicit["selection_reason"], "explicit-scope")
+            self.assertEqual(explicit["selected_scope"], "docs")
+            self.assertEqual(explicit["selection_reason"], "sole-candidate")
             self.assertEqual(
                 [item["path"] for item in explicit["scope_metadata"]["paths"]],
-                ["README.md"],
+                ["docs/guide.md"],
             )
+
+    def test_same_size_content_change_with_restored_timestamp_rejects_cursor(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(13):
+                (docs / f"{index:02d}.md").write_bytes(b"AAAA")
+
+            first = discover_v2(root, explicit_scope="docs")
+            cursor = first["continuation"]["cursor"]
+            changed = docs / "00.md"
+            original_stat = changed.stat()
+            changed.write_bytes(b"BBBB")
+            os.utime(
+                changed,
+                ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+            )
+
+            stale = discover_v2(
+                root,
+                explicit_scope="docs",
+                continuation=cursor,
+            )
+
+            self.assertEqual(stale["status"], "stopped")
+            self.assertEqual(stale["continuation"]["status"], "rejected")
+            self.assertTrue(stale["continuation"]["fresh_preview_required"])
+            self.assertEqual(stale["content_batch"]["paths"], [])
+
+    def test_same_size_change_in_later_batch_rejects_cursor(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(13):
+                (docs / f"{index:02d}.md").write_bytes(b"AAAA")
+
+            first = discover_v2(root, explicit_scope="docs")
+            cursor = first["continuation"]["cursor"]
+            changed = docs / "12.md"
+            original_stat = changed.stat()
+            changed.write_bytes(b"BBBB")
+            os.utime(
+                changed,
+                ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+            )
+
+            stale = discover_v2(
+                root,
+                explicit_scope="docs",
+                continuation=cursor,
+            )
+
+            self.assertEqual(stale["continuation"]["status"], "rejected")
+            self.assertTrue(stale["continuation"]["fresh_preview_required"])
+            self.assertEqual(stale["content_batch"]["paths"], [])
 
     def test_wide_root_stops_incomplete_without_partial_selection(self):
         with tempfile.TemporaryDirectory() as td:
