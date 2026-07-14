@@ -1,0 +1,315 @@
+{
+  "fixture_id": "doctor-slop-nightmare-v1",
+  "synthetic": true,
+  "notice": "All paths, names, organizations, and prose below are invented for testing only; no private repository names or content are referenced.",
+  "description": "Synthetic nightmare fixture for Task 8A: a slop-laden synthetic documentation tree with one unique load-bearing decision hidden inside duplicated prose, plus the other adversarial shapes Task 8 must survive.",
+
+  "tree": {
+    "docs/current/guide-primary.md": "# Onboarding Guide (Primary Copy)\n\nWelcome to the Widget Platform. This guide walks a new contributor through cloning the sample-widgets repository, installing the synthetic-toolchain, and running the smoke suite. Historically this section was copy-pasted into a second location during a reorg and never reconciled, so two near-identical guides now exist side by side.\n\nStep 1: install synthetic-toolchain >= 4.0.\nStep 2: run `widget-cli bootstrap`.\nStep 3: run the smoke suite.\n",
+    "docs/current/guide-duplicate-b.md": "# Onboarding Guide (Reorg Copy)\n\nWelcome to the Widget Platform. This guide walks a new contributor through cloning the sample-widgets repository, installing the synthetic-toolchain, and running the smoke suite. Historically this section was copy-pasted into a second location during a reorg and never reconciled, so two near-identical guides now exist side by side.\n\nDecision (buried, load-bearing): Per the 2025-11-02 platform review, synthetic-toolchain retry backoff for `widget-cli bootstrap` is fixed at 3 attempts with a 250ms base delay, and this value must never be auto-tuned by CI, because auto-tuning previously caused a retry storm against the sandbox metrics endpoint. This is the only place this constraint is written down.\n\nStep 1: install synthetic-toolchain >= 4.0.\nStep 2: run `widget-cli bootstrap`.\nStep 3: run the smoke suite.\n",
+    "docs/current/STATE.md": "# Current State (bloated)\n\nThis file has accreted years of status notes, meeting recaps, half-finished TODOs, superseded architecture diagrams described in prose, and duplicated changelmessage text that also lives in CHANGELOG.md. Represented in full it simulates roughly 20480 bytes of low-signal current-state material that a healthy tree would compact to roughly 5120 bytes of durable facts (see byte_ledger below); only a short representative excerpt is stored here to keep this fixture file itself small.\n",
+    "docs/orphan/RUNBOOK.md": "# Incident Runbook (orphaned)\n\nThis runbook is still actively maintained by the on-call rotation and contains current, correct steps for restarting the synthetic-widget-queue. It is not linked from README.md, the docs map, or any other document, so a reader following the map alone will never find it even though it is load-bearing.\n",
+    "docs/archive/2019-deprecated-onboarding.md": "# Deprecated Onboarding (2019, archived on purpose)\n\nThis document describes the pre-2020 onboarding flow and is deliberately kept in docs/archive/ as historical record. It is not orphaned: the archive index links to it and its disposition is intentional retention, not slop.\n",
+    "docs/policy/retention-a.md": "# Data Retention Policy (Legal-owned copy)\n\nSynthetic user event logs are retained for 30 days. This document is owned by the legal/compliance surface and is protected.\n",
+    "docs/policy/retention-b.md": "# Data Retention Policy (Platform-owned copy)\n\nSynthetic user event logs are retained for 90 days for platform debugging purposes. This document is owned by the platform docs surface and is also protected, and it directly conflicts with docs/policy/retention-a.md on the retention window.\n",
+    "docs/current/api-limits.md": "# Synthetic API Limits\n\nThe synthetic-widgets API allows 100 requests/minute per API key, as verified against config/limits.synthetic.yaml on 2026-06-01.\n",
+    "config/limits.synthetic.yaml": "rate_limit_per_minute: 250\n",
+    "vendor/synthetic-sdk": "SYMLINK -> /external/synthetic-sdk-v3 (out-of-scope vendor tree; must not be traversed, edited, or counted as documentation)\n",
+    "src/unrelated_feature/scratch.py": "# unrelated in-progress work left dirty by another contributor\ndef scratch():\n    return \"not part of this documentation task; must survive untouched\"\n",
+    ".diataxis/local-map.json": "{\"route\": \".local/0.3.0-campaign/DECISIONS.md\", \"visibility\": \"local-only\", \"topics\": [\"release\", \"retry-policy\"]}\n",
+    ".local/0.3.0-campaign/DECISIONS.md": "# Local-only authoritative decisions (ignored, never committed)\n\nThis file is the authoritative source for the synthetic-toolchain retry backoff decision referenced from docs/current/guide-duplicate-b.md. It lives under an ignored local root and must never enter committed shared state, public reports, adapters, logs, or diffs.\n",
+    "README.md": "# Widget Platform (public README)\n\nProtected public entrance surface. Must survive any internal restructure unchanged in meaning and byte-identical unless explicitly authorized.\n",
+    "CODE_OF_CONDUCT.md": "# Community Code of Conduct (protected community surface)\n",
+    "CONTRIBUTING.md": "# Contributing Guide (protected community surface)\n",
+    "CHANGELOG.md": "# Changelog (protected release surface, tooling-referenced)\n\n## 0.1.0\n- Initial synthetic release notes.\n",
+    "MIGRATION.md": "# Migration Guide (protected, tooling-referenced)\n",
+    "docs-site/routes/getting-started.mdx": "# Getting Started (protected documentation-site route)\n",
+    "WIKI.md": "# External Wiki Declaration (protected)\n\nCanonical wiki lives at the project's external wiki host; this file declares that route and must survive.\n"
+  },
+
+  "byte_ledger": [
+    {"path": "docs/current/guide-primary.md", "simulated_bytes": 1800, "duplicate_of": null, "unique_fact_ids": []},
+    {"path": "docs/current/guide-duplicate-b.md", "simulated_bytes": 2100, "duplicate_of": "docs/current/guide-primary.md", "unique_fact_ids": ["UNIQ-RETRY-BACKOFF-0001"]},
+    {"path": "docs/current/STATE.md", "simulated_bytes": 20480, "duplicate_of": null, "unique_fact_ids": ["UNIQ-CURRENT-STATE-TARGET"], "target_bytes_after_disposition": 5120},
+    {"path": "docs/orphan/RUNBOOK.md", "simulated_bytes": 2200, "duplicate_of": null, "unique_fact_ids": ["UNIQ-ORPHAN-RUNBOOK"]},
+    {"path": "docs/archive/2019-deprecated-onboarding.md", "simulated_bytes": 1400, "duplicate_of": null, "unique_fact_ids": ["UNIQ-ARCHIVE-2019-ONBOARDING"]},
+    {"path": "docs/policy/retention-a.md", "simulated_bytes": 400, "duplicate_of": null, "unique_fact_ids": ["UNIQ-RETENTION-CONFLICT-A"]},
+    {"path": "docs/policy/retention-b.md", "simulated_bytes": 420, "duplicate_of": null, "unique_fact_ids": ["UNIQ-RETENTION-CONFLICT-B"]},
+    {"path": "docs/current/api-limits.md", "simulated_bytes": 300, "duplicate_of": null, "unique_fact_ids": ["UNIQ-VERIFIED-SOURCE-LIMITS"]}
+  ],
+
+  "unique_truth_inventory": [
+    {
+      "id": "UNIQ-RETRY-BACKOFF-0001",
+      "kind": "load-bearing-decision",
+      "location": "docs/current/guide-duplicate-b.md",
+      "hidden_in_duplicate": true,
+      "summary": "synthetic-toolchain retry backoff is fixed at 3 attempts / 250ms base delay and must never be auto-tuned by CI.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-CURRENT-STATE-TARGET",
+      "kind": "bloated-current-state",
+      "location": "docs/current/STATE.md",
+      "hidden_in_duplicate": false,
+      "summary": "durable current-state facts buried in ~20480 bytes of accreted low-signal notes; target is ~5120 bytes after disposition.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-ORPHAN-RUNBOOK",
+      "kind": "orphaned-maintained-instructions",
+      "location": "docs/orphan/RUNBOOK.md",
+      "hidden_in_duplicate": false,
+      "summary": "actively maintained incident runbook unreachable from any map or route.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-ARCHIVE-2019-ONBOARDING",
+      "kind": "deliberate-archive-material",
+      "location": "docs/archive/2019-deprecated-onboarding.md",
+      "hidden_in_duplicate": false,
+      "summary": "intentionally retained historical document; disposition is retention, not deletion.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-RETENTION-CONFLICT-A",
+      "kind": "conflicting-protected-intent",
+      "location": "docs/policy/retention-a.md",
+      "hidden_in_duplicate": false,
+      "summary": "legal-owned retention policy stating a 30-day window; conflicts with docs/policy/retention-b.md.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-RETENTION-CONFLICT-B",
+      "kind": "conflicting-protected-intent",
+      "location": "docs/policy/retention-b.md",
+      "hidden_in_duplicate": false,
+      "summary": "platform-owned retention policy stating a 90-day window; conflicts with docs/policy/retention-a.md.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-VERIFIED-SOURCE-LIMITS",
+      "kind": "verified-source-later-changed",
+      "location": "docs/current/api-limits.md",
+      "source": "config/limits.synthetic.yaml",
+      "hidden_in_duplicate": false,
+      "summary": "documented rate limit (100 req/min) was verified against config/limits.synthetic.yaml, whose value later changed to 250 req/min while the document text stayed the same.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-VENDOR-SYMLINK-BOUNDARY",
+      "kind": "out-of-scope-vendor-symlink",
+      "location": "vendor/synthetic-sdk",
+      "hidden_in_duplicate": false,
+      "summary": "symlink to /external/synthetic-sdk-v3, outside repository scope; must be excluded, not traversed or counted.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-UNRELATED-DIRTY-WORK",
+      "kind": "unrelated-dirty-work",
+      "location": "src/unrelated_feature/scratch.py",
+      "hidden_in_duplicate": false,
+      "summary": "unrelated in-progress code from another contributor; must survive untouched by any documentation transformation.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-LOCAL-AUTHORITATIVE-DECISIONS",
+      "kind": "local-only-authoritative-truth",
+      "location": ".local/0.3.0-campaign/DECISIONS.md",
+      "routing_record": ".diataxis/local-map.json",
+      "hidden_in_duplicate": false,
+      "summary": "ignored local root holding the authoritative source for the retry-backoff decision; routed via local-map.json; never enters committed shared state.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-PROTECTED-README",
+      "kind": "protected-public-surface",
+      "location": "README.md",
+      "hidden_in_duplicate": false,
+      "summary": "public entrance surface.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-PROTECTED-COMMUNITY",
+      "kind": "protected-public-surface",
+      "location": ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md"],
+      "hidden_in_duplicate": false,
+      "summary": "protected community surfaces.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-PROTECTED-RELEASE",
+      "kind": "protected-public-surface",
+      "location": ["CHANGELOG.md", "MIGRATION.md"],
+      "hidden_in_duplicate": false,
+      "summary": "protected, tooling-referenced release surfaces.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-PROTECTED-DOCS-SITE",
+      "kind": "protected-public-surface",
+      "location": "docs-site/routes/getting-started.mdx",
+      "hidden_in_duplicate": false,
+      "summary": "protected documentation-site route.",
+      "requires_disposition": true
+    },
+    {
+      "id": "UNIQ-PROTECTED-WIKI",
+      "kind": "protected-public-surface",
+      "location": "WIKI.md",
+      "hidden_in_duplicate": false,
+      "summary": "protected external wiki declaration.",
+      "requires_disposition": true
+    }
+  ],
+
+  "duplicated_mixed_purpose_docs": {
+    "paths": ["docs/current/guide-primary.md", "docs/current/guide-duplicate-b.md"],
+    "note": "Both documents mix onboarding instructions with unrelated status prose; guide-duplicate-b.md additionally hides UNIQ-RETRY-BACKOFF-0001 inside otherwise-duplicate paragraphs."
+  },
+
+  "orphaned_maintained_instructions": {
+    "path": "docs/orphan/RUNBOOK.md",
+    "orphan_reason": "not linked from README.md, any map file, or any route, despite being actively maintained."
+  },
+
+  "deliberate_archive_material": {
+    "path": "docs/archive/2019-deprecated-onboarding.md",
+    "disposition_default": "retain-as-archive"
+  },
+
+  "conflicting_protected_intent": {
+    "paths": ["docs/policy/retention-a.md", "docs/policy/retention-b.md"],
+    "conflict": "30-day (legal) vs 90-day (platform) retention windows for the same synthetic event logs; both are protected surfaces and neither may be silently deleted to resolve the conflict."
+  },
+
+  "verified_source_later_changed": {
+    "document": "docs/current/api-limits.md",
+    "source": "config/limits.synthetic.yaml",
+    "documented_value": "100 requests/minute",
+    "original_source_value": "100 requests/minute",
+    "original_source_hash": "sha256:9a0f6a3e6b3f4d6c9b6e6a5a2c9e1f2b7a4c8d0e3f6b1a9c2d5e8f0a1b3c4d5e",
+    "changed_source_value": "250 requests/minute",
+    "changed_source_hash": "sha256:1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "documentation_unchanged": true,
+    "expected_trust_status": "stale"
+  },
+
+  "vendor_symlink_out_of_scope": {
+    "path": "vendor/synthetic-sdk",
+    "target": "/external/synthetic-sdk-v3",
+    "note": "must be reported as present/uninspected or unavailable; never traversed as in-scope documentation."
+  },
+
+  "unrelated_dirty_work": {
+    "path": "src/unrelated_feature/scratch.py",
+    "note": "unrelated, uncommitted work belonging to another in-flight change; must remain byte-identical across any documentation transformation."
+  },
+
+  "local_only_authoritative_truth": {
+    "routing_record": ".diataxis/local-map.json",
+    "root": ".local/0.3.0-campaign",
+    "authoritative_file": ".local/0.3.0-campaign/DECISIONS.md",
+    "visibility": "local-only",
+    "missing_clone_case": {
+      "description": "When the ignored local root is absent (declared but unavailable, e.g. a fresh clone without the local campaign checkout), diagnosis may report the local truth as present-but-uninspected or unavailable-declared, but must never claim the truth is absent or distort shared repository health.",
+      "declared": true,
+      "expected_status": "declared-local-knowledge-unavailable"
+    }
+  },
+
+  "protected_public_surfaces": {
+    "readme": "README.md",
+    "community": ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md"],
+    "release": ["CHANGELOG.md", "MIGRATION.md"],
+    "docs_site_route": "docs-site/routes/getting-started.mdx",
+    "wiki_declaration": "WIKI.md"
+  },
+
+  "disposition_manifest": [
+    {"id": "UNIQ-RETRY-BACKOFF-0001", "disposition": "migrate", "destination": ".local/0.3.0-campaign/DECISIONS.md#retry-backoff", "note": "duplicate host document removed; unique decision migrated to the local-only authoritative decisions file and routed via .diataxis/local-map.json."},
+    {"id": "UNIQ-CURRENT-STATE-TARGET", "disposition": "compact", "destination": "docs/current/STATE.md", "note": "durable facts retained in place at target size; low-signal accretion removed."},
+    {"id": "UNIQ-ORPHAN-RUNBOOK", "disposition": "relink", "destination": "docs/orphan/RUNBOOK.md", "note": "retained in place and added to the docs map so it is no longer orphaned."},
+    {"id": "UNIQ-ARCHIVE-2019-ONBOARDING", "disposition": "retain-as-archive", "destination": "docs/archive/2019-deprecated-onboarding.md", "note": "kept unchanged; archival is intentional, not slop."},
+    {"id": "UNIQ-RETENTION-CONFLICT-A", "disposition": "retain-protected", "destination": "docs/policy/retention-a.md", "note": "protected legal surface retained unchanged; conflict flagged for human reconciliation, not auto-resolved."},
+    {"id": "UNIQ-RETENTION-CONFLICT-B", "disposition": "retain-protected", "destination": "docs/policy/retention-b.md", "note": "protected platform surface retained unchanged; conflict flagged for human reconciliation, not auto-resolved."},
+    {"id": "UNIQ-VERIFIED-SOURCE-LIMITS", "disposition": "flag-stale-evidence", "destination": "docs/current/api-limits.md", "note": "source hash changed while documentation text did not; flagged stale-evidence pending revalidation."},
+    {"id": "UNIQ-VENDOR-SYMLINK-BOUNDARY", "disposition": "exclude-out-of-scope", "destination": null, "note": "reported as an out-of-scope vendor boundary; not traversed, edited, or counted."},
+    {"id": "UNIQ-UNRELATED-DIRTY-WORK", "disposition": "preserve-unrelated", "destination": "src/unrelated_feature/scratch.py", "note": "left byte-identical; not part of the documentation transformation."},
+    {"id": "UNIQ-LOCAL-AUTHORITATIVE-DECISIONS", "disposition": "local-preserve", "destination": ".local/0.3.0-campaign/DECISIONS.md", "note": "remains local-only; never enters committed shared state, public reports, adapters, logs, or diffs."},
+    {"id": "UNIQ-PROTECTED-README", "disposition": "retain-protected", "destination": "README.md", "note": "public entrance surface retained unchanged."},
+    {"id": "UNIQ-PROTECTED-COMMUNITY", "disposition": "retain-protected", "destination": ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md"], "note": "community surfaces retained unchanged."},
+    {"id": "UNIQ-PROTECTED-RELEASE", "disposition": "retain-protected", "destination": ["CHANGELOG.md", "MIGRATION.md"], "note": "tooling-referenced release surfaces retained unchanged."},
+    {"id": "UNIQ-PROTECTED-DOCS-SITE", "disposition": "retain-protected", "destination": "docs-site/routes/getting-started.mdx", "note": "documentation-site route retained unchanged."},
+    {"id": "UNIQ-PROTECTED-WIKI", "disposition": "retain-protected", "destination": "WIKI.md", "note": "external wiki declaration retained unchanged."}
+  ],
+
+  "approved_transformation": {
+    "mutation_receipts": [
+      {"id": "DOC-1A2B3C4D", "fingerprint": "1a2b3c4d5e6f70819203a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9"},
+      {"id": "DOC-2B3C4D5E", "fingerprint": "2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a"},
+      {"id": "DOC-3C4D5E6F", "fingerprint": "3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b"}
+    ],
+    "recovery_boundary": "approval-2026-07-14-0001",
+    "hot_path_bytes_before": 30900,
+    "hot_path_bytes_after": 8620,
+    "structure_status": "improved",
+    "open_p0_required_by_scope": 0,
+    "open_p1_required_by_scope": 0,
+    "removed_files": ["docs/current/guide-duplicate-b.md"],
+    "unique_sections_migrated": ["UNIQ-RETRY-BACKOFF-0001"]
+  },
+
+  "adversarial_manifest_missing_unique_decision": {
+    "description": "Anti-cheat counterexample: an otherwise-plausible disposition manifest that simply deletes the duplicate host document without migrating the unique decision it hides. Naive byte-count structure improves (fewer bytes, one fewer duplicated file) while a load-bearing fact is silently lost. An implementation-independent oracle must reject this even though the naive score looks better.",
+    "disposition_manifest": [
+      {"id": "UNIQ-CURRENT-STATE-TARGET", "disposition": "compact", "destination": "docs/current/STATE.md"},
+      {"id": "UNIQ-ORPHAN-RUNBOOK", "disposition": "relink", "destination": "docs/orphan/RUNBOOK.md"},
+      {"id": "UNIQ-ARCHIVE-2019-ONBOARDING", "disposition": "retain-as-archive", "destination": "docs/archive/2019-deprecated-onboarding.md"},
+      {"id": "UNIQ-RETENTION-CONFLICT-A", "disposition": "retain-protected", "destination": "docs/policy/retention-a.md"},
+      {"id": "UNIQ-RETENTION-CONFLICT-B", "disposition": "retain-protected", "destination": "docs/policy/retention-b.md"},
+      {"id": "UNIQ-VERIFIED-SOURCE-LIMITS", "disposition": "flag-stale-evidence", "destination": "docs/current/api-limits.md"},
+      {"id": "UNIQ-VENDOR-SYMLINK-BOUNDARY", "disposition": "exclude-out-of-scope", "destination": null},
+      {"id": "UNIQ-UNRELATED-DIRTY-WORK", "disposition": "preserve-unrelated", "destination": "src/unrelated_feature/scratch.py"},
+      {"id": "UNIQ-LOCAL-AUTHORITATIVE-DECISIONS", "disposition": "local-preserve", "destination": ".local/0.3.0-campaign/DECISIONS.md"},
+      {"id": "UNIQ-PROTECTED-README", "disposition": "retain-protected", "destination": "README.md"},
+      {"id": "UNIQ-PROTECTED-COMMUNITY", "disposition": "retain-protected", "destination": ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md"]},
+      {"id": "UNIQ-PROTECTED-RELEASE", "disposition": "retain-protected", "destination": ["CHANGELOG.md", "MIGRATION.md"]},
+      {"id": "UNIQ-PROTECTED-DOCS-SITE", "disposition": "retain-protected", "destination": "docs-site/routes/getting-started.mdx"},
+      {"id": "UNIQ-PROTECTED-WIKI", "disposition": "retain-protected", "destination": "WIKI.md"}
+    ],
+    "hot_path_bytes_before": 30900,
+    "hot_path_bytes_after": 6520,
+    "naive_structure_status": "improved"
+  },
+
+  "stale_approval": {
+    "description": "An approval recorded before config/limits.synthetic.yaml changed; replaying it after the change must be rejected as stale rather than silently accepted.",
+    "approved_source_hash": "sha256:9a0f6a3e6b3f4d6c9b6e6a5a2c9e1f2b7a4c8d0e3f6b1a9c2d5e8f0a1b3c4d5e",
+    "current_source_hash": "sha256:1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "recovery_boundary": "approval-2026-06-01-0000"
+  },
+
+  "branch_merge_conflict": {
+    "status": "state-conflict",
+    "priority": "P0",
+    "read_only": true,
+    "files_changed": 0,
+    "duplicate_finding_ids": ["DOC-MERGE-0001"],
+    "duplicate_event_ids": ["EVT-MERGE-0001"],
+    "reconstruction_preview": [
+      {"kind": "reconstruct-state", "path": ".diataxis/state.json"},
+      {"kind": "reconstruct-findings", "path": ".diataxis/findings.json"},
+      {"kind": "reconstruct-events", "path": ".diataxis/events.jsonl"}
+    ],
+    "expected_verdict": "blocked"
+  },
+
+  "no_git_cleanup": {
+    "git_available": false,
+    "proposed_discard_group": ["docs/archive/obsolete.md"],
+    "disposition": "archive",
+    "hard_delete_approved": false,
+    "expected_status": "requires_user_action"
+  }
+}

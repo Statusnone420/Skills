@@ -1,7 +1,7 @@
 {
   "skill_name": "docs",
   "evals": [
-    {"id": "minimal-init", "prompt": "Inspect this repository and propose the smallest useful documentation structure; preview before any changes."},
+    {"id": "minimal-init", "prompt": "Run $docs init for a one-time repository adoption: use bounded metadata-first scope discovery, return the complete preview with zero writes, and apply nothing before a later separate exact approval."},
     {"id": "bounded-context", "prompt": "Recall bounded context for a task from the legacy state file without loading unrelated history; cite sources and constraints."},
     {"id": "diataxis-write", "prompt": "Classify the documentation need using Diátaxis, verify claims, and draft one focused page."},
     {"id": "evidence-update", "prompt": "Update documentation only from evidence in code, tests, configuration, or diff; keep uncertain candidates non-canonical."},

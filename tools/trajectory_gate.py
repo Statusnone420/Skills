@@ -13,6 +13,8 @@ from trajectory_routes import (
     ALL_ACTION_KINDS,
     BROAD_RETRIEVAL_KINDS,
     CHECKER_PREFLIGHT_KINDS,
+    DOCTOR_DISCOVERY_KIND,
+    DOCTOR_DISCOVERY_TERMINAL_STATUSES,
     MAX_DOCS_ACTIONS,
     validate_route,
 )
@@ -38,7 +40,40 @@ ALLOWED_CAMPAIGN_COMMANDS = ("map", "context", "check", "doctor")
 ALLOWED_CAMPAIGN_FIXTURES = ("mapped-repository", "missing-map-repository", "hostile-repository")
 PUBLIC_SCHEMA_VERSION = 1
 PUBLIC_VISIBILITY = "public-sanitized"
-HEALTH_RUBRIC_VERSION = 1
+HEALTH_RUBRIC_VERSION = 2
+TASK8_STRUCTURE_REQUIRED_FIELDS = frozenset(
+    {
+        "rubric_version",
+        "scope",
+        "delta",
+        "structure_status",
+        "trust_status",
+        "coverage",
+        "row_provenance",
+        "freshness",
+        "priority_counts",
+    }
+)
+TASK8_TRUST_STATUSES = frozenset(
+    {"blocked", "stale", "partial", "verified", "unverified"}
+)
+TASK8_STRUCTURE_STATUSES = frozenset(
+    {"healthy", "needs-attention", "improved", "blocked", "unverified"}
+)
+TASK8_PRIORITY_KEYS = frozenset({"P0", "P1", "P2", "P3"})
+TERMINAL_DOCTOR_OUTCOME_FIELDS_V1 = frozenset(
+    {
+        "status",
+        "read_only",
+        "files_changed",
+        "findings",
+        "answers",
+        "reported_finding_count",
+        "reported_findings",
+        "findings_exhaustive",
+        "scope",
+    }
+)
 REPOSITORY_ACTION_KINDS = (
     ALL_ACTION_KINDS | BROAD_RETRIEVAL_KINDS | CHECKER_PREFLIGHT_KINDS
 )
@@ -62,6 +97,10 @@ _RAW_EXIT = re.compile(r"(?i)\b(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:code|status))?
 _HEALTH_METER = re.compile(
     r"^Docs \[(?P<cells>[█░]{20})\] (?P<percentage>0|[1-9][0-9]?|100)%$"
 )
+_DOCTOR_FINDING_ID = re.compile(
+    r"^DOC-(?P<prefix>[0-9A-F]{8}(?:[0-9A-F]{4})*)$"
+)
+_DOCTOR_FINGERPRINT = re.compile(r"^(?P<digest>[0-9a-f]{64})$")
 
 
 def _walk(value, path=()):
@@ -94,32 +133,84 @@ def _validate_public(receipt: Mapping) -> None:
             raise ValueError(f"public trajectory receipt contains private material at {location}")
 
 
+def _validate_exact_json(value, name):
+    def visit(item, path, active):
+        item_type = type(item)
+        if item is None or item_type in {str, int, bool}:
+            return
+        if item_type not in {dict, list}:
+            raise ValueError(
+                f"{name} must use exact JSON types at {'/'.join(path) or name}"
+            )
+        identity = id(item)
+        if identity in active:
+            raise ValueError(
+                f"{name} must use exact JSON without cycles at {'/'.join(path) or name}"
+            )
+        active.add(identity)
+        try:
+            if item_type is list:
+                for index, child in enumerate(item):
+                    visit(child, path + (str(index),), active)
+            else:
+                for key, child in item.items():
+                    if type(key) is not str:
+                        raise ValueError(
+                            f"{name} must use exact JSON string keys at {'/'.join(path) or name}"
+                        )
+                    visit(child, path + (key,), active)
+        finally:
+            active.remove(identity)
+
+    visit(value, (), set())
+
+
 def _require_mapping(value, name):
-    if not isinstance(value, Mapping):
+    if type(value) is not dict:
         raise ValueError(f"{name} must be an object")
     return value
 
 
 def _validate_public_artifact(value, name):
+    if type(value) is dict and (
+        type(value.get("schema_version")) is not int
+        or value.get("schema_version") != PUBLIC_SCHEMA_VERSION
+    ):
+        raise ValueError(f"unsupported public trajectory {name} schema")
+    _validate_exact_json(value, name)
     artifact = _require_mapping(value, name)
     _validate_public(artifact)
-    if type(artifact.get("schema_version")) is not int or artifact["schema_version"] != PUBLIC_SCHEMA_VERSION:
-        raise ValueError(f"unsupported public trajectory {name} schema")
     if artifact.get("visibility") != PUBLIC_VISIBILITY:
         raise ValueError(f"unsupported public trajectory {name} visibility")
     return artifact
 
 
 def _positive_int(value, name):
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+    if type(value) is not int or value < 0:
         raise ValueError(f"{name} must be a non-negative integer")
     return value
 
 
 def _string_array(value, name):
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+    if type(value) is not list or any(type(item) is not str for item in value):
         raise ValueError(f"{name} must be an array of strings")
     return value
+
+
+def _normalize_scope_evidence(value):
+    if not isinstance(value, str) or not value:
+        return None
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        return None
+    parts = []
+    for part in normalized.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            return None
+        parts.append(part)
+    return "/".join(parts) or "."
 
 
 def _validate_allowlist(value, name, allowed):
@@ -160,8 +251,17 @@ def _health_meter_matches(meter, percentage=None):
     return match.group("cells") == expected_cells
 
 
-def _validate_health_meter(presentation, checker_actions, command, errors):
+def _validate_health_meter(
+    presentation,
+    checker_actions,
+    command,
+    errors,
+    *,
+    terminal_doctor_discovery=False,
+):
     if command not in {"map", "check", "doctor"}:
+        return
+    if terminal_doctor_discovery:
         return
     meter = presentation.get("health_meter")
     if not isinstance(meter, str):
@@ -196,6 +296,473 @@ def _validate_health_meter(presentation, checker_actions, command, errors):
         errors.append("presentation.health_meter_mismatch")
 
 
+def _validate_exhaustive_scope(
+    outcome,
+    checker_actions,
+    command,
+    declared_scope,
+    errors,
+):
+    if command not in {"check", "doctor"} or outcome.get("findings_exhaustive") is not True:
+        return
+    if declared_scope is None:
+        errors.append("outcome.missing_findings_scope")
+    if not checker_actions:
+        errors.append("retrieval.missing_checker_scope")
+        return
+    checker_scope = _normalize_scope_evidence(checker_actions[0].get("scope"))
+    if checker_scope is None:
+        errors.append("retrieval.missing_checker_scope")
+    elif declared_scope is not None and checker_scope != declared_scope:
+        errors.append("retrieval.checker_scope_mismatch")
+
+
+def _validate_doctor_scope(
+    checker_actions,
+    command,
+    declared_scope,
+    errors,
+):
+    if command != "doctor":
+        return
+    successful = [
+        action
+        for action in checker_actions
+        if action.get("status") in {"clean", "findings"}
+    ]
+    if not successful:
+        return
+    if declared_scope is None and "outcome.missing_findings_scope" not in errors:
+        errors.append("outcome.missing_findings_scope")
+    for checker in successful:
+        checker_scope = _normalize_scope_evidence(checker.get("scope"))
+        if checker_scope is None:
+            if "retrieval.missing_checker_scope" not in errors:
+                errors.append("retrieval.missing_checker_scope")
+        elif declared_scope is not None and checker_scope != declared_scope:
+            if "retrieval.checker_scope_mismatch" not in errors:
+                errors.append("retrieval.checker_scope_mismatch")
+
+
+def _doctor_identity_set(value, error, errors):
+    if not isinstance(value, list):
+        errors.append(error)
+        return None
+    identities = set()
+    ids = set()
+    fingerprints = set()
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {"id", "fingerprint"}:
+            errors.append(error)
+            return None
+        finding_id = item["id"]
+        fingerprint = item["fingerprint"]
+        id_match = (
+            _DOCTOR_FINDING_ID.fullmatch(finding_id)
+            if isinstance(finding_id, str)
+            else None
+        )
+        fingerprint_match = (
+            _DOCTOR_FINGERPRINT.fullmatch(fingerprint)
+            if isinstance(fingerprint, str)
+            else None
+        )
+        if id_match is None or fingerprint_match is None:
+            errors.append(error)
+            return None
+        prefix = id_match.group("prefix").lower()
+        digest = fingerprint_match.group("digest")
+        if len(prefix) > len(digest) or not digest.startswith(prefix):
+            errors.append(error)
+            return None
+        identity = (finding_id, fingerprint)
+        if finding_id in ids or fingerprint in fingerprints or identity in identities:
+            errors.append(error)
+            return None
+        ids.add(finding_id)
+        fingerprints.add(fingerprint)
+        identities.add(identity)
+    return identities
+
+
+def _validate_doctor_finding_contract(outcome, checker_actions, command, errors):
+    if command != "doctor":
+        return
+    successful = [
+        action
+        for action in checker_actions
+        if action.get("status") in {"clean", "findings"}
+    ]
+    if not successful:
+        return
+
+    reported = _doctor_identity_set(
+        outcome.get("reported_findings"),
+        "outcome.invalid_reported_findings",
+        errors,
+    )
+    reported_count = outcome.get("reported_finding_count")
+    findings_count = outcome.get("findings")
+    if (
+        type(reported_count) is not int
+        or reported_count < 0
+        or (reported is not None and reported_count != len(reported))
+    ):
+        errors.append("outcome.reported_finding_count_mismatch")
+
+    for checker in successful:
+        compact = _doctor_identity_set(
+            checker.get("compact_findings"),
+            "retrieval.invalid_compact_findings",
+            errors,
+        )
+        compact_count = checker.get("compact_finding_count")
+        if (
+            type(compact_count) is not int
+            or compact_count < 0
+            or (compact is not None and compact_count != len(compact))
+        ):
+            errors.append("retrieval.compact_finding_count_mismatch")
+        if compact is not None and reported is not None and compact != reported:
+            errors.append("outcome.reported_findings_mismatch")
+        if (
+            type(findings_count) is not int
+            or findings_count < 0
+            or (compact is not None and findings_count != len(compact))
+            or (reported is not None and findings_count != len(reported))
+        ):
+            errors.append("outcome.finding_count_mismatch")
+        if checker.get("status") == "clean" and compact:
+            errors.append("retrieval.compact_finding_count_mismatch")
+        if checker.get("status") == "findings" and compact == set():
+            errors.append("retrieval.compact_finding_count_mismatch")
+
+
+def _task8_nonempty_string(value):
+    return type(value) is str and bool(value.strip())
+
+
+def _task8_nonnegative_int(value):
+    return type(value) is int and value >= 0
+
+
+def _task8_valid_evidence_rows(value, *, allow_strings=False):
+    if type(value) is not list:
+        return False
+    for row in value:
+        if type(row) is str:
+            if not allow_strings or _normalize_scope_evidence(row) is None:
+                return False
+            continue
+        if type(row) is not dict or not row:
+            return False
+        route = row.get("route", row.get("path", row.get("row")))
+        if not _task8_nonempty_string(route) or _normalize_scope_evidence(route) is None:
+            return False
+        source = row.get("source")
+        if source is not None and not _task8_nonempty_string(source):
+            return False
+    return True
+
+
+def _task8_validate_scope(value, outcome, error, errors):
+    scope = _normalize_scope_evidence(value)
+    declared = _normalize_scope_evidence(outcome.get("scope"))
+    if scope is None or declared is None or scope != declared:
+        if error not in errors:
+            errors.append(error)
+        return None
+    return scope
+
+
+def _validate_task8_structure(outcome, errors):
+    """Validate the optional Task 8 scope-qualified rubric payload.
+
+    Frozen v1 trajectory receipts do not carry ``outcome.structure`` and remain valid. Once a
+    receipt claims the v2 transformation/quality contract, however, all semantic evidence needed
+    to interpret the claim must travel together and be bound to the Doctor scope.
+    """
+    structure = outcome.get("structure")
+    if structure is None:
+        return
+    if type(structure) is not dict:
+        errors.append("outcome.invalid_structure_rubric_v2")
+        return
+    missing = TASK8_STRUCTURE_REQUIRED_FIELDS - set(structure)
+    if missing:
+        errors.append("outcome.invalid_structure_rubric_v2")
+        return
+    if type(structure.get("rubric_version")) is not int or structure.get("rubric_version") != 2:
+        errors.append("outcome.invalid_structure_rubric_v2")
+    _task8_validate_scope(
+        structure.get("scope"),
+        outcome,
+        "outcome.invalid_structure_rubric_v2",
+        errors,
+    )
+    delta = structure.get("delta")
+    if delta is not None and (
+        type(delta) not in {int, float} or isinstance(delta, bool)
+    ):
+        errors.append("outcome.invalid_structure_rubric_v2")
+    if (
+        type(structure.get("structure_status")) is not str
+        or structure.get("structure_status") not in TASK8_STRUCTURE_STATUSES
+        or type(structure.get("trust_status")) is not str
+        or structure.get("trust_status") not in TASK8_TRUST_STATUSES
+    ):
+        errors.append("outcome.invalid_structure_rubric_v2")
+
+    coverage = structure.get("coverage")
+    if type(coverage) is not dict:
+        errors.append("outcome.invalid_structure_rubric_v2")
+    else:
+        numerator = coverage.get("numerator")
+        denominator = coverage.get("denominator")
+        routes = coverage.get("routes")
+        if (
+            not _task8_nonnegative_int(numerator)
+            or not _task8_nonnegative_int(denominator)
+            or numerator > denominator
+            or not _task8_valid_evidence_rows(routes, allow_strings=True)
+        ):
+            errors.append("outcome.invalid_structure_rubric_v2")
+        elif denominator == 0 and structure.get("trust_status") != "unverified":
+            errors.append("outcome.invalid_structure_rubric_v2")
+
+    row_provenance = structure.get("row_provenance")
+    if not _task8_valid_evidence_rows(row_provenance):
+        errors.append("outcome.invalid_structure_rubric_v2")
+
+    freshness = structure.get("freshness")
+    if type(freshness) is not dict:
+        errors.append("outcome.invalid_structure_rubric_v2")
+    else:
+        freshness_status = freshness.get("status")
+        if freshness_status not in {"fresh", "stale", "unverified"}:
+            errors.append("outcome.invalid_structure_rubric_v2")
+        if not _task8_valid_evidence_rows(freshness.get("routes"), allow_strings=True):
+            errors.append("outcome.invalid_structure_rubric_v2")
+        if not _task8_valid_evidence_rows(freshness.get("findings")):
+            errors.append("outcome.invalid_structure_rubric_v2")
+
+    priority_counts = structure.get("priority_counts")
+    if type(priority_counts) is not dict or set(priority_counts) != TASK8_PRIORITY_KEYS:
+        errors.append("outcome.invalid_structure_rubric_v2")
+    elif any(not _task8_nonnegative_int(priority_counts[key]) for key in TASK8_PRIORITY_KEYS):
+        errors.append("outcome.invalid_structure_rubric_v2")
+
+
+def _validate_task8_current_truth(outcome, errors):
+    value = outcome.get("current_truth")
+    if value is None:
+        return
+    if type(value) is str:
+        errors.append("outcome.unqualified_current_truth_pass")
+        return
+    if type(value) is not dict:
+        errors.append("outcome.unqualified_current_truth_pass")
+        return
+    if not _task8_nonempty_string(value.get("status")):
+        errors.append("outcome.unqualified_current_truth_pass")
+    _task8_validate_scope(
+        value.get("scope"),
+        outcome,
+        "outcome.unqualified_current_truth_pass",
+        errors,
+    )
+    if not _task8_valid_evidence_rows(value.get("evidence", value.get("routes")), allow_strings=True):
+        errors.append("outcome.unqualified_current_truth_pass")
+    trust_status = value.get("trust_status")
+    if trust_status not in TASK8_TRUST_STATUSES:
+        errors.append("outcome.unqualified_current_truth_pass")
+    freshness = value.get("freshness")
+    if type(freshness) is not dict or freshness.get("status") not in {"fresh", "stale", "unverified"}:
+        errors.append("outcome.unqualified_current_truth_pass")
+    coverage = value.get("coverage")
+    if type(coverage) is not dict:
+        errors.append("outcome.unqualified_current_truth_pass")
+    else:
+        numerator = coverage.get("numerator")
+        denominator = coverage.get("denominator")
+        if (
+            not _task8_nonnegative_int(numerator)
+            or not _task8_nonnegative_int(denominator)
+            or numerator > denominator
+            or (denominator == 0 and trust_status != "unverified")
+            or (denominator > 0 and numerator < denominator and trust_status == "verified")
+        ):
+            errors.append("outcome.unqualified_current_truth_pass")
+
+
+def _validate_task8_removed_sections(outcome, errors):
+    value = outcome.get("removed_sections")
+    if value is None:
+        return
+    if type(value) is not list:
+        errors.append("outcome.missing_removal_disposition")
+        return
+    seen = set()
+    for item in value:
+        if type(item) is not dict:
+            errors.append("outcome.missing_removal_disposition")
+            continue
+        identity = item.get("id")
+        disposition = item.get("disposition")
+        if not _task8_nonempty_string(identity) or identity in seen:
+            errors.append("outcome.missing_removal_disposition")
+        if not (
+            _task8_nonempty_string(disposition)
+            or (type(disposition) is dict and bool(disposition))
+        ):
+            errors.append("outcome.missing_removal_disposition")
+        seen.add(identity)
+
+
+def _validate_task8_approval(outcome, errors):
+    approval = outcome.get("approval")
+    if approval is None:
+        return
+    if type(approval) is not dict:
+        errors.append("outcome.invalid_approval")
+        return
+    approved = approval.get("approved_source_hash")
+    current = approval.get("current_source_hash")
+    if not _task8_nonempty_string(approved) or not _task8_nonempty_string(current):
+        errors.append("outcome.invalid_approval")
+    elif approved != current:
+        errors.append("outcome.stale_approval")
+    boundary = approval.get("recovery_boundary")
+    if boundary is not None and not _task8_nonempty_string(boundary):
+        errors.append("outcome.invalid_approval")
+
+
+def _validate_task8_mutation_receipts(outcome, errors):
+    value = outcome.get("mutation_receipts")
+    if value is None:
+        return
+    if type(value) is not list:
+        errors.append("outcome.invalid_mutation_receipts")
+        return
+    if value and not _task8_nonempty_string(outcome.get("recovery_boundary")):
+        errors.append("outcome.missing_recovery_boundary")
+    if value:
+        approval = outcome.get("approval")
+        authorized = (
+            type(approval) is dict
+            and (
+                approval.get("approved") is True
+                or approval.get("status") in {"approved", "accepted"}
+            )
+        )
+        if not authorized:
+            errors.append("outcome.missing_approval")
+    identities = _doctor_identity_set(
+        value,
+        "outcome.invalid_mutation_receipts",
+        errors,
+    )
+    if identities is None:
+        return
+    approval = outcome.get("approval")
+    if type(approval) is dict and _task8_nonempty_string(approval.get("recovery_boundary")):
+        if outcome.get("recovery_boundary") != approval.get("recovery_boundary"):
+            errors.append("outcome.recovery_boundary_mismatch")
+
+
+def _validate_task8_recovery(outcome, errors):
+    conflict = outcome.get("state_conflict")
+    if conflict is not None:
+        valid = (
+            type(conflict) is dict
+            and conflict.get("status") == "state-conflict"
+            and conflict.get("priority") == "P0"
+            and conflict.get("read_only") is True
+            and conflict.get("files_changed") == 0
+            and type(conflict.get("duplicate_finding_ids")) is list
+            and type(conflict.get("duplicate_event_ids")) is list
+            and conflict.get("duplicate_finding_ids")
+            and conflict.get("duplicate_event_ids")
+            and _task8_valid_evidence_rows(conflict.get("reconstruction_preview"))
+            and conflict.get("reconstruction_preview")
+            and outcome.get("status") != "complete"
+        )
+        if not valid:
+            errors.append("outcome.invalid_state_conflict_recovery")
+
+    cleanup = outcome.get("no_git_cleanup")
+    if cleanup is not None:
+        valid = (
+            type(cleanup) is dict
+            and cleanup.get("git_available") is False
+            and type(cleanup.get("proposed_discard_group")) is list
+            and cleanup.get("proposed_discard_group")
+            and type(cleanup.get("hard_delete_approved")) is bool
+            and (
+                cleanup.get("hard_delete_approved") is True
+                or cleanup.get("disposition") == "archive"
+            )
+        )
+        if not valid:
+            errors.append("outcome.invalid_no_git_cleanup")
+
+
+def _validate_task8_doctor_contract(outcome, command, errors):
+    if command != "doctor":
+        return
+    _validate_task8_structure(outcome, errors)
+    _validate_task8_current_truth(outcome, errors)
+    _validate_task8_removed_sections(outcome, errors)
+    _validate_task8_approval(outcome, errors)
+    _validate_task8_mutation_receipts(outcome, errors)
+    _validate_task8_recovery(outcome, errors)
+
+
+def _validate_terminal_doctor_discovery_contract(
+    outcome,
+    docs_actions,
+    checker_actions,
+    terminal_doctor_discovery,
+    errors,
+):
+    if not terminal_doctor_discovery:
+        return
+    reported = _doctor_identity_set(
+        outcome.get("reported_findings"),
+        "outcome.invalid_reported_findings",
+        errors,
+    )
+    discovery = docs_actions[0]
+    invalid = bool(
+        type(outcome) is not dict
+        or set(outcome) != TERMINAL_DOCTOR_OUTCOME_FIELDS_V1
+        or type(outcome.get("status")) is not str
+        or outcome.get("status") != "incomplete"
+        or outcome.get("read_only") is not True
+        or type(outcome.get("files_changed")) is not int
+        or outcome.get("files_changed") != 0
+        or type(outcome.get("findings")) is not int
+        or outcome.get("findings") != 0
+        or type(outcome.get("answers")) is not list
+        or any(type(answer) is not str for answer in outcome.get("answers", ()))
+        or type(outcome.get("reported_finding_count")) is not int
+        or outcome.get("reported_finding_count") != 0
+        or type(outcome.get("reported_findings")) is not list
+        or reported != set()
+        or outcome.get("findings_exhaustive") is not False
+        or type(outcome.get("scope")) is not str
+        or _normalize_scope_evidence(outcome.get("scope")) != outcome.get("scope")
+        or checker_actions
+        or len(docs_actions) != 1
+        or "compact_finding_count" in discovery
+        or "compact_findings" in discovery
+        or "compact_finding_count" in outcome
+        or "compact_findings" in outcome
+    )
+    if invalid:
+        errors.append("outcome.invalid_terminal_doctor_diagnosis")
+
+
 def evaluate(receipt: Mapping) -> dict:
     """Return a deterministic PASS/FAIL result for a sanitized trajectory receipt."""
     receipt = _validate_public_artifact(receipt, "receipt")
@@ -228,12 +795,21 @@ def evaluate(receipt: Mapping) -> dict:
         if "paths" in item or item.get("kind") in REPOSITORY_ACTION_KINDS
     ]
     checker_actions = [item for item in docs_actions if item.get("kind") == "checker"]
+    declared_scope = _normalize_scope_evidence(outcome.get("scope"))
+    terminal_doctor_discovery = bool(
+        command == "doctor"
+        and docs_actions
+        and docs_actions[0].get("kind") == DOCTOR_DISCOVERY_KIND
+        and docs_actions[0].get("status") in DOCTOR_DISCOVERY_TERMINAL_STATUSES
+    )
     checker_runs = sum(
         _positive_int(item.get("count", 1), "action.count")
         for item in checker_actions
     )
 
-    if outcome.get("status") != "complete":
+    if terminal_doctor_discovery and outcome.get("status") != "incomplete":
+        errors.append("outcome.discovery_not_incomplete")
+    elif not terminal_doctor_discovery and outcome.get("status") != "complete":
         errors.append("outcome.incomplete")
     files_changed = _positive_int(outcome.get("files_changed"), "outcome.files_changed")
     if outcome.get("read_only") is not True or files_changed != 0:
@@ -256,10 +832,38 @@ def evaluate(receipt: Mapping) -> dict:
         raise ValueError("presentation.raw_exit_code_visible must be a boolean")
     if raw_exit_code_visible or _RAW_EXIT.search(visible):
         errors.append("presentation.raw_exit_code")
-    _validate_health_meter(presentation, checker_actions, command, errors)
+    _validate_health_meter(
+        presentation,
+        checker_actions,
+        command,
+        errors,
+        terminal_doctor_discovery=terminal_doctor_discovery,
+    )
+    _validate_exhaustive_scope(
+        outcome,
+        checker_actions,
+        command,
+        declared_scope,
+        errors,
+    )
+    _validate_doctor_scope(
+        checker_actions,
+        command,
+        declared_scope,
+        errors,
+    )
+    _validate_terminal_doctor_discovery_contract(
+        outcome,
+        docs_actions,
+        checker_actions,
+        terminal_doctor_discovery,
+        errors,
+    )
+    _validate_doctor_finding_contract(outcome, checker_actions, command, errors)
+    _validate_task8_doctor_contract(outcome, command, errors)
     if external_repository_actions:
         errors.append("retrieval.external_repository_action")
-    errors.extend(validate_route(command, docs_actions))
+    errors.extend(validate_route(command, docs_actions, scope=declared_scope))
     if any(item.get("status") == "failed-lookup" for item in external_actions):
         warnings.append("external.failed_lookup")
 
@@ -319,8 +923,46 @@ def main(argv=None) -> int:
             object_pairs_hook=_reject_duplicate_json_keys,
         )
         result = evaluate(receipt)
-    except (OSError, json.JSONDecodeError, ValueError, OverflowError, RecursionError) as exc:
-        print(json.dumps({"status": "INVALID", "error": str(exc)}, ensure_ascii=False))
+    except OSError:
+        print(
+            json.dumps(
+                {"status": "INVALID", "error": "trajectory receipt unavailable"},
+                ensure_ascii=False,
+            )
+        )
+        return 2
+    except json.JSONDecodeError:
+        print(
+            json.dumps(
+                {"status": "INVALID", "error": "invalid trajectory JSON"},
+                ensure_ascii=False,
+            )
+        )
+        return 2
+    except ValueError as exc:
+        # Keep the two stable public contract labels that callers use, while never echoing
+        # arbitrary validation text (which may contain a private path, key, or OS detail).
+        message = str(exc)
+        if message.startswith("duplicate JSON key"):
+            detail = "duplicate JSON key"
+        elif message == "unsupported trajectory command":
+            detail = message
+        else:
+            detail = "invalid trajectory receipt"
+        print(
+            json.dumps(
+                {"status": "INVALID", "error": detail},
+                ensure_ascii=False,
+            )
+        )
+        return 2
+    except (OverflowError, RecursionError):
+        print(
+            json.dumps(
+                {"status": "INVALID", "error": "invalid trajectory receipt"},
+                ensure_ascii=False,
+            )
+        )
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if result["status"] == "PASS" else 1
