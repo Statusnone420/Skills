@@ -28,6 +28,7 @@ from skills.docs.scripts._docs_checker.paths import (
     ANYWHERE_PRUNE_DIRS,
     REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
 )
+from skills.docs.scripts._docs_checker.receipt import DISCOVERY_CONTRACT_V2
 
 
 def finding_identities(count):
@@ -1397,6 +1398,95 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "PASS", result["errors"])
         self.assertEqual(result["metrics"]["checker_runs"], 1)
+
+    def test_doctor_root_discovery_can_read_its_discovered_root_documents(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for name in (
+                "README.md",
+                "ARCHITECTURE.md",
+                "ROADMAP.md",
+                "EVALUATION.md",
+            ):
+                _write_markdown(root, name)
+            discovery = {
+                "owner": "docs",
+                "kind": "init-discovery",
+                **trajectory_discovery_contract.build_doctor_discovery_action(
+                    discover_init_scope(
+                        root,
+                        contract_version=DISCOVERY_CONTRACT_V2,
+                    )
+                ),
+            }
+
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        checker = self.mapped_actions(False)[-1]
+        checker["scope"] = "."
+        receipt["outcome"].update(scope=".", findings_exhaustive=True)
+        receipt["retrieval"]["actions"] = [
+            discovery,
+            {
+                "owner": "docs",
+                "kind": "read-map",
+                "paths": ["ARCHITECTURE.md"],
+                "status": "complete",
+            },
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["ROADMAP.md", "EVALUATION.md"],
+                "status": "complete",
+            },
+            checker,
+        ]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+        self.bind_doctor_findings(receipt)
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS", result["errors"])
+
+    def test_doctor_root_discovery_still_rejects_undiscovered_root_documents(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for name in ("README.md", "ARCHITECTURE.md"):
+                _write_markdown(root, name)
+            discovery = {
+                "owner": "docs",
+                "kind": "init-discovery",
+                **trajectory_discovery_contract.build_doctor_discovery_action(
+                    discover_init_scope(
+                        root,
+                        contract_version=DISCOVERY_CONTRACT_V2,
+                    )
+                ),
+            }
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        checker = self.mapped_actions(False)[-1]
+        checker["scope"] = "."
+        receipt["outcome"].update(scope=".", findings_exhaustive=True)
+        receipt["retrieval"]["actions"] = [
+            discovery,
+            {
+                "owner": "docs",
+                "kind": "combined-read",
+                "paths": ["UNDISCOVERED.md"],
+                "status": "complete",
+            },
+            checker,
+        ]
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+        self.bind_doctor_findings(receipt)
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("retrieval.invalid_doctor_discovery_content", result["errors"])
 
     def test_doctor_terminal_discovery_results_stop_honestly_before_content(self):
         cases = (

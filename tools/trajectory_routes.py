@@ -349,14 +349,23 @@ def validate_context_route(actions):
     return _dedupe(errors)
 
 
-def _doctor_path_error(path, scope, root_only_overrides=()):
+def _doctor_path_error(
+    path,
+    scope,
+    root_only_overrides=(),
+    allowed_root_paths=(),
+):
     if not _is_safe_relative_path(path):
         return "retrieval.forbidden_path"
     normalized = path.replace("\\", "/")
     if _prune_reason(normalized, root_only_overrides):
         return "retrieval.forbidden_path"
     if scope == ".":
-        return None if _is_allowed_hot_path(path) else "retrieval.forbidden_path"
+        return (
+            None
+            if normalized in allowed_root_paths or _is_allowed_hot_path(path)
+            else "retrieval.forbidden_path"
+        )
     if scope is None or not _scope_contains(scope, normalized):
         return "retrieval.path_outside_doctor_scope"
     if normalized == scope or "." not in normalized.rsplit("/", 1)[-1]:
@@ -374,6 +383,7 @@ def _validate_doctor_paths(
     *,
     reject_empty=False,
     root_only_overrides=(),
+    allowed_root_paths=(),
 ):
     for action in actions:
         if "paths" not in action or not _valid_path_list(action):
@@ -385,7 +395,12 @@ def _validate_doctor_paths(
         if reject_empty and not paths:
             _append(errors, "retrieval.invalid_action_paths")
         for path in paths:
-            error = _doctor_path_error(path, scope, root_only_overrides)
+            error = _doctor_path_error(
+                path,
+                scope,
+                root_only_overrides,
+                allowed_root_paths,
+            )
             if error is not None:
                 _append(errors, error)
 
@@ -474,6 +489,7 @@ def _validate_doctor_discovery_route(actions, errors, scope):
                 scope,
                 reject_empty=True,
                 root_only_overrides=root_only_overrides,
+                allowed_root_paths=content_paths,
             )
         if action.get("kind") == "read-map" and (
             not _valid_path_list(action) or len(action.get("paths", ())) != 1
