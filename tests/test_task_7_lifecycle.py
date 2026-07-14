@@ -1388,7 +1388,19 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
             original_run = io_module.subprocess.run
 
             def capture(command, *args, **kwargs):
-                result = original_run(command, *args, **kwargs)
+                if "-c" not in command:
+                    result = subprocess.CompletedProcess(
+                        command,
+                        128,
+                        "",
+                        "fatal: detected dubious ownership in repository at "
+                        f"'{root.as_posix()}'\n"
+                        "To add an exception for this directory, call:\n"
+                        "\n\tgit config --global --add safe.directory "
+                        f"{root.as_posix()}\n",
+                    )
+                else:
+                    result = original_run(command, *args, **kwargs)
                 rendered = [
                     "<repo>"
                     if str(part) in {str(root), root.as_posix()}
@@ -1408,17 +1420,20 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                 )
                 return result
 
-            with mock.patch.dict(
-                os.environ,
-                {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
-            ), mock.patch.object(
+            with mock.patch.object(
                 io_module.subprocess,
                 "run",
                 side_effect=capture,
             ):
                 status = io_module._git_ignore_status(root)
+                (root / ".gitignore").write_text(
+                    ".diataxis/local-map.json\n",
+                    encoding="utf-8",
+                )
+                ignored_status = io_module._git_ignore_status(root)
 
             self.assertEqual(status, "not-ignored", msg=json.dumps(probes, sort_keys=True))
+            self.assertEqual(ignored_status, "ignored")
             serialized_probes = json.dumps(probes, sort_keys=True)
             self.assertNotIn(str(root), serialized_probes)
             self.assertNotIn(root.as_posix(), serialized_probes)
@@ -1441,16 +1456,6 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                 ),
                 msg=json.dumps(probes, sort_keys=True),
             )
-            (root / ".gitignore").write_text(
-                ".diataxis/local-map.json\n",
-                encoding="utf-8",
-            )
-            with mock.patch.dict(
-                os.environ,
-                {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
-            ):
-                self.assertEqual(io_module._git_ignore_status(root), "ignored")
-
     def test_unavailable_git_proof_fails_closed_without_writing_local_map(self):
         io_module = self.module("lifecycle_io")
         verify = self.api("verify_local_route_hashes")
