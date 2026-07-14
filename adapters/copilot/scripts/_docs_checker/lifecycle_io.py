@@ -243,7 +243,7 @@ def _normalize_git_root(value):
             and text[1].isalpha()
         ):
             text = f"{text[1].upper()}:{text[2:]}"
-    return os.path.normcase(os.path.abspath(text))
+    return os.path.normcase(os.path.realpath(os.path.abspath(text)))
 
 
 def _run_git_probe(root, *arguments):

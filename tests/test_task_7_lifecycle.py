@@ -1,5 +1,6 @@
 import ast
 import copy
+import ctypes
 import errno
 import hashlib
 import importlib
@@ -1514,146 +1515,57 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
             self.assertFalse(result["git_ignore_protected"])
             self.assertEqual(tree_bytes(root), before)
 
-    def test_git_proof_stage_diagnostics_on_real_temp_repository(self):
+    def test_git_proof_accepts_windows_short_root_alias_end_to_end(self):
+        if os.name != "nt":
+            self.skipTest("Windows short-path aliases are not available")
         io_module = self.module("lifecycle_io")
-        git_env_names = (
-            "GIT_DIR",
-            "GIT_WORK_TREE",
-            "GIT_CEILING_DIRECTORIES",
-            "GIT_CONFIG_COUNT",
-            "GIT_CONFIG_KEY_0",
-            "GIT_CONFIG_VALUE_0",
-        )
-
-        def stderr_category(stderr):
-            detail = (stderr or "").casefold()
-            if not detail:
-                return "empty"
-            if "dubious ownership" in detail:
-                return "dubious-ownership"
-            if "safe.directory" in detail:
-                return "safe-directory"
-            if "not a git repository" in detail:
-                return "not-repository"
-            if "not recognized" in detail or "not found" in detail:
-                return "git-not-found"
-            return "other"
-
-        def command_stage(command):
-            if "rev-parse" in command:
-                return "rev-parse"
-            if "ls-files" in command:
-                return "ls-files"
-            if "check-ignore" in command:
-                return "check-ignore"
-            return "other"
-
-        def root_shape(value, selected):
-            text = os.fspath(value).strip()
-            normalized = io_module._normalize_git_root(text)
-            selected_normalized = io_module._normalize_git_root(selected)
-            separators = (
-                "mixed"
-                if "/" in text and "\\" in text
-                else "slash"
-                if "/" in text
-                else "backslash"
-                if "\\" in text
-                else "none"
-            )
-            return {
-                "drive": text[:1].upper() if len(text) >= 2 and text[1] == ":" else "none",
-                "separators": separators,
-                "equal": normalized == selected_normalized,
-            }
-
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
+            long_root = Path(td) / "long-directory-for-git-proof"
+            long_root.mkdir()
             try:
                 subprocess.run(
-                    ["git", "init", "-q"],
-                    cwd=root,
+                    ["git", "-C", str(long_root), "init", "-q"],
                     check=True,
                     capture_output=True,
                 )
             except (OSError, subprocess.CalledProcessError):
                 self.skipTest("Git unavailable")
-            diagnostics = []
-            original_run = io_module.subprocess.run
-
-            def capture(command, *args, **kwargs):
-                stage = command_stage(command)
-                try:
-                    result = original_run(command, *args, **kwargs)
-                except BaseException as exc:
-                    diagnostics.append(
-                        {
-                            "stage": stage,
-                            "launch_exception": type(exc).__name__,
-                        }
-                    )
-                    raise
-                item = {
-                    "stage": stage,
-                    "returncode": result.returncode,
-                    "stderr_category": stderr_category(result.stderr),
-                }
-                if stage == "rev-parse" and result.returncode == 0:
-                    item["root_shape"] = root_shape(result.stdout, root)
-                diagnostics.append(item)
-                return result
-
-            with mock.patch.object(
-                io_module.subprocess,
-                "run",
-                side_effect=capture,
+            buffer = ctypes.create_unicode_buffer(32768)
+            length = ctypes.windll.kernel32.GetShortPathNameW(
+                str(long_root), buffer, len(buffer)
+            )
+            short_root = buffer.value if length else ""
+            if not short_root or os.path.normcase(short_root) == os.path.normcase(
+                str(long_root)
             ):
-                try:
-                    self.assertEqual(
-                        io_module._git_ignore_status(root),
-                        "not-ignored",
-                        msg=json.dumps(
-                            {
-                                "diagnostics": diagnostics,
-                                "git_environment_presence": {
-                                    name: name in os.environ for name in git_env_names
-                                },
-                            },
-                            sort_keys=True,
-                        ),
-                    )
-                    (root / ".gitignore").write_text(
-                        ".diataxis/local-map.json\n",
-                        encoding="utf-8",
-                    )
-                    self.assertEqual(io_module._git_ignore_status(root), "ignored")
-                    local_map = root / ".diataxis" / "local-map.json"
-                    local_map.parent.mkdir()
-                    local_map.write_text("{}", encoding="utf-8")
-                    subprocess.run(
-                        ["git", "add", "-f", str(local_map)],
-                        cwd=root,
-                        check=True,
-                        capture_output=True,
-                    )
-                    self.assertEqual(io_module._git_ignore_status(root), "not-ignored")
-                    subprocess.run(
-                        ["git", "reset", "-q", "--", ".diataxis/local-map.json"],
-                        cwd=root,
-                        check=True,
-                        capture_output=True,
-                    )
-                    local_map.unlink()
-                    plan = self.prepare_comprehensive(root)
-                    self.assertEqual(plan["status"], "approval-required")
-                except AssertionError as exc:
-                    self.fail(
-                        f"Git proof stage diagnostics: {exc}; "
-                        f"diagnostics={json.dumps(diagnostics, sort_keys=True)}"
-                    )
+                self.skipTest("Windows short-path alias unavailable")
+            root = Path(short_root)
 
-            for stage in ("rev-parse", "ls-files", "check-ignore"):
-                self.assertIn(stage, {item["stage"] for item in diagnostics})
+            self.assertEqual(io_module._git_ignore_status(root), "not-ignored")
+            (long_root / ".gitignore").write_text(
+                ".diataxis/local-map.json\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(io_module._git_ignore_status(root), "ignored")
+            local_map = long_root / ".diataxis" / "local-map.json"
+            local_map.parent.mkdir()
+            local_map.write_text("{}", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "-f", str(local_map)],
+                cwd=long_root,
+                check=True,
+                capture_output=True,
+            )
+            self.assertEqual(io_module._git_ignore_status(root), "not-ignored")
+            subprocess.run(
+                ["git", "reset", "-q", "--", ".diataxis/local-map.json"],
+                cwd=long_root,
+                check=True,
+                capture_output=True,
+            )
+            local_map.unlink()
+            plan = self.prepare_comprehensive(root)
+            self.assertEqual(plan["status"], "approval-required")
 
     def test_tracked_local_map_cannot_be_reclassified_as_safe_by_gitignore(self):
         with tempfile.TemporaryDirectory() as td:
