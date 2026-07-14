@@ -172,6 +172,21 @@ from _docs_checker.surfaces import (
     preview_protected_dispositions,
     validate_protected_disposition_preview,
 )
+
+
+# Build the CLI parser at import time.  On POSIX, argparse's locale discovery
+# may probe the filesystem while constructing help text; that work is outside
+# Init discovery so the bounded metadata budget measures repository evidence
+# only.
+_PARSER = argparse.ArgumentParser()
+_PARSER.add_argument("root")
+_PARSER.add_argument("--json", action="store_true")
+_PARSER.add_argument("--agent", action="store_true")
+_PARSER.add_argument("--init-discovery", action="store_true")
+_PARSER.add_argument("--map", default="docs/README.md")
+_PARSER.add_argument("--hot", default=None)
+_PARSER.add_argument("--scope", default=None)
+
 sys.dont_write_bytecode = _previous_dont_write_bytecode
 del _previous_dont_write_bytecode
 
@@ -271,15 +286,7 @@ def main(argv=None):
             )
         )
         return 2
-    parser = argparse.ArgumentParser()
-    parser.add_argument("root")
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--agent", action="store_true")
-    parser.add_argument("--init-discovery", action="store_true")
-    parser.add_argument("--map", default="docs/README.md")
-    parser.add_argument("--hot", default=None)
-    parser.add_argument("--scope", default=None)
-    namespace = parser.parse_args(argv)
+    namespace = _PARSER.parse_args(argv)
     try:
         if namespace.agent and not namespace.json:
             raise ValueError("--agent requires --json")

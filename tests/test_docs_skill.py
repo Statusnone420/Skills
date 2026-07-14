@@ -1884,6 +1884,29 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertEqual(payload["observed"]["metadata_operations"], 1)
             self.assertEqual(physical_calls, 1)
 
+    def test_init_cli_parser_is_constructed_before_bounded_discovery(self):
+        """Argument-parser locale probes must not consume Init metadata budget."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+
+            def parser_created_during_discovery(*args, **kwargs):
+                raise AssertionError(
+                    "Init must not construct an argument parser during discovery"
+                )
+
+            stdout = io.StringIO()
+            with mock.patch.object(
+                docs_checker.argparse,
+                "ArgumentParser",
+                side_effect=parser_created_during_discovery,
+            ), mock.patch.object(docs_checker.sys, "stdout", stdout):
+                returncode = docs_checker.main(
+                    [str(root), "--json", "--agent", "--init-discovery"]
+                )
+
+            self.assertEqual(returncode, 0)
+            self.assertEqual(json.loads(stdout.getvalue())["mode"], "init-discovery")
+
     def test_init_cli_root_normalization_is_lexical_before_bounded_discovery(self):
         """The CLI must not use a filesystem-sensitive Path.absolute preflight."""
         original_path = docs_checker.Path
