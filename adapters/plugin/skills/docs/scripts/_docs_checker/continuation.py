@@ -1,5 +1,7 @@
 """Versioned, state-free planning cursors for selected documentation corpora."""
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -13,6 +15,8 @@ CONTINUATION_POLICY_VERSION = "init-content-v1"
 CONTINUATION_ORDERING_VERSION = "repo-relative-casefold-v1"
 DISCOVERY_CURSOR_CONTRACT_VERSION = 2
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
+_TOKEN = re.compile(r"^[A-Za-z0-9_-]+$")
+_MAX_TOKEN_LENGTH = 8192
 _CURSOR_FIELDS = frozenset(
     {
         "schema_version",
@@ -38,6 +42,57 @@ def _canonical_digest(value):
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _unique_json_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if type(key) is not str or key in value:
+            raise ValueError("content continuation token is invalid")
+        value[key] = item
+    return value
+
+
+def encode_continuation_token(cursor: dict | None) -> str | None:
+    if cursor is None:
+        return None
+    if not validate_continuation_cursor(cursor):
+        raise ValueError("content continuation cursor is invalid")
+    payload = json.dumps(
+        cursor,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def decode_continuation_token(token: str) -> dict:
+    try:
+        if (
+            type(token) is not str
+            or not token
+            or len(token) > _MAX_TOKEN_LENGTH
+            or _TOKEN.fullmatch(token) is None
+        ):
+            raise ValueError
+        padded = token + "=" * (-len(token) % 4)
+        raw = base64.b64decode(
+            padded.encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+        cursor = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
+        )
+        if not validate_continuation_cursor(cursor):
+            raise ValueError
+        return cursor
+    except (UnicodeError, binascii.Error, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("content continuation token is invalid") from exc
 
 
 def corpus_fingerprint(evidence):
@@ -197,6 +252,44 @@ def _batch_number_for_start(paths, start, file_limit, byte_limit):
     return number
 
 
+def _total_batches(paths, file_limit, byte_limit):
+    """Return the exact batch count under the file and byte limits."""
+    index = 0
+    total = 0
+    while index < len(paths):
+        batch_count = 0
+        batch_bytes = 0
+        while index < len(paths) and batch_count < file_limit:
+            item_bytes = paths[index]["bytes"]
+            if batch_count and batch_bytes + item_bytes > byte_limit:
+                break
+            if not batch_count and item_bytes > byte_limit:
+                raise ValueError("content continuation cannot cross an oversized document")
+            batch_count += 1
+            batch_bytes += item_bytes
+            index += 1
+        if batch_count == 0:
+            raise ValueError("content continuation cannot make progress")
+        total += 1
+    return total or 1
+
+
+def _continuation_for_contract(value, discovery_contract_version):
+    if discovery_contract_version == DISCOVERY_CURSOR_CONTRACT_VERSION:
+        return value
+    return {
+        key: value[key]
+        for key in (
+            "schema_version",
+            "status",
+            "batch",
+            "cursor",
+            "rejection",
+            "fresh_preview_required",
+        )
+    }
+
+
 def plan_content_batch(
     paths,
     evidence,
@@ -211,6 +304,10 @@ def plan_content_batch(
     """Plan one exact slice and return its next state-free cursor."""
     fingerprint = corpus_fingerprint(evidence)
     binding = repository_binding(repository_identity)
+    try:
+        total_batches = _total_batches(paths, file_limit, byte_limit)
+    except ValueError:
+        total_batches = None
     start = _validated_start(
         continuation,
         selected_scope,
@@ -230,14 +327,16 @@ def plan_content_batch(
                 "next_boundary": None,
                 "blocked_by_metadata": True,
             },
-            {
+            _continuation_for_contract({
                 "schema_version": CONTINUATION_SCHEMA_VERSION,
                 "status": "rejected",
                 "batch": None,
                 "cursor": None,
+                "token": None,
+                "total_batches": total_batches,
                 "rejection": "stale-or-tampered",
                 "fresh_preview_required": True,
-            },
+            }, discovery_contract_version),
         )
 
     batch_paths = []
@@ -264,14 +363,16 @@ def plan_content_batch(
                 "next_boundary": None,
                 "blocked_by_metadata": True,
             },
-            {
+            _continuation_for_contract({
                 "schema_version": CONTINUATION_SCHEMA_VERSION,
                 "status": "blocked",
                 "batch": None,
                 "cursor": None,
+                "token": None,
+                "total_batches": total_batches,
                 "rejection": None,
                 "fresh_preview_required": False,
-            },
+            }, discovery_contract_version),
         )
 
     complete = index == len(paths)
@@ -287,6 +388,7 @@ def plan_content_batch(
     }
     if complete:
         cursor = None
+        token = None
         status = "complete"
     elif batch_paths:
         cursor = _build_cursor(
@@ -297,18 +399,26 @@ def plan_content_batch(
             binding,
             discovery_contract_version,
         )
+        token = (
+            encode_continuation_token(cursor)
+            if discovery_contract_version == DISCOVERY_CURSOR_CONTRACT_VERSION
+            else None
+        )
         status = "available"
     else:
         cursor = None
+        token = None
         status = "blocked"
-    return batch, {
+    return batch, _continuation_for_contract({
         "schema_version": CONTINUATION_SCHEMA_VERSION,
         "status": status,
         "batch": _batch_number_for_start(paths, start, file_limit, byte_limit),
         "cursor": cursor,
+        "token": token,
+        "total_batches": total_batches,
         "rejection": None,
         "fresh_preview_required": False,
-    }
+    }, discovery_contract_version)
 
 
 __all__ = (
@@ -317,6 +427,8 @@ __all__ = (
     "CONTINUATION_SCHEMA_VERSION",
     "DISCOVERY_CURSOR_CONTRACT_VERSION",
     "corpus_fingerprint",
+    "decode_continuation_token",
+    "encode_continuation_token",
     "plan_content_batch",
     "repository_binding",
     "validate_continuation_cursor",

@@ -206,7 +206,7 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
         self.assertEqual(graph["metadata_io"], set())
         self.assertEqual(graph["continuation"], {"paths"})
         self.assertEqual(graph["knowledge"], {"paths"})
-        self.assertEqual(graph["root_evidence"], set())
+        self.assertEqual(graph["root_evidence"], {"paths"})
         self.assertEqual(graph["discovery_policy"], {"paths"})
         self.assertEqual(graph["surfaces"], {"knowledge", "paths"})
         self.assertEqual(

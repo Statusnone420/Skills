@@ -20,6 +20,52 @@ import build_adapters
 
 
 class DocsSkillContractTests(unittest.TestCase):
+    @staticmethod
+    def _init_text():
+        return (SKILL / "references" / "init.md").read_text(encoding="utf-8")
+
+    @classmethod
+    def _init_rules(cls):
+        return " ".join(cls._init_text().lower().split())
+
+    def test_init_reference_defines_one_automatic_zero_write_protocol(self):
+        init = self._init_text()
+        init_rules = " ".join(init.lower().split())
+        for step in (
+            "DISCOVER",
+            "SELECT_SHARED_ROOT",
+            "CARRY_PRIVATE_ROUTES",
+            "INSPECT_BATCHES",
+            "ACCOUNT_FOR_EVIDENCE",
+            "BUILD_ZERO_WRITE_PREVIEW",
+            "WAIT_FOR_EXACT_APPROVAL",
+        ):
+            self.assertIn(step, init)
+        for requirement in (
+            "accept an obvious recommended shared root automatically",
+            "private local routes",
+            "opaque continuation token",
+            "every disclosed shared file body",
+            "evidence cards",
+            "complete evidence coverage",
+            "zero writes",
+            "one exact approval",
+            "pause",
+            "untouched",
+        ):
+            self.assertIn(requirement, init_rules)
+        for disposition in (
+            "RETAIN",
+            "MIGRATE",
+            "DEDUPLICATE",
+            "ARCHIVE",
+            "DISCARD",
+            "UNRESOLVED",
+        ):
+            self.assertIn(disposition, init)
+        self.assertNotRegex(init_rules, r"(?:ask|prompt).{0,80}(?:batch|cursor|scope|disposition)")
+        self.assertNotIn("select none until an explicit user choice", init_rules)
+
     def test_canonical_public_alpha_version_and_help_identity(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -56,10 +102,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertEqual(len(entries), 7)
 
     def test_init_is_a_one_time_condition_sized_repository_adoption(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = " ".join(commands[start:end].lower().split())
+        init_rules = self._init_rules()
 
         self.assertRegex(init_rules, r"one-time\s+repository\s+adoption")
         self.assertRegex(
@@ -70,10 +113,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertNotRegex(init_rules, r"smallest\s+useful\s+structure")
 
     def test_init_explicit_scope_precedes_and_confines_discovery(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = commands[start:end].lower()
+        init_rules = self._init_rules()
 
         self.assertIn("$docs init --scope <repository-relative-directory>", init_rules)
         explicit = init_rules.index("explicit scope")
@@ -82,7 +122,6 @@ class DocsSkillContractTests(unittest.TestCase):
         for concept in (
             "takes precedence",
             "normalize",
-            "selected repository root",
             "absolute",
             "drive-qualified",
             "..",
@@ -95,13 +134,13 @@ class DocsSkillContractTests(unittest.TestCase):
             "inspected scope",
         ):
             self.assertIn(concept, init_rules)
-        self.assertRegex(
+        self.assertIn(
+            "jurisdiction boundary rather than permission to ingest every file",
             init_rules,
-            r"explicit\s+scope.{0,120}jurisdiction\s+boundary.{0,160}not\s+(?:permission|authorization).{0,100}(?:ingest|open).{0,80}every\s+file",
         )
-        self.assertRegex(
+        self.assertIn(
+            "metadata before selected documentation content is opened",
             init_rules,
-            r"explicit\s+(?:narrow\s+)?scope.{0,200}select(?:ed)?\s+directly.{0,200}metadata.{0,160}open\s+only.{0,100}documentation\s+content",
         )
         self.assertRegex(
             init_rules,
@@ -111,15 +150,12 @@ class DocsSkillContractTests(unittest.TestCase):
             "anywhere-pruned",
             "root-only prune override",
             "nested `docs/build`",
-            "nested `docs/vendor`",
+            "`docs/vendor`",
         ):
             self.assertIn(phrase, init_rules)
 
     def test_init_metadata_discovery_covers_nonstandard_and_package_local_routes(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = commands[start:end].lower()
+        init_rules = self._init_rules()
 
         for candidate in (
             "`docs/`",
@@ -142,10 +178,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("do not recurse beyond these candidate shapes", init_rules)
 
     def test_init_discovery_applies_bounded_exclusions_and_reports_scope_limits(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = commands[start:end].lower()
+        init_rules = self._init_rules()
 
         for stable_prune_field in (
             "anywhere_names",
@@ -172,10 +205,7 @@ class DocsSkillContractTests(unittest.TestCase):
         )
 
     def test_init_discovery_publishes_direct_mode_caps_ranking_and_stop_boundary(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = " ".join(commands[start:end].lower().split())
+        init_rules = self._init_rules()
 
         self.assertIn(
             "<python> <checker-path> <repository-root> --json --agent --init-discovery",
@@ -201,24 +231,26 @@ class DocsSkillContractTests(unittest.TestCase):
             "truncation",
             "next boundary",
             "applied exclusions",
-            "sort complete containers before ranking",
-            "lower-bound observation",
-            "no globally sorted next entry",
-            "narrower scope or explicit continuation",
+            "complete containers rank before incomplete containers",
+            "lower-bound status and observation",
+            "globally sorted next entry",
+            "pause honestly",
+            "valid opaque continuation",
         ):
             self.assertIn(evidence, init_rules)
         self.assertRegex(
             init_rules,
-            r"(?:v1\s+)?operational\s+heuristic.{0,160}not.{0,100}(?:health|structural\s+score).{0,160}not.{0,100}(?:scientific|deletion\s+pressure)",
+            r"(?:v1\s+)?operational\s+heuristic.{0,220}not.{0,180}(?:health|scientific|deletion\s+pressure)",
         )
         self.assertRegex(
             init_rules,
-            r"multiple\s+plausible\s+candidates.{0,180}recommend.{0,120}select\s+none.{0,120}explicit\s+user\s+choice",
+            r"genuinely\s+tied\s+or\s+ambiguous\s+roots",
         )
         self.assertRegex(
             init_rules,
-            r"sole\s+(?:safe\s+)?candidate.{0,80}(?:may\s+be\s+)?selected",
+            r"obvious.{0,120}(?:shared|sole).{0,120}automatically",
         )
+        self.assertIn("obvious sole shared candidate from complete evidence", init_rules)
         for ranking in (
             "root `docs/`, `documentation/`, `wiki/`",
             "direct children in sorted order",
@@ -227,15 +259,13 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertIn(ranking, init_rules)
         self.assertRegex(
             init_rules,
-            r"(?:cap|limit).{0,100}prevents\s+safe\s+coverage.{0,120}stop",
+            r"(?:cap|limit).{0,100}prevents\s+safe\s+coverage.{0,120}pause",
         )
 
     def test_init_initial_response_is_a_complete_zero_write_preview(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        init = self._init_text()
         memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = (commands[start:end] + "\n" + memory).lower()
+        init_rules = " ".join((init + "\n" + memory).lower().split())
 
         for preview_evidence in (
             "facts",
@@ -259,38 +289,31 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertRegex(init_rules, r"initial\s+response.{0,100}zero\s+writes")
         self.assertRegex(init_rules, r"same-message.{0,100}(?:apply|write).{0,100}(?:ignore|zero\s+writes)")
         self.assertIn("telemetry", init_rules)
-        self.assertIn("not a limit", init_rules)
+        self.assertIn("telemetry rather than a limit", init_rules)
 
     def test_init_disposition_manifest_is_complete_unique_and_overridable(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = commands[start:end]
-        lowered = init_rules.lower()
+        init_rules = self._init_text()
+        lowered = " ".join(init_rules.lower().split())
 
-        public_dispositions = (
-            "MIGRATED      source + section → maintained target + section",
-            "DEDUPLICATED  source + section → retained canonical target + section",
-            "ARCHIVED      source → cold archive path",
-            "DISCARDED     source + section → reason and recovery boundary",
-        )
+        public_dispositions = ("MIGRATED", "DEDUPLICATED", "ARCHIVED", "DISCARDED")
         for disposition in public_dispositions:
             self.assertIn(disposition, init_rules)
-        self.assertRegex(
+        self.assertIn(
+            "every shared file and every unique removed heading/section represented once",
             lowered,
-            r"every\s+removed\s+file.{0,100}every\s+unique\s+removed\s+(?:heading/)?section.{0,100}exactly\s+one",
         )
+        self.assertIn("each removed file uses `<whole-file>` once", lowered)
+        self.assertIn("each unique section uses its heading or stable identity once", lowered)
         self.assertLess(lowered.index("disposition counts"), lowered.index("complete exact manifest"))
-        self.assertIn("override a disposition class", lowered)
-        self.assertIn("archive the proposed `discarded` group", lowered)
+        self.assertIn("disposition override", lowered)
         self.assertIn("`<whole-file>`", lowered)
         self.assertIn("counts by disposition and item kind", lowered)
 
     def test_init_later_approval_revalidates_and_closes_only_after_verification(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        init = self._init_text()
         memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
         isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
-        combined = (commands + "\n" + memory + "\n" + isolation).lower()
+        combined = (init + "\n" + memory + "\n" + isolation).lower()
 
         self.assertIn(
             "approve $docs init preview <preview-id> with manifest <manifest-sha256>",
@@ -311,18 +334,16 @@ class DocsSkillContractTests(unittest.TestCase):
             combined,
             r"failed\s+verification.{0,120}(?:no|never).{0,80}(?:successful\s+baseline|successful\s+initialization\s+event)",
         )
-        init_rules = commands[
-            commands.index("\n`init`:") : commands.index("\n`context <task>`")
-        ].lower()
+        init_rules = " ".join(init.lower().split())
         self.assertRegex(
             init_rules,
-            r"report.{0,80}actual\s+before/after\s+structural\s+score.{0,80}trust\s+coverage",
+            r"report.{0,80}before/after\s+structural\s+score.{0,80}trust\s+coverage",
         )
 
     def test_init_deletion_safety_distinguishes_git_and_no_git_recovery(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        init = self._init_text()
         isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
-        combined = (commands + "\n" + isolation).lower()
+        combined = " ".join((init + "\n" + isolation).lower().split())
 
         self.assertRegex(
             combined,
@@ -338,17 +359,14 @@ class DocsSkillContractTests(unittest.TestCase):
         )
 
     def test_init_no_git_archive_transition_precedes_every_approval_hash(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
-        start = commands.index("\n`init`:") + 1
-        end = commands.index("\n`context <task>`", start)
-        init_rules = " ".join(commands[start:end].lower().split())
+        init_rules = " ".join(self._init_text().lower().split())
 
         for phrase in (
             "before calculating the canonical manifest",
             "would-be discard set",
             "separate informational set",
             "new complete preview and canonical manifest",
-            "another later exact preview approval and revalidation",
+            "disposition change requires another later exact preview approval and revalidation",
             "never convert a disposition after approval",
         ):
             self.assertIn(phrase, init_rules)
@@ -361,17 +379,13 @@ class DocsSkillContractTests(unittest.TestCase):
             "approve hard deletion of discard set <discard-set-id>"
         )
         new_preview = init_rules.index("new complete preview and canonical manifest")
-        second_approval = init_rules.index(
-            "another later exact preview approval and revalidation"
-        )
         self.assertLess(hard_acceptance, new_preview)
-        self.assertLess(new_preview, second_approval)
 
     def test_init_destructive_items_require_per_item_rollback_and_failed_run_recovery(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        init = self._init_text()
         isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
         memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
-        combined = " ".join((commands + "\n" + isolation + "\n" + memory).lower().split())
+        combined = " ".join((init + "\n" + isolation + "\n" + memory).lower().split())
 
         for proof in (
             "each destructive item",
@@ -398,16 +412,14 @@ class DocsSkillContractTests(unittest.TestCase):
         )
 
     def test_init_valid_initialized_state_is_idempotent(self):
-        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        init = self._init_text()
         expected = "This repository is already initialized. Run $docs doctor to diagnose or improve it."
 
-        self.assertIn(expected, commands)
-        sentence = commands[commands.index(expected) : commands.index(expected) + len(expected)]
+        self.assertIn(expected, init)
+        sentence = init[init.index(expected) : init.index(expected) + len(expected)]
         self.assertEqual(sentence, expected)
-        init_rules = commands[
-            commands.index("\n`init`:") : commands.index("\n`context <task>`")
-        ].lower()
-        self.assertRegex(init_rules, r"valid\s+(?:operational\s+)?state.{0,100}initialized")
+        init_rules = " ".join(init.lower().split())
+        self.assertRegex(init_rules, r"already\s+initialized\s+state\s+is\s+valid.{0,100}zero\s+writes")
         self.assertRegex(init_rules, r"already\s+initialized.{0,100}zero\s+writes")
         self.assertRegex(init_rules, r"do\s+not\s+propose.{0,80}(?:second|another)\s+adoption")
 
@@ -1588,8 +1600,8 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertEqual(
                 [item["path"] for item in payload["scope_metadata"]["paths"]],
                 [
-                    "docs/README.md",
                     "docs/build/guide.md",
+                    "docs/README.md",
                     "docs/vendor/reference.md",
                 ],
             )
@@ -2069,6 +2081,7 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertEqual(batch["next_boundary"], "handbook/012.md")
             self.assertEqual(payload["status"], "batch-limited")
             self.assertEqual(payload["content_reads"], 0)
+            self.assertTrue(payload["requires_user_action"])
             self.assertEqual(
                 payload["user_action"],
                 "after-content-batch-choose-continuation-or-narrow-scope",

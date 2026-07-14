@@ -21,6 +21,10 @@ from _docs_checker import discovery as docs_discovery
 import trajectory_discovery_capture
 import trajectory_discovery_contract
 import trajectory_routes
+from _docs_checker.continuation import (
+    decode_continuation_token,
+    encode_continuation_token,
+)
 
 
 def discover_v2(root, explicit_scope=None, continuation=None):
@@ -84,6 +88,102 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             self.assertEqual(first_paths + second_paths, sorted(first_paths + second_paths))
             self.assertEqual(first["content_reads"], 0)
             self.assertEqual(second["content_reads"], 0)
+
+    def test_continuation_receipt_exposes_shell_safe_token_and_total_batches(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(13):
+                (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
+
+            first = discover_v2(root, explicit_scope="docs")
+            continuation = first["continuation"]
+            self.assertEqual(
+                set(continuation),
+                {
+                    "schema_version",
+                    "status",
+                    "batch",
+                    "cursor",
+                    "token",
+                    "total_batches",
+                    "rejection",
+                    "fresh_preview_required",
+                },
+            )
+            self.assertEqual(continuation["status"], "available")
+            self.assertIsInstance(continuation["token"], str)
+            self.assertEqual(
+                decode_continuation_token(continuation["token"]),
+                continuation["cursor"],
+            )
+            self.assertEqual(continuation["total_batches"], 2)
+            self.assertFalse(first["requires_user_action"])
+            self.assertEqual(first["user_action"], "continue-init-inspection")
+
+            second = discover_v2(
+                root,
+                explicit_scope="docs",
+                continuation=continuation["cursor"],
+            )
+            self.assertEqual(second["continuation"]["status"], "complete")
+            self.assertIsNone(second["continuation"]["token"])
+            self.assertEqual(second["continuation"]["total_batches"], 2)
+
+    def test_continuation_token_codec_rejects_malformed_and_non_exact_inputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(13):
+                (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
+            cursor = discover_v2(root, "docs")["continuation"]["cursor"]
+
+            token = encode_continuation_token(cursor)
+            self.assertEqual(decode_continuation_token(token), cursor)
+
+            class DictSubclass(dict):
+                pass
+
+            class StringSubclass(str):
+                pass
+
+            malformed = [
+                token + "=",
+                token[:4] + "!" + token[5:],
+                "A" * 8193,
+                StringSubclass(token),
+            ]
+            for candidate in malformed:
+                with self.subTest(candidate=repr(candidate)):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "^content continuation token is invalid$",
+                    ):
+                        decode_continuation_token(candidate)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "^content continuation cursor is invalid$",
+            ):
+                encode_continuation_token(DictSubclass(cursor))
+
+            import base64
+
+            for raw in (
+                b"[]",
+                b'{"a":1,"a":2}',
+                b"\xff",
+                b"NaN",
+            ):
+                candidate = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+                with self.subTest(raw=raw):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "^content continuation token is invalid$",
+                    ):
+                        decode_continuation_token(candidate)
 
     def test_root_enumeration_permission_failure_returns_sanitized_incomplete_evidence(self):
         with tempfile.TemporaryDirectory() as td:
@@ -340,6 +440,35 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             self.assertIsNone(payload["selected_scope"])
             self.assertEqual(payload["completeness"]["status"], "incomplete")
             self.assertEqual(payload["physical_limit"]["kind"], "child_entries_per_container")
+
+    def test_task6_unreadable_selected_scope_pauses_without_path_or_secret_leak(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            real_scandir = docs_discovery.os.scandir
+
+            def unreadable(path):
+                if Path(path).name.casefold() == "docs":
+                    raise PermissionError(errno.EACCES, "PRIVATE_SCOPE_SECRET", str(path))
+                return real_scandir(path)
+
+            with mock.patch.object(
+                docs_discovery.os,
+                "scandir",
+                side_effect=unreadable,
+            ):
+                payload = discover_v2(root, explicit_scope="docs")
+
+            serialized = json.dumps(payload, sort_keys=True)
+            self.assertEqual(payload["status"], "stopped")
+            self.assertEqual(payload["selected_scope"], "docs")
+            self.assertEqual(payload["completeness"]["status"], "incomplete")
+            self.assertEqual(payload["content_batch"]["paths"], [])
+            self.assertEqual(payload["continuation"]["status"], "blocked")
+            self.assertEqual(payload["next_boundary"], [{"kind": "metadata-io", "path": "docs"}])
+            self.assertNotIn(str(root), serialized)
+            self.assertNotIn("PRIVATE_SCOPE_SECRET", serialized)
 
     def test_three_batches_cover_selected_corpus_exactly_once(self):
         with tempfile.TemporaryDirectory() as td:
@@ -646,8 +775,8 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
             ):
                 payload = discover_v2(root)
 
-            self.assertEqual(payload["status"], "choice-required")
-            self.assertIsNone(payload["selected_scope"])
+            self.assertEqual(payload["status"], "adoption-preview")
+            self.assertEqual(payload["selected_scope"], ".")
             self.assertEqual(
                 payload["local_knowledge"]["candidates"],
                 [
@@ -659,10 +788,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
                     }
                 ],
             )
-            self.assertIn(
-                ".local/0.3.0-campaign",
-                [candidate["path"] for candidate in payload["candidates"]],
-            )
+            self.assertEqual(payload["candidates"], [])
             serialized = json.dumps(payload)
             self.assertNotIn("KICKOFF-PROMPT.md", serialized)
             self.assertNotIn("NINE PR", serialized)
@@ -691,7 +817,44 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
                 )
                 self.assertEqual(payload["local_knowledge"]["selected_visibility"], "local-only")
 
-    def test_ambiguous_local_candidates_require_exact_choice(self):
+    def test_private_local_routes_do_not_compete_with_sole_shared_scope(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
+            (root / ".local" / "alpha-campaign").mkdir(parents=True)
+            (root / ".local" / "beta-decisions").mkdir(parents=True)
+
+            payload = discover_v2(root)
+
+            self.assertEqual(payload["status"], "ready")
+            self.assertEqual(payload["selected_scope"], "docs")
+            self.assertEqual(
+                [item["path"] for item in payload["candidates"]],
+                ["docs"],
+            )
+            self.assertEqual(
+                [item["path"] for item in payload["local_knowledge"]["candidates"]],
+                [".local/alpha-campaign", ".local/beta-decisions"],
+            )
+
+    def test_two_tied_shared_roots_still_require_one_choice(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir(parents=True)
+            (root / "documentation").mkdir(parents=True)
+
+            payload = discover_v2(root)
+
+            self.assertEqual(payload["status"], "choice-required")
+            self.assertEqual(payload["recommended_scope"], "docs")
+            self.assertEqual(
+                [item["path"] for item in payload["candidates"]],
+                ["docs", "documentation"],
+            )
+            self.assertEqual(payload["user_action"], "choose-explicit-scope")
+
+    def test_local_only_repository_preserves_private_routes_without_absence_claim(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / ".local" / "alpha-campaign").mkdir(parents=True)
@@ -699,12 +862,18 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
 
             payload = discover_v2(root)
 
-            self.assertEqual(payload["status"], "choice-required")
+            self.assertEqual(payload["status"], "adoption-preview")
+            self.assertEqual(payload["selected_scope"], ".")
+            self.assertEqual(payload["candidates"], [])
             self.assertEqual(
                 [item["path"] for item in payload["local_knowledge"]["candidates"]],
                 [".local/alpha-campaign", ".local/beta-decisions"],
             )
-            self.assertEqual(payload["user_action"], "choose-explicit-scope")
+            self.assertFalse(payload["local_knowledge"]["absence_claim_allowed"])
+            self.assertEqual(
+                payload["user_action"],
+                "review-no-doc-adoption-preview",
+            )
 
     def test_local_candidate_probe_physically_avoids_dependency_cache_and_credentials(self):
         with tempfile.TemporaryDirectory() as td:
@@ -996,15 +1165,60 @@ class Task51ProtectedSurfaceTests(unittest.TestCase):
             with self.subTest(paths=paths), self.assertRaises(ValueError):
                 docs_checker.classify_protected_surfaces(paths, host="unknown")
 
-    def test_unknown_host_retains_established_paths_without_provider_claim(self):
+    def test_unknown_host_ordinary_docs_are_not_labeled_public(self):
         classified = docs_checker.classify_protected_surfaces(
-            ["README.md", "SECURITY.md", "docs/guide.md"],
+            ["docs/guide.md"],
             host="unknown",
+            complete=True,
         )
         self.assertEqual(classified["host"], "unknown")
-        self.assertTrue(classified["items"][0]["protected"])
-        self.assertTrue(all(item["default_disposition"] == "retain" for item in classified["items"] if item["protected"]))
+        item = classified["items"][0]
+        self.assertEqual(item["role"], "internal-documentation")
+        self.assertEqual(item["protection_reason"], "ordinary-internal-documentation")
+        self.assertFalse(item["protected"])
+        self.assertEqual(item["default_disposition"], "eligible-with-disposition")
         self.assertFalse(classified["healthy_placement_affects_score"])
+
+    def test_unknown_host_incomplete_evidence_retains_ordinary_docs_safely(self):
+        classified = docs_checker.classify_protected_surfaces(
+            ["docs/guide.md"],
+            host="unknown",
+            complete=False,
+        )
+        item = classified["items"][0]
+        self.assertFalse(item["protected"])
+        self.assertEqual(item["default_disposition"], "retain")
+        self.assertEqual(classified["mutation_default"], "retain")
+        self.assertFalse(classified["complete"])
+
+    def test_evidence_specific_surfaces_remain_protected_on_unknown_host(self):
+        classified = docs_checker.classify_protected_surfaces(
+            [".github", "README.md", "SECURITY.md", "CONTRIBUTING.md"],
+            host="unknown",
+            complete=False,
+        )
+        by_path = {item["path"]: item for item in classified["items"]}
+        self.assertTrue(all(by_path[path]["protected"] for path in by_path))
+        self.assertEqual(by_path[".github"]["role"], "host-community-surface")
+
+    def test_explicit_docs_scope_preserves_repository_level_github_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            (root / ".github" / "ISSUE_TEMPLATE").mkdir(parents=True)
+            (root / ".github" / "ISSUE_TEMPLATE" / "bug.md").write_text(
+                "# Bug\n",
+                encoding="utf-8",
+            )
+            (root / "README.md").write_text("# Root\n", encoding="utf-8")
+
+            payload = discover_v2(root, explicit_scope="docs")
+
+        self.assertEqual(payload["protected_surfaces"]["host"], "github")
+        paths = {item["path"] for item in payload["protected_surfaces"]["items"]}
+        self.assertIn(".github", paths)
+        self.assertIn("README.md", paths)
 
     def test_evaluation_is_a_protected_repository_convention_surface(self):
         classified = docs_checker.classify_protected_surfaces(
@@ -1167,10 +1381,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 [item["path"] for item in payload["local_knowledge"]["candidates"]],
                 expected,
             )
-            self.assertEqual(
-                [item["path"] for item in payload["candidates"]],
-                expected,
-            )
+            self.assertEqual(payload["candidates"], [])
             self.assertEqual(errors, [])
 
     def test_v2_receipt_rejects_stale_checksum_without_recomputing_it(self):
@@ -1398,13 +1609,23 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                     self.assertEqual(errors, [])
                 statuses.add(payload["status"])
                 sources.update(item["source"] for item in payload["candidates"])
+                sources.update(
+                    item["source"]
+                    for item in payload["local_knowledge"]["candidates"]
+                )
 
             self.assertEqual(
                 statuses,
                 {"ready", "choice-required", "batch-limited", "stopped", "adoption-preview"},
             )
             self.assertLessEqual(
-                {"root", "direct-child", "container:packages", "explicit", "local-conventional"},
+                {
+                    "root",
+                    "direct-child",
+                    "container:packages",
+                    "explicit",
+                    "conventional-local-root",
+                },
                 sources,
             )
 
@@ -1452,6 +1673,76 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             visibility["local_knowledge"]["selected_visibility"] = None
             visibility["local_knowledge"]["status"] = "optional-map-uninspected"
             mutations["selected-scope-local-visibility-mismatch"] = visibility
+
+            for label, payload in mutations.items():
+                with self.subTest(label=label):
+                    _, errors, _ = self._validated_action(payload)
+                    self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
+
+    def test_task6_mutation_killing_counterexamples_reject_false_success(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / ".local" / "private-campaign").mkdir(parents=True)
+            for index in range(13):
+                (root / "docs" / f"guide-{index:02d}.md").write_text(
+                    f"# Guide {index}\n",
+                    encoding="utf-8",
+                )
+
+            first = discover_v2(root)
+            second = discover_v2(root, continuation=first["continuation"]["cursor"])
+            self.assertEqual(first["continuation"]["status"], "available")
+            self.assertEqual(second["continuation"]["status"], "complete")
+
+            mutations = {}
+
+            omitted = deepcopy(second)
+            removed = omitted["content_batch"]["paths"].pop()
+            omitted["content_batch"]["path_count"] -= 1
+            omitted["content_batch"]["bytes"] -= removed["bytes"]
+            mutations["omit-last-batch-and-late-fact"] = omitted
+
+            repeated = deepcopy(second)
+            repeated["content_batch"] = deepcopy(first["content_batch"])
+            mutations["repeat-first-batch-as-complete"] = repeated
+
+            private_in_shared = deepcopy(first)
+            private_in_shared["candidates"].append(
+                {
+                    "path": ".local/private-campaign",
+                    "source": "local-conventional",
+                    "rank": len(private_in_shared["candidates"]) + 1,
+                }
+            )
+            mutations["private-route-enters-shared-candidates"] = private_in_shared
+
+            blanket_protected = deepcopy(first)
+            for item in blanket_protected["protected_surfaces"]["items"]:
+                if item["path"].startswith("docs/") or item["path"] == "docs":
+                    item["protected"] = True
+            mutations["blanket-protects-unknown-host-docs"] = blanket_protected
+
+            falsely_complete = deepcopy(first)
+            falsely_complete["status"] = "ready"
+            falsely_complete["requires_user_action"] = False
+            falsely_complete["user_action"] = None
+            falsely_complete["truncated"] = False
+            falsely_complete["next_boundary"] = []
+            falsely_complete["content_batch"]["complete"] = True
+            falsely_complete["content_batch"]["truncated"] = False
+            falsely_complete["content_batch"]["next_boundary"] = None
+            falsely_complete["continuation"].update(
+                status="complete",
+                batch=2,
+                cursor=None,
+                token=None,
+            )
+            mutations["reports-complete-while-continuation-is-available"] = falsely_complete
+
+            writes = deepcopy(first)
+            writes["adoption_preview"]["writes"] = 1
+            mutations["writes-during-zero-write-preview"] = writes
 
             for label, payload in mutations.items():
                 with self.subTest(label=label):

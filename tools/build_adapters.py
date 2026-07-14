@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("doctor", "init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
-REFERENCE_FILES = ("commands.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
+REFERENCE_FILES = ("commands.md", "init.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 CHECKER_FILES = (
     "scripts/check.py",
@@ -227,6 +227,7 @@ def _supporting_rules(command: str) -> list[str]:
         rules.append(principles.strip())
         rules.append(_markdown_section(memory, "Operational continuity"))
     elif command == "init":
+        rules.append((SOURCE / "references" / "init.md").read_text(encoding="utf-8").strip())
         rules.append(_markdown_section(memory, "Initialization closeout"))
         rules.append(_markdown_section(memory, "Verified lifecycle closeout"))
         rules.append((SOURCE / "references" / "isolation.md").read_text(encoding="utf-8").strip())
@@ -343,8 +344,15 @@ def validate(output: Path) -> list[str]:
     for link in links:
         target = SOURCE / link
         if not target.is_file(): errors.append(f"missing reference {link}")
-        elif re.search(r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")):
-            errors.append(f"reference exceeds one hop {link}")
+        else:
+            nested_links = re.findall(
+                r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")
+            )
+            # The command router is intentionally allowed to point to the focused Init
+            # contract; every other canonical route remains one-hop.
+            allowed_router = link == "references/commands.md" and set(nested_links) <= {"init.md"}
+            if nested_links and not allowed_router:
+                errors.append(f"reference exceeds one hop {link}")
     expected_slash_skill = slash_skill(canonical)
     for v in ("claude","copilot","grok","cursor"):
         p=adapter_skill_root(output, v)/"SKILL.md"

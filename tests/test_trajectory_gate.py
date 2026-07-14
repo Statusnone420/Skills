@@ -3751,6 +3751,21 @@ class TrajectoryGateTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "PASS")
 
+    def test_public_receipts_allow_opaque_continuation_tokens(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"].append(
+            {
+                "owner": "external",
+                "kind": "continuation",
+                "status": "available",
+                "continuation": {"token": "eyJzY2hlbWEiOjF9"},
+            }
+        )
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS")
+
     def test_public_receipts_allow_urls_and_prose_slashes(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["presentation"]["visible_diagnostics"] = [

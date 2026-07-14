@@ -501,6 +501,10 @@ def _scan_selected_scope(
         for child_path, child_relative in reversed(directories):
             pending.append((child_path, child_relative, depth + 1))
 
+    if metadata["complete"] and not metadata["truncated"] and not state["halted"]:
+        metadata["paths"].sort(key=lambda item: sort_key(item["path"]))
+        state["selected_evidence"].sort(key=lambda item: sort_key(item["path"]))
+
     if state["scope_truncated"]:
         metadata["truncated"] = True
         metadata["complete"] = False

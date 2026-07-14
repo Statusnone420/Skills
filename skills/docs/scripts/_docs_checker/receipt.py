@@ -1,6 +1,10 @@
 """Canonical data-only Init discovery receipt versions."""
 
-from .continuation import validate_continuation_cursor
+from .continuation import (
+    _total_batches,
+    decode_continuation_token,
+    validate_continuation_cursor,
+)
 from .knowledge import validate_local_knowledge_receipt
 from .paths import normalize_repo_relative
 from .surfaces import validate_protected_surfaces
@@ -67,6 +71,8 @@ def _valid_continuation(value):
         "status",
         "batch",
         "cursor",
+        "token",
+        "total_batches",
         "rejection",
         "fresh_preview_required",
     }:
@@ -76,16 +82,47 @@ def _valid_continuation(value):
         or value["schema_version"] != 1
         or value["status"] not in {"available", "blocked", "complete", "rejected"}
         or not (value["batch"] is None or _exact_nonnegative_int(value["batch"]))
+        or not (
+            value["total_batches"] is None
+            or (
+                _exact_nonnegative_int(value["total_batches"])
+                and value["total_batches"] > 0
+            )
+        )
         or not (value["rejection"] is None or type(value["rejection"]) is str)
         or type(value["fresh_preview_required"]) is not bool
     ):
         return False
     cursor = value["cursor"]
-    if cursor is None:
-        return value["status"] != "available"
+    token = value["token"]
+    if value["status"] == "available":
+        if (
+            not validate_continuation_cursor(cursor)
+            or type(token) is not str
+            or not token
+            or value["batch"] is None
+            or value["batch"] <= 0
+            or value["total_batches"] is None
+            or value["total_batches"] <= 0
+        ):
+            return False
+        try:
+            return decode_continuation_token(token) == cursor
+        except ValueError:
+            return False
+    if value["status"] == "complete":
+        return bool(
+            cursor is None
+            and token is None
+            and value["batch"] is not None
+            and value["batch"] > 0
+            and value["total_batches"] is not None
+            and value["total_batches"] > 0
+        )
     return bool(
-        value["status"] == "available"
-        and validate_continuation_cursor(cursor)
+        cursor is None
+        and token is None
+        and value["batch"] is None
     )
 
 
@@ -207,6 +244,14 @@ def _valid_continuation_relation(value):
     if type(scope_paths) is not list:
         return False
     status = continuation["status"]
+    try:
+        total_batches = _total_batches(
+            scope_paths,
+            value["limits"]["content_files"],
+            value["limits"]["content_bytes"],
+        )
+    except (KeyError, TypeError, ValueError):
+        total_batches = None
     if status == "available":
         cursor = continuation["cursor"]
         segment = _contiguous_slice(batch["paths"], scope_paths)
@@ -223,9 +268,9 @@ def _valid_continuation_relation(value):
             and next_index < len(scope_paths)
             and cursor["after_path"] == scope_paths[next_index - 1].get("path")
             and batch["next_boundary"] == scope_paths[next_index].get("path")
-            and value["requires_user_action"] is True
-            and value["user_action"]
-            == "after-content-batch-choose-continuation-or-narrow-scope"
+            and continuation["total_batches"] == total_batches
+            and value["requires_user_action"] is False
+            and value["user_action"] == "continue-init-inspection"
         )
     if status == "complete":
         segment = _contiguous_slice(batch["paths"], scope_paths)
@@ -235,6 +280,7 @@ def _valid_continuation_relation(value):
             and continuation["batch"] > 0
             and continuation["rejection"] is None
             and continuation["fresh_preview_required"] is False
+            and continuation["total_batches"] == total_batches
             and batch["complete"] is True
             and batch["truncated"] is False
             and batch["blocked_by_metadata"] is False

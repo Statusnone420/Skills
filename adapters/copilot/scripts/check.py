@@ -13,6 +13,8 @@ _SAFE_PUBLIC_CLI_ERRORS = frozenset(
     {
         "--agent requires --json",
         "--init-discovery requires --json --agent",
+        "--continuation requires --init-discovery --json --agent",
+        "content continuation token is invalid",
         "path traversal is not allowed",
         "root must be a real directory",
     }
@@ -44,6 +46,7 @@ from _docs_checker.health import (
     normalized_content_digest,
 )
 from _docs_checker.discovery import discover_init_scope
+from _docs_checker.continuation import decode_continuation_token
 from _docs_checker.identity import (
     _EVENT_ID,
     _FINDING_ID,
@@ -183,6 +186,7 @@ _PARSER.add_argument("root")
 _PARSER.add_argument("--json", action="store_true")
 _PARSER.add_argument("--agent", action="store_true")
 _PARSER.add_argument("--init-discovery", action="store_true")
+_PARSER.add_argument("--continuation", default=None)
 _PARSER.add_argument("--map", default="docs/README.md")
 _PARSER.add_argument("--hot", default=None)
 _PARSER.add_argument("--scope", default=None)
@@ -261,7 +265,7 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     argv = list(sys.argv[1:] if argv is None else argv)
-    value_options = {"--map", "--hot", "--scope"}
+    value_options = {"--map", "--hot", "--scope", "--continuation"}
     positional = []
     skip = False
     for arg in argv:
@@ -294,6 +298,15 @@ def main(argv=None):
             namespace.json and namespace.agent
         ):
             raise ValueError("--init-discovery requires --json --agent")
+        if namespace.continuation is not None and not (
+            namespace.init_discovery and namespace.json and namespace.agent
+        ):
+            raise ValueError("--continuation requires --init-discovery --json --agent")
+        continuation = (
+            None
+            if namespace.continuation is None
+            else decode_continuation_token(namespace.continuation)
+        )
         if any(part == ".." for part in Path(namespace.root).parts):
             raise ValueError("path traversal is not allowed")
         # Normalize the CLI root lexically.  Init discovery owns every
@@ -305,6 +318,7 @@ def main(argv=None):
             discovery = discover_init_scope(
                 raw,
                 explicit_scope=namespace.scope,
+                continuation=continuation,
                 contract_version=2,
             )
         else:

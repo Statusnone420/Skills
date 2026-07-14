@@ -108,69 +108,8 @@ def _valid_root_document_scope(action, normalize_scope):
     )
 
 
-def _valid_local_candidate_choice(action):
-    """Validate local-only candidates without exposing them to the frozen v1 lane."""
-    candidates = action["candidates"]
-    local = action["local_knowledge"]
-    local_candidates = local["candidates"]
-    if (
-        type(candidates) is not list
-        or not all(
-            type(item) is dict and set(item) == {"path", "source", "rank"}
-            for item in candidates
-        )
-        or type(action["observed"]) is not dict
-    ):
-        return False
-    local_paths = [item["path"] for item in local_candidates]
-    surfaced_local_paths = [
-        item["path"]
-        for item in candidates
-        if item["source"] == "local-conventional"
-    ]
-    observed = action["observed"]
-    return bool(
-        bool(local_paths)
-        and surfaced_local_paths == local_paths
-        and action["requested_scope"] is None
-        and action["normalized_scope"] is None
-        and action["jurisdiction_scope"] == "."
-        and action["recommended_scope"] == candidates[0]["path"]
-        and action["selected_scope"] is None
-        and action["inspected_scope"] is None
-        and action["selection_reason"] == "choice-required"
-        and action["status"] == "choice-required"
-        and action["scope_metadata"]
-        == {**_EMPTY_SCOPE_COMPLETE, "complete": False}
-        and action["content_batch"]
-        == {**_EMPTY_BATCH_COMPLETE, "complete": False, "blocked_by_metadata": True}
-        and action["continuation"]
-        == {
-            "schema_version": 1,
-            "status": "blocked",
-            "batch": None,
-            "cursor": None,
-            "rejection": None,
-            "fresh_preview_required": False,
-        }
-        and action["physical_limit"] is None
-        and action["truncated"] is False
-        and action["next_boundary"] == []
-        and action["requires_user_action"] is True
-        and action["user_action"] == "choose-explicit-scope"
-        and action["completeness"] == {"status": "complete", "errors": []}
-        and action["explicit_root_only_overrides"] == []
-        and observed.get("metadata_phases") == 1
-        and observed.get("candidate_roots") == len(candidates)
-        and observed.get("reported_candidate_roots") == len(candidates)
-        and observed.get("selected_markdown_paths") == 0
-        and observed.get("selected_markdown_bytes") == 0
-        and local["selected_visibility"] is None
-    )
-
-
 def _valid_v2_local_relation(action):
-    """Bind local-only evidence to surfaced candidates and selected visibility."""
+    """Keep private routes separate from the shared candidate lane."""
     candidates = action.get("candidates")
     local = action.get("local_knowledge")
     if type(candidates) is not list or type(local) is not dict:
@@ -190,12 +129,10 @@ def _valid_v2_local_relation(action):
         else None
     )
     return bool(
-        [
-            item.get("path")
+        not any(
+            item.get("source") == "local-conventional"
             for item in candidates
-            if item.get("source") == "local-conventional"
-        ]
-        == [item.get("path") for item in local_candidates]
+        )
         and local.get("selected_visibility") == expected_visibility
     )
 
@@ -363,9 +300,8 @@ def _valid_v2_content_window(action, expected_content_batch):
             and action.get("status") == "batch-limited"
             and action.get("truncated") is True
             and action.get("next_boundary") == expected_boundary
-            and action.get("requires_user_action") is True
-            and action.get("user_action")
-            == "after-content-batch-choose-continuation-or-narrow-scope"
+            and action.get("requires_user_action") is False
+            and action.get("user_action") == "continue-init-inspection"
         )
     return bool(
         boundary_kind is None
@@ -415,6 +351,23 @@ def _v1_compatibility_action(action, profile, expected_content_batch):
         for field in DOCTOR_DISCOVERY_RECEIPT_FIELDS
     }
     _project_v1_prune_evidence(projected)
+    if action["normalized_scope"] not in {None, "."}:
+        # V2 may perform one bounded repository-root host observation before
+        # an explicit narrow-scope scan. The frozen v1 projection remains
+        # scoped to the selected corpus while the v2 receipt retains the
+        # complete host evidence.
+        observed = projected["observed"]
+        containers = [
+            item for item in observed["containers"] if item["path"] != "."
+        ]
+        projected["observed"] = {
+            **observed,
+            "containers": containers,
+            "scandir_calls": sum(1 for item in containers if item["opened"]),
+            "raw_directory_entries": sum(
+                item["observed_child_entries"] for item in containers
+            ),
+        }
     projected["schema_version"] = 1
     if profile in {"root-documents", "local-candidates"} or action["continuation"][
         "status"
@@ -466,12 +419,15 @@ def _v1_compatibility_action(action, profile, expected_content_batch):
             "selected_markdown_bytes": 0,
         }
     elif action["continuation"]["status"] == "rejected" or (
-        action["continuation"]["status"] in {"available", "complete"}
-        and _content_segment_start(
-            action["content_batch"]["paths"],
-            action["scope_metadata"]["paths"],
+        action["continuation"]["status"] == "available"
+        or (
+            action["continuation"]["status"] == "complete"
+            and _content_segment_start(
+                action["content_batch"]["paths"],
+                action["scope_metadata"]["paths"],
+            )
+            not in {None, 0}
         )
-        not in {None, 0}
     ):
         expected_batch, boundary_kind = expected_content_batch(
             action["scope_metadata"]["paths"],
@@ -588,6 +544,8 @@ def _validate_adoption_preview(
             "status": "complete",
             "batch": 1,
             "cursor": None,
+            "token": None,
+            "total_batches": 1,
             "rejection": None,
             "fresh_preview_required": False,
         }
@@ -603,6 +561,7 @@ def _validate_adoption_preview(
         return None
 
     projected = dict(payload_v1)
+    _project_v1_prune_evidence(projected)
     projected.update(
         {
             "schema_version": 1,
@@ -707,13 +666,6 @@ def validate_v2_action(
     if action["selected_scope"] == "." and action["root_documents"]["paths"]:
         profile = "root-documents"
         valid_profile = _valid_root_document_scope(action, normalize_scope)
-    elif type(action["candidates"]) is list and any(
-        type(candidate) is dict
-        and candidate.get("source") == "local-conventional"
-        for candidate in action["candidates"]
-    ):
-        profile = "local-candidates"
-        valid_profile = _valid_local_candidate_choice(action)
     else:
         valid_profile = True
     if not valid_profile:

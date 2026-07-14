@@ -54,6 +54,7 @@ from .root_evidence import (
     MAINTAINED_ROOT_DOCUMENT_NAMES,
     is_maintained_root_document,
     public_root_document_evidence,
+    repository_host,
     root_document_evidence,
 )
 from .surfaces import classify_protected_surfaces, surface_observation_allowed
@@ -84,18 +85,26 @@ def _add_candidate(state, relative, source):
 
 
 def _add_local_candidate(state, relative, evidence):
+    relative = normalize_repo_relative(relative, "local candidate")
     identity = _path_identity(relative)
-    before = identity in state["candidate_keys"]
-    _add_candidate(state, relative, "local-conventional")
-    if not before and identity in state["candidate_keys"]:
-        state["local_candidates"].append(
-            {
-                "path": relative,
-                "visibility": "local-only",
-                "source": "conventional-local-root",
-                "evidence": evidence,
-            }
-        )
+    if identity in state["local_candidate_keys"]:
+        return
+    if len(state["local_candidates"]) >= INIT_DISCOVERY_LIMITS["candidate_roots"]:
+        state["candidate_truncated"] = True
+        state["halted"] = True
+        state["observed_local_candidates"] = len(state["local_candidates"]) + 1
+        _record_boundary(state, "local-candidate-roots", relative)
+        return
+    state["local_candidate_keys"].add(identity)
+    state["local_candidates"].append(
+        {
+            "path": relative,
+            "visibility": "local-only",
+            "source": "conventional-local-root",
+            "evidence": evidence,
+        }
+    )
+    state["observed_local_candidates"] = len(state["local_candidates"])
 
 
 def _probe_candidate(state, relative, source):
@@ -303,6 +312,8 @@ def _empty_continuation(*, blocked=False):
         "status": "blocked" if blocked else "complete",
         "batch": None,
         "cursor": None,
+        "token": None,
+        "total_batches": None,
         "rejection": None,
         "fresh_preview_required": False,
     }
@@ -389,8 +400,10 @@ def _initial_state(root, contract_version):
         "legacy_missing_ok": contract_version == DISCOVERY_CONTRACT_V1,
         "candidates": [],
         "candidate_keys": set(),
+        "local_candidate_keys": set(),
         "candidate_limit_hit": False,
         "observed_candidate_roots": 0,
+        "observed_local_candidates": 0,
         "candidate_truncated": False,
         "scope_truncated": False,
         "content_truncated": False,
@@ -455,7 +468,7 @@ def discover_init_scope(
     elif explicit_narrow or (
         contract_version == DISCOVERY_CONTRACT_V2 and explicit_scope is not None
     ):
-        if normalized_scope == ".":
+        if normalized_scope == "." or contract_version == DISCOVERY_CONTRACT_V2:
             inspect_root_entries(
                 state,
                 is_root_document=is_maintained_root_document,
@@ -480,7 +493,7 @@ def discover_init_scope(
         if state["candidate_truncated"]:
             selected_scope = None
             selection_reason = "discovery-truncated"
-        elif len(candidates) == 1 and candidates[0]["source"] != "local-conventional":
+        elif len(candidates) == 1:
             selected_scope = candidates[0]["path"]
             selection_reason = "sole-candidate"
         elif candidates:
@@ -561,8 +574,12 @@ def discover_init_scope(
         user_action = "review-no-doc-adoption-preview"
     elif state["content_truncated"]:
         status = "batch-limited"
-        requires_user_action = True
-        user_action = "after-content-batch-choose-continuation-or-narrow-scope"
+        if contract_version == DISCOVERY_CONTRACT_V1:
+            requires_user_action = True
+            user_action = "after-content-batch-choose-continuation-or-narrow-scope"
+        else:
+            requires_user_action = False
+            user_action = "continue-init-inspection"
     else:
         status = "ready"
         requires_user_action = False
@@ -644,6 +661,9 @@ def discover_init_scope(
         },
         "protected_surfaces": classify_protected_surfaces(
             sorted(state["surface_paths"], key=_sort_key),
+            host=repository_host(
+                sorted(state["surface_paths"], key=_sort_key)
+            ),
             complete=False,
         ),
         "physical_limit": state["physical_limit"],

@@ -75,6 +75,20 @@ def read_rgba_png(path):
 
 
 class AdapterBuilderTests(unittest.TestCase):
+    def test_init_reference_is_packaged_only_into_init_prompts(self):
+        import tools.build_adapters as builder
+
+        self.assertIn("init.md", builder.REFERENCE_FILES)
+        init_reference = (builder.SOURCE / "references" / "init.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(init_reference.strip(), "\n".join(builder._supporting_rules("init")))
+        self.assertNotIn(init_reference.strip(), "\n".join(builder._supporting_rules("doctor")))
+        self.assertIn(init_reference.strip(), builder.web_prompt("init"))
+        for command in builder.COMMANDS:
+            if command != "init":
+                self.assertNotIn(init_reference.strip(), builder.web_prompt(command))
+
     def test_canonical_checker_registry_covers_package_and_generated_bundles(self):
         import tools.build_adapters as builder
 
