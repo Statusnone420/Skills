@@ -36,7 +36,7 @@ Doctor's first pass is read-only. It maps what exists, checks obvious documentat
 
 ## What makes it different
 
-- **Bounded memory:** a human-readable map and current-state hot path target a combined 16 KiB budget.
+- **Bounded memory:** a human-readable map and current-state route keep retrieval deliberate; measured bytes are telemetry against a provisional 16 KiB optimization target, not a product limit.
 - **Evidence before claims:** code, tests, configuration, and confirmed intent outrank stale prose.
 - **Quarantine instead of contamination:** uncertain candidates remain non-canonical until corroborated.
 - **Cold history:** generated adapters, archives, evaluation payloads, and Git history stay unloaded unless needed.
@@ -66,7 +66,7 @@ Re-check, show the diff, and stop before commit
 | `doctor [goal]` | Guided diagnosis and treatment | Read-only |
 | `map` | Show documentation topology and hot path | Read-only |
 | `context <task>` | Recall only relevant repository memory | Read-only |
-| `check` | Check links, reachability, titles, and budget | Read-only |
+| `check` | Check structure, declared Trust coverage, freshness, and byte telemetry | Read-only |
 | `audit [scope]` | Prioritized, evidence-backed findings | Read-only |
 | `classify` | Identify the reader need and Diátaxis type | Read-only |
 | `write <need>` | Create one verified, focused page | Writes authorized page |

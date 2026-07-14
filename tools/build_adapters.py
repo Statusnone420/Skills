@@ -7,8 +7,34 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("doctor", "init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
-REFERENCE_FILES = ("commands.md", "doctor.md", "isolation.md", "memory.md")
+REFERENCE_FILES = ("commands.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
+CHECKER_FILES = (
+    "scripts/check.py",
+    "scripts/_docs_checker/__init__.py",
+    "scripts/_docs_checker/paths.py",
+    "scripts/_docs_checker/metadata_io.py",
+    "scripts/_docs_checker/continuation.py",
+    "scripts/_docs_checker/knowledge.py",
+    "scripts/_docs_checker/root_evidence.py",
+    "scripts/_docs_checker/discovery_policy.py",
+    "scripts/_docs_checker/surfaces.py",
+    "scripts/_docs_checker/receipt.py",
+    "scripts/_docs_checker/discovery_io.py",
+    "scripts/_docs_checker/discovery.py",
+    "scripts/_docs_checker/scan.py",
+    "scripts/_docs_checker/identity.py",
+    "scripts/_docs_checker/memory.py",
+    "scripts/_docs_checker/lifecycle.py",
+    "scripts/_docs_checker/lifecycle_io.py",
+    "scripts/_docs_checker/health.py",
+)
+CANONICAL_RESOURCE_FILES = (
+    "agents/openai.yaml",
+    *(f"references/{name}" for name in REFERENCE_FILES),
+    *CHECKER_FILES,
+    *(f"assets/{name}" for name in ASSETS),
+)
 MARKER_NAME = ".statusnone-adapters-output"
 MARKER_TEXT = "statusnone-adapters-v1\n"
 PROTECTED_ROOTS = tuple(ROOT / name for name in (".git", ".github", ".superpowers", "docs", "evals", "skills", "tests", "tools"))
@@ -263,14 +289,9 @@ def validate(output: Path) -> list[str]:
         adapter_files.add(f"{prefix}/SKILL.md")
         adapter_files.update(
             f"{prefix}/{rel}"
-            for rel in (
-                "agents/openai.yaml",
-                *(f"references/{name}" for name in REFERENCE_FILES),
-                "scripts/check.py",
-                *(f"assets/{name}" for name in ASSETS),
-            )
+            for rel in CANONICAL_RESOURCE_FILES
         )
-    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | adapter_files | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", "plugin/skills/docs/agents/openai.yaml", *(f"plugin/skills/docs/references/{name}" for name in REFERENCE_FILES), "plugin/skills/docs/scripts/check.py", "plugin/assets/bounded-compass.png", *(f"plugin/skills/docs/assets/{name}" for name in ASSETS)}
+    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | adapter_files | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", *(f"plugin/skills/docs/{rel}" for rel in CANONICAL_RESOURCE_FILES), "plugin/assets/bounded-compass.png"}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
@@ -282,10 +303,14 @@ def validate(output: Path) -> list[str]:
     for d in output.rglob('*'):
         if d.is_dir() and d.relative_to(output).as_posix() not in expected_dirs: errors.append(f"extra directory {d.relative_to(output).as_posix()}")
     for v in ("claude","copilot","grok","cursor"):
-        for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
-            if (adapter_skill_root(output, v)/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity {v}/{rel}")
-    for rel in ("agents/openai.yaml", *(f"references/{name}" for name in REFERENCE_FILES), "scripts/check.py", *(f"assets/{name}" for name in ASSETS)):
-        if (output/"plugin/skills/docs"/rel).read_bytes() != (SOURCE/rel).read_bytes(): errors.append(f"resource parity plugin/{rel}")
+        for rel in CANONICAL_RESOURCE_FILES:
+            target = adapter_skill_root(output, v) / rel
+            if not target.is_file() or target.read_bytes() != (SOURCE / rel).read_bytes():
+                errors.append(f"resource parity {v}/{rel}")
+    for rel in CANONICAL_RESOURCE_FILES:
+        target = output / "plugin/skills/docs" / rel
+        if not target.is_file() or target.read_bytes() != (SOURCE / rel).read_bytes():
+            errors.append(f"resource parity plugin/{rel}")
     if (output/"plugin/assets/bounded-compass.png").read_bytes() != (SOURCE/"assets/bounded-compass.png").read_bytes(): errors.append("resource parity plugin presentation asset")
     return errors
 

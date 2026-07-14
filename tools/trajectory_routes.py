@@ -1,15 +1,35 @@
-"""Complete, dependency-free validators for documentation retrieval routes."""
+"""Complete validators for documentation retrieval routes."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping
 
+from trajectory_discovery_contract import (
+    ANYWHERE_PRUNE_DIRS,
+    DOCUMENTATION_ROOT_NAMES,
+    DOCTOR_DISCOVERY_KIND,
+    DOCTOR_DISCOVERY_STATUSES,
+    DOCTOR_DISCOVERY_TERMINAL_STATUSES,
+    INIT_DISCOVERY_LIMITS,
+    PACKAGE_CONTAINER_NAMES,
+    REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
+    _prune_reason,
+    normalize_scope as _normalize_scope,
+    root_only_overrides_for_scope as _root_only_overrides_for_scope,
+    scope_contains as _scope_contains,
+    validate_doctor_discovery_action,
+)
+
 MAX_DOCS_ACTIONS = {"map": 4, "check": 4, "context": 4, "doctor": 8}
 MAX_COMBINED_READ_PATHS = 3
+MAX_DOCTOR_POSTCHECK_FILES = 4
 MAP_ACTION_KINDS = {"read-map", "bounded-probe", "combined-read", "checker"}
 DOCTOR_POSTCHECK_KIND = "post-check-read"
-ALL_ACTION_KINDS = MAP_ACTION_KINDS | {DOCTOR_POSTCHECK_KIND}
+ALL_ACTION_KINDS = MAP_ACTION_KINDS | {
+    DOCTOR_DISCOVERY_KIND,
+    DOCTOR_POSTCHECK_KIND,
+}
 MAP_FALLBACK_ROOT_PATHS = {"README.md", "STATE.md", "PRODUCT.md", "DESIGN.md", "PLAN.md"}
 COLD_DOC_PATH_COMPONENTS = frozenset(
     {"generated", "archive", "archives", "tests", "evals", "source"}
@@ -55,7 +75,7 @@ def _append(errors, error):
 
 
 def _normalize_actions(actions):
-    return [dict(action) for action in actions if isinstance(action, Mapping)]
+    return [action for action in actions if isinstance(action, Mapping)]
 
 
 def _is_safe_relative_path(path):
@@ -179,7 +199,13 @@ def _first_map_state(actions, errors):
     return first.get("status")
 
 
-def _validate_mapped_route(actions, errors, *, precheck=False):
+def _validate_mapped_route(
+    actions,
+    errors,
+    *,
+    precheck=False,
+    allowed=_is_allowed_hot_path,
+):
     kinds = [action.get("kind") for action in actions]
     if len(actions) > 3:
         _append(errors, "retrieval.doctor_precheck_budget" if precheck else "retrieval.docs_action_budget")
@@ -192,14 +218,19 @@ def _validate_mapped_route(actions, errors, *, precheck=False):
         hot_paths = hot.get("paths")
         if hot.get("status") != "complete":
             _append(errors, "retrieval.mapped_read_failed")
+        first_paths = {
+            path.replace("\\", "/")
+            for path in actions[0].get("paths", ())
+            if isinstance(path, str)
+        }
         if hot_paths == actions[0].get("paths") or (
             _valid_path_list(hot)
-            and any(path.replace("\\", "/") == "docs/README.md" for path in hot_paths)
+            and any(path.replace("\\", "/") in first_paths for path in hot_paths)
         ):
             _append(errors, "retrieval.duplicate_map_read")
         if not _valid_path_list(hot) or not hot.get("paths"):
             _append(errors, "retrieval.invalid_action_paths")
-        elif any(not _is_allowed_hot_path(path) for path in hot["paths"]):
+        elif any(not allowed(path) for path in hot["paths"]):
             _append(errors, "retrieval.forbidden_path")
 
 
@@ -318,10 +349,49 @@ def validate_context_route(actions):
     return _dedupe(errors)
 
 
-def _validate_doctor_postcheck(actions, errors):
+def _doctor_path_error(path, scope, root_only_overrides=()):
+    if not _is_safe_relative_path(path):
+        return "retrieval.forbidden_path"
+    normalized = path.replace("\\", "/")
+    if _prune_reason(normalized, root_only_overrides):
+        return "retrieval.forbidden_path"
+    if scope == ".":
+        return None if _is_allowed_hot_path(path) else "retrieval.forbidden_path"
+    if scope is None or not _scope_contains(scope, normalized):
+        return "retrieval.path_outside_doctor_scope"
+    if normalized == scope or "." not in normalized.rsplit("/", 1)[-1]:
+        return "retrieval.forbidden_path"
+    parts = normalized.split("/")
+    if any(part.casefold() in COLD_DOC_PATH_COMPONENTS for part in parts[:-1]):
+        return "retrieval.forbidden_path"
+    return None
+
+
+def _validate_doctor_paths(
+    actions,
+    errors,
+    scope,
+    *,
+    reject_empty=False,
+    root_only_overrides=(),
+):
+    for action in actions:
+        if "paths" not in action or not _valid_path_list(action):
+            continue
+        paths = action["paths"]
+        normalized_paths = [path.replace("\\", "/") for path in paths]
+        if len(normalized_paths) != len(set(normalized_paths)):
+            _append(errors, "retrieval.invalid_action_paths")
+        if reject_empty and not paths:
+            _append(errors, "retrieval.invalid_action_paths")
+        for path in paths:
+            error = _doctor_path_error(path, scope, root_only_overrides)
+            if error is not None:
+                _append(errors, error)
+
+
+def _validate_doctor_postcheck(actions, errors, scope, root_only_overrides=()):
     total_files = 0
-    group_files = {}
-    groups = set()
     for action in actions:
         if action.get("kind") != DOCTOR_POSTCHECK_KIND:
             _append(errors, f"retrieval.unknown_action_kind:{action.get('kind')}")
@@ -331,47 +401,188 @@ def _validate_doctor_postcheck(actions, errors):
         if not _valid_path_list(action) or not action.get("paths"):
             _append(errors, "retrieval.invalid_action_paths")
             continue
-        if any(not _is_allowed_hot_path(path) for path in action["paths"]):
-            _append(errors, "retrieval.forbidden_path")
+        _validate_doctor_paths(
+            [action],
+            errors,
+            scope,
+            reject_empty=True,
+            root_only_overrides=root_only_overrides,
+        )
         group = action.get("group", "default")
         if not isinstance(group, str) or not group:
             _append(errors, "retrieval.doctor_postcheck_group")
             continue
-        groups.add(group)
-        group_files[group] = group_files.get(group, 0) + len(action["paths"])
         total_files += len(action["paths"])
-    if len(groups) > 2:
-        _append(errors, "retrieval.doctor_postcheck_group_budget")
-    if any(count > 2 for count in group_files.values()) or total_files > 4:
+    if total_files > MAX_DOCTOR_POSTCHECK_FILES:
         _append(errors, "retrieval.doctor_postcheck_file_budget")
 
 
-def validate_doctor_route(actions):
+def _validate_doctor_discovery_route(actions, errors, scope):
+    discovery = actions[0]
+    context = validate_doctor_discovery_action(discovery, errors) or {}
+    selected_scope = context.get("selected_scope")
+    inspected_scope = context.get("inspected_scope")
+    normalized_scope = context.get("normalized_scope")
+    jurisdiction_scope = context.get("jurisdiction_scope")
+    root_only_overrides = context.get("root_only_overrides", ())
+    content_paths = context.get("content_paths", frozenset())
+    if discovery.get("status") == "ready" and (
+        scope is None
+        or selected_scope != scope
+        or inspected_scope != scope
+        or normalized_scope not in {None, ".", scope}
+    ):
+        _append(errors, "retrieval.doctor_discovery_scope_mismatch")
+    if discovery.get("status") in DOCTOR_DISCOVERY_TERMINAL_STATUSES:
+        terminal_scope = selected_scope or jurisdiction_scope
+        if scope != terminal_scope:
+            _append(errors, "retrieval.doctor_discovery_scope_mismatch")
+        if len(actions) != 1:
+            _append(errors, "retrieval.doctor_discovery_must_stop")
+        return
+
+    first_postcheck = next(
+        (
+            index
+            for index, action in enumerate(actions)
+            if action.get("kind") == DOCTOR_POSTCHECK_KIND
+        ),
+        None,
+    )
+    prefix = actions if first_postcheck is None else actions[:first_postcheck]
+    postcheck = [] if first_postcheck is None else actions[first_postcheck:]
+    kinds = [action.get("kind") for action in prefix]
+    valid_kinds = (
+        [DOCTOR_DISCOVERY_KIND, "checker"],
+        [DOCTOR_DISCOVERY_KIND, "read-map", "checker"],
+        [DOCTOR_DISCOVERY_KIND, "combined-read", "checker"],
+        [DOCTOR_DISCOVERY_KIND, "read-map", "combined-read", "checker"],
+    )
+    if kinds not in valid_kinds:
+        _append(errors, "retrieval.invalid_doctor_discovery_route")
+    checker_errors, _ = _validate_checker_boundary(prefix[1:])
+    errors.extend(checker_errors)
+    for action in prefix[1:-1]:
+        if action.get("status") != "complete":
+            _append(errors, "retrieval.fallback_action_failed")
+        if not _valid_path_list(action) or not action.get("paths"):
+            _append(errors, "retrieval.invalid_action_paths")
+        else:
+            _validate_doctor_paths(
+                [action],
+                errors,
+                scope,
+                reject_empty=True,
+                root_only_overrides=root_only_overrides,
+            )
+        if action.get("kind") == "read-map" and (
+            not _valid_path_list(action) or len(action.get("paths", ())) != 1
+        ):
+            _append(errors, "retrieval.invalid_map_read")
+        elif action.get("kind") == "read-map" and (
+            action["paths"][0].replace("\\", "/") not in content_paths
+        ):
+            _append(errors, "retrieval.invalid_map_read")
+        if action.get("kind") == "combined-read" and _valid_path_list(action) and any(
+            path.replace("\\", "/") not in content_paths
+            for path in action["paths"]
+        ):
+            _append(errors, "retrieval.invalid_doctor_discovery_content")
+        if action.get("kind") == "combined-read" and (
+            _valid_path_list(action)
+            and len(action["paths"]) > MAX_COMBINED_READ_PATHS
+        ):
+            _append(errors, "retrieval.action_path_budget")
+    _validate_doctor_postcheck(
+        postcheck,
+        errors,
+        scope,
+        root_only_overrides,
+    )
+
+
+def _validate_doctor_mapped_route(actions, errors, scope):
+    root_only_overrides = _root_only_overrides_for_scope(scope)
+    map_indexes = [
+        index
+        for index, action in enumerate(actions)
+        if action.get("kind") == "read-map"
+    ]
+    if not map_indexes:
+        _append(errors, "retrieval.missing_map_read")
+    elif map_indexes[0] != 0:
+        _append(errors, "retrieval.map_read_not_first")
+    else:
+        first = actions[0]
+        if (
+            first.get("status") != "complete"
+            or not _valid_path_list(first)
+            or len(first.get("paths", ())) != 1
+            or _doctor_path_error(
+                first["paths"][0],
+                scope,
+                root_only_overrides,
+            )
+            is not None
+        ):
+            _append(errors, "retrieval.invalid_map_read")
+    _validate_doctor_paths(
+        actions,
+        errors,
+        scope,
+        root_only_overrides=root_only_overrides,
+    )
+    checker_errors, _ = _validate_checker_boundary(actions)
+    errors.extend(checker_errors)
+    _validate_mapped_route(
+        actions,
+        errors,
+        precheck=True,
+        allowed=lambda path: _doctor_path_error(
+            path,
+            scope,
+            root_only_overrides,
+        )
+        is None,
+    )
+
+
+def validate_doctor_route(actions, scope=None):
     """Validate the shared pre-check route and bounded Doctor post-check phase."""
     actions = _normalize_actions(actions)
     errors = _common_errors(actions, ALL_ACTION_KINDS)
     if len(actions) > MAX_DOCS_ACTIONS["doctor"]:
         _append(errors, "retrieval.docs_action_budget")
+    if actions and actions[0].get("kind") == DOCTOR_DISCOVERY_KIND:
+        _validate_doctor_discovery_route(actions, errors, scope)
+        return _dedupe(errors)
+    if actions and actions[0].get("kind") == "read-map" and actions[0].get("status") == "missing":
+        _append(errors, "retrieval.doctor_init_discovery_required")
     first_postcheck = next(
         (index for index, action in enumerate(actions) if action.get("kind") == DOCTOR_POSTCHECK_KIND),
         None,
     )
     if first_postcheck is None:
-        errors.extend(validate_map_or_check_route(actions, "doctor", precheck=True))
+        _validate_doctor_mapped_route(actions, errors, scope)
         return _dedupe(errors)
     prefix = actions[:first_postcheck]
     postcheck = actions[first_postcheck:]
-    errors.extend(validate_map_or_check_route(prefix, "doctor", precheck=True))
-    _validate_doctor_postcheck(postcheck, errors)
+    _validate_doctor_mapped_route(prefix, errors, scope)
+    _validate_doctor_postcheck(
+        postcheck,
+        errors,
+        scope,
+        _root_only_overrides_for_scope(scope),
+    )
     return _dedupe(errors)
 
 
-def validate_route(command, actions):
+def validate_route(command, actions, *, scope=None):
     """Dispatch to the complete validator for one public command route."""
     if command in {"map", "check"}:
         return validate_map_or_check_route(actions, command)
     if command == "context":
         return validate_context_route(actions)
     if command == "doctor":
-        return validate_doctor_route(actions)
+        return validate_doctor_route(actions, scope)
     raise ValueError("unsupported trajectory command")

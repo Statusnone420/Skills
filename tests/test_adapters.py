@@ -75,6 +75,60 @@ def read_rgba_png(path):
 
 
 class AdapterBuilderTests(unittest.TestCase):
+    def test_canonical_checker_registry_covers_package_and_generated_bundles(self):
+        import tools.build_adapters as builder
+
+        canonical_scripts = {
+            path.relative_to(builder.SOURCE).as_posix()
+            for path in (builder.SOURCE / "scripts").rglob("*.py")
+        }
+        self.assertEqual(set(builder.CHECKER_FILES), canonical_scripts)
+        self.assertIn("scripts/check.py", builder.CHECKER_FILES)
+        self.assertEqual(
+            {
+                path.rsplit("/", 1)[-1]
+                for path in builder.CHECKER_FILES
+                if path.startswith("scripts/_docs_checker/")
+            },
+            {
+                "__init__.py",
+                "paths.py",
+                "metadata_io.py",
+                "continuation.py",
+                "knowledge.py",
+                "root_evidence.py",
+                "discovery_policy.py",
+                "surfaces.py",
+                "receipt.py",
+                "discovery_io.py",
+                "discovery.py",
+                "scan.py",
+                "identity.py",
+                "memory.py",
+                "lifecycle.py",
+                "lifecycle_io.py",
+                "health.py",
+            },
+        )
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            output = Path(td) / "out"
+            builder.generate(output)
+            for vendor in ("claude", "copilot", "grok", "cursor"):
+                skill_root = adapter_skill_root(output, vendor)
+                for relative in builder.CHECKER_FILES:
+                    with self.subTest(vendor=vendor, relative=relative):
+                        self.assertEqual(
+                            (skill_root / relative).read_bytes(),
+                            (builder.SOURCE / relative).read_bytes(),
+                        )
+            for relative in builder.CHECKER_FILES:
+                with self.subTest(vendor="plugin", relative=relative):
+                    self.assertEqual(
+                        (output / "plugin" / "skills" / "docs" / relative).read_bytes(),
+                        (builder.SOURCE / relative).read_bytes(),
+                    )
+
     def test_web_prompts_are_unconditionally_supplied_material_draft_only(self):
         import tools.build_adapters as builder
 

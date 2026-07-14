@@ -18,21 +18,26 @@ python tools/trajectory_gate.py evals/trajectory/bulwark-map-accepted.json
 
 The gate checks reader outcomes rather than exact prose: where to start, what to trust, current truth, generated/cold material, needs attention, and deliberately unloaded material. It separately counts documentation-owned and host/external actions, but rejects repository-evidence actions mislabeled as external overhead. The checker action carries sanitized rubric version, percentage, and meter evidence; the displayed health meter must match it. Cumulative token totals without a paired host control are labeled unattributed rather than charged entirely to Diátaxis Docs.
 
-## Documentation-health rubric v1
+## Documentation-health rubric v2
 
-The canonical checker emits a versioned `health` object with raw counts, earned weight, available weight, a deterministic percentage, and the plain-text meter. This is a reproducible structural baseline according to `$docs`, not a universal Diátaxis score and not evidence of factual accuracy.
+The canonical checker emits a versioned `health` object with raw counts, earned weight, available weight, a deterministic structural percentage, and the plain-text meter. This is a reproducible structural baseline according to `$docs`, not a universal Diátaxis score and not evidence of factual accuracy.
+
+The quality dimensions come from established documentation and agent-engineering practice. The exact weights are Diátaxis Docs rubric v2: a versioned, testable local operationalization for comparison, not an externally validated scientific or universal constant. The structural percentage does not prove factual accuracy. Scope, semantic coverage, and hash freshness are separate evidence with explicit provenance. Freshness is implemented in v2 as a Trust gate, not assigned numeric weight until that weight has independent evidence.
 
 | Category | Weight | Evidence |
 | --- | ---: | --- |
 | Maintained entry point | 20 | selected map exists and is readable |
 | Path safety | 15 | maintained paths remain confined and avoid reparse or outside-link findings |
-| Link integrity | 15 | valid local targets / checked local targets; no checked links earns zero |
+| Link integrity | 20 | valid local targets / checked local targets, gated by a useful entry |
 | Anchor integrity | 10 | valid referenced anchors / checked anchors; no references is neutral/full |
-| Reachability | 20 | maintained documents reachable from the selected map / maintained documents |
+| Reachability | 25 | maintained documents reachable from a useful selected map / maintained documents |
 | Title clarity | 10 | usable, unique primary titles / maintained documents |
-| Current-truth hot path | 10 | proportional credit while selected map/current-state bytes stay within 16 KiB |
 
-Every division is zero-guarded, category weights sum to 100, and the percentage rounds by `int(earned_weight + 0.5)`. The meter fills `floor(percentage / 5)` of exactly 20 literal cells. Health repairs must improve the measured evidence; model judgment does not change the number.
+Entry credit is five points for a readable map, five for a usable H1, and ten for a valid navigation route. A complete single maintained document (H1, body paragraph, and secondary heading) is the explicit alternative. Self-only stubs receive no link, anchor, or reachability credit. Every division is zero-guarded, category weights sum to 100, and the percentage rounds by `int(earned_weight + 0.5)`. The meter fills `floor(percentage / 5)` of exactly 20 literal cells. Health repairs must improve the measured evidence; model judgment does not change the number.
+
+`structure_status` and `trust_status` are separate. Trust reports the normalized, deduplicated union of configured current-truth routes, valid state hot/verified document and source routes, and map links carrying the exact same-line `<!-- docs:current -->` or `<!-- docs:authoritative -->` marker. It reports numerator, denominator, every route, and per-route provenance. Empty coverage is unverified. Precedence is blocked (open P0), stale, partial, then verified; an open P1 still prevents an overall healthy verdict.
+
+State-declared verified document/source routes use newline- and NFC-normalized SHA-256 text digests with a bytes fallback. Freshness changes Trust, never the structural score. Selected map/current-state size is provenance-tagged telemetry only: `provisional_target_bytes: 16384` records an optimization hypothesis, not a product limit, compliance rule, health input, or reason to delete/compress truth.
 
 Route tests use generated one-change mutations, invariant checks, deterministic cases, and retained named regressions. This applies Hypothesis/property-based testing ideas without adding Hypothesis, copying its source, or adding any runtime dependency.
 
@@ -42,7 +47,7 @@ Fresh isolated Codex agents ran the same canonical skill against the same reposi
 
 | Command | Observed result | Remaining limitation |
 | --- | --- | --- |
-| `map` | Literal path tree, one checker execution, 1,686 / 16,384-byte current hot path, and both known unreachable planning files | None observed in the final probe |
+| `map` | Literal path tree, one checker execution, 1,686 measured current-route bytes against the then-provisional 16,384-byte optimization target, and both known unreachable planning files | None observed in the final probe |
 | `check` | Same current hot-path size and findings from one checker execution; no source, help, Git, or finding-file detour | None observed in the final probe |
 | `context` | Bounded explanation from three target-repository evidence files; generated contents, tests, and validation stayed cold | One unnecessary name-only adapter-directory listing remained |
 | `update` | Disposable dirty-worktree fixture changed only two affected docs, preserved source anchors, unrelated dirty files, and an untracked user draft | One focused test-runner attempt stopped when the runner was unavailable |
