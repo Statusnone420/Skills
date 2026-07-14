@@ -289,7 +289,11 @@ def main(argv=None):
             raise ValueError("--init-discovery requires --json --agent")
         if any(part == ".." for part in Path(namespace.root).parts):
             raise ValueError("path traversal is not allowed")
-        raw = Path(namespace.root).expanduser().absolute()
+        # Normalize the CLI root lexically.  Init discovery owns every
+        # filesystem metadata operation and applies its physical budget at
+        # validate_root; the façade must not preflight ancestors through a
+        # platform-specific Path operation before that boundary.
+        raw = Path(os.path.abspath(os.path.expanduser(os.fspath(namespace.root))))
         if namespace.init_discovery:
             discovery = discover_init_scope(
                 raw,

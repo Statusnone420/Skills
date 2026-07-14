@@ -1884,6 +1884,45 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertEqual(payload["observed"]["metadata_operations"], 1)
             self.assertEqual(physical_calls, 1)
 
+    def test_init_cli_root_normalization_is_lexical_before_bounded_discovery(self):
+        """The CLI must not use a filesystem-sensitive Path.absolute preflight."""
+        original_path = docs_checker.Path
+
+        class LexicalPath:
+            def __init__(self, value):
+                self._path = original_path(value)
+
+            @property
+            def parts(self):
+                return self._path.parts
+
+            def expanduser(self):
+                return self
+
+            def absolute(self):
+                raise AssertionError(
+                    "Init CLI root normalization must remain lexical and bounded"
+                )
+
+            def __fspath__(self):
+                return os.fspath(self._path)
+
+            def __str__(self):
+                return str(self._path)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            stdout = io.StringIO()
+            with mock.patch.object(docs_checker, "Path", LexicalPath), mock.patch.object(
+                docs_checker.sys, "stdout", stdout
+            ):
+                returncode = docs_checker.main(
+                    [str(root), "--json", "--agent", "--init-discovery"]
+                )
+
+            self.assertEqual(returncode, 0)
+            self.assertEqual(json.loads(stdout.getvalue())["mode"], "init-discovery")
+
     def test_init_discovery_metadata_limit_reports_selected_scope_depth(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

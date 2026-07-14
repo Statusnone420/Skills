@@ -922,6 +922,53 @@ class Task7TransactionTests(Task7ContractCase):
                                 self.assertEqual(result["status"], "closeout-failed")
                         self.assertEqual(tree_bytes(root), before)
 
+    def test_directory_fsync_failure_does_not_leave_unregistered_recovery_temp(self):
+        """A marker-fsync failure must clean its staged marker or publish recovery."""
+        apply = self.api("apply_verified_closeout")
+        io_module = self.module("lifecycle_io")
+        for failure in (OSError("forced directory-fsync failure"), KeyboardInterrupt()):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                create_repository(root)
+                plan = self.prepare(root)
+                before = tree_bytes(root)
+                original_directory_fsync = io_module._directory_fsync
+                calls = 0
+
+                def fail_first_directory_fsync(directory):
+                    nonlocal calls
+                    calls += 1
+                    if calls == 1:
+                        raise failure
+                    return original_directory_fsync(directory)
+
+                with mock.patch.object(
+                    io_module,
+                    "_directory_fsync",
+                    side_effect=fail_first_directory_fsync,
+                ):
+                    if isinstance(failure, KeyboardInterrupt):
+                        with self.assertRaises(KeyboardInterrupt):
+                            apply(
+                                root,
+                                plan,
+                                approved_transaction=plan["transaction_id"],
+                                verification=lambda: True,
+                            )
+                    else:
+                        result = apply(
+                            root,
+                            plan,
+                            approved_transaction=plan["transaction_id"],
+                            verification=lambda: True,
+                        )
+                        self.assertEqual(result["status"], "closeout-failed")
+                self.assertEqual(tree_bytes(root), before)
+                self.assertEqual(
+                    list((root / ".diataxis").glob(".docs-txn-*-recovery.tmp")),
+                    [],
+                )
+
     def test_named_target_boundaries_reject_semantic_failure_and_post_replace_crash(self):
         apply = self.api("apply_verified_closeout")
         io_module = self.module("lifecycle_io")

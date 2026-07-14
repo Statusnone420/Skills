@@ -933,7 +933,19 @@ def _create_recovery_marker(control, transaction_id, created_directories):
         transaction_id,
         created_directories,
     )
-    _directory_fsync(marker.parent)
+    try:
+        _directory_fsync(marker.parent)
+    except BaseException:
+        # The marker is not installed until the first replacement.  If its
+        # durability barrier fails, remove this uninstalled staging artifact
+        # while preserving the original exception.  If removal itself fails,
+        # the reserved name remains visible to read-only memory inspection as
+        # a P0 recovery condition.
+        try:
+            marker.unlink()
+        except OSError:
+            pass
+        raise
     return marker
 
 
