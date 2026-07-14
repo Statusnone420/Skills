@@ -406,6 +406,277 @@ def route_mutations(actions):
     return mutations
 
 
+@lru_cache(maxsize=None)
+def _slop_fixture():
+    """Load the Task 8A synthetic nightmare fixture (evals/doctor-slop-fixture.json)."""
+    return json.loads(
+        (ROOT / "evals" / "doctor-slop-fixture.json").read_text(encoding="utf-8")
+    )
+
+
+def _fixture_required_unique_truth_ids(fixture):
+    return {
+        item["id"]
+        for item in fixture["unique_truth_inventory"]
+        if item.get("requires_disposition") is True
+    }
+
+
+def _fixture_disposition_coverage(manifest_entries):
+    """Return {id: entry} for manifest entries that name an explicit surviving disposition.
+
+    An entry counts as coverage only when it carries a non-empty ``disposition`` string and
+    either a non-empty ``destination`` or the explicit ``exclude-out-of-scope`` disposition
+    (the one disposition kind that legitimately has no in-repository destination).
+    """
+    covered = {}
+    duplicates = []
+    for entry in manifest_entries:
+        if not isinstance(entry, dict):
+            continue
+        identity = entry.get("id")
+        disposition = entry.get("disposition")
+        destination = entry.get("destination")
+        if not isinstance(identity, str) or not identity:
+            continue
+        if not isinstance(disposition, str) or not disposition:
+            continue
+        has_destination = destination not in (None, "", [])
+        if not has_destination and disposition != "exclude-out-of-scope":
+            continue
+        if identity in covered:
+            duplicates.append(identity)
+        covered[identity] = entry
+    return covered, sorted(set(duplicates))
+
+
+def _fixture_paths(value):
+    if isinstance(value, list):
+        return {item for item in value if isinstance(item, str)}
+    return {value} if isinstance(value, str) else set()
+
+
+def zero_unique_truth_loss_oracle(fixture, manifest_entries):
+    """Implementation-independent oracle: every load-bearing fact needs a surviving disposition.
+
+    Deliberately does not import or call anything from tools/trajectory_gate.py or
+    tools/trajectory_routes.py: it only inventories the fixture's declared unique truth and
+    checks disposition coverage using logic local to this test file, so it can judge Task 8B's
+    eventual production behavior without depending on it.
+    """
+    required = _fixture_required_unique_truth_ids(fixture)
+    covered, duplicates = _fixture_disposition_coverage(manifest_entries)
+    inventory = {
+        item["id"]: item
+        for item in fixture["unique_truth_inventory"]
+        if item.get("requires_disposition") is True
+    }
+    invalid_ids = sorted(set(covered) - required)
+    missing = sorted(required - set(covered))
+    intent_errors = []
+    for identity, item in inventory.items():
+        entry = covered.get(identity)
+        if entry is None:
+            continue
+        kind = item.get("kind")
+        destinations = _fixture_paths(entry.get("destination"))
+        expected = _fixture_paths(item.get("location"))
+        disposition = entry.get("disposition")
+        if kind == "protected-public-surface":
+            if disposition != "retain-protected" or destinations != expected:
+                intent_errors.append(identity)
+        elif kind == "local-only-authoritative-truth":
+            if disposition != "local-preserve" or not destinations or not all(
+                path.startswith(".local/") for path in destinations
+            ):
+                intent_errors.append(identity)
+        elif kind == "out-of-scope-vendor-symlink":
+            if disposition != "exclude-out-of-scope" or entry.get("destination") is not None:
+                intent_errors.append(identity)
+        elif kind == "unrelated-dirty-work":
+            if disposition != "preserve-unrelated" or destinations != expected:
+                intent_errors.append(identity)
+    invalid = bool(missing or invalid_ids or duplicates or intent_errors)
+    return {
+        "zero_unique_truth_loss": not invalid,
+        "missing_ids": missing,
+        "invalid_ids": invalid_ids,
+        "duplicate_ids": duplicates,
+        "intent_errors": sorted(set(intent_errors)),
+    }
+
+
+class SyntheticSlopFixtureOracleTests(unittest.TestCase):
+    """Task 8A: oracle proof over the synthetic nightmare fixture.
+
+    These tests exercise only the fixture and the implementation-independent oracle above;
+    they do not touch tools/trajectory_gate.py or tools/trajectory_routes.py.
+    """
+
+    def setUp(self):
+        self.fixture = _slop_fixture()
+
+    def test_fixture_declares_every_required_nightmare_shape(self):
+        fixture = self.fixture
+        self.assertTrue(fixture.get("synthetic") is True)
+        self.assertEqual(len(fixture["duplicated_mixed_purpose_docs"]["paths"]), 2)
+
+        unique_kinds = {item["kind"] for item in fixture["unique_truth_inventory"]}
+        self.assertEqual(
+            unique_kinds,
+            {
+                "load-bearing-decision",
+                "bloated-current-state",
+                "orphaned-maintained-instructions",
+                "deliberate-archive-material",
+                "conflicting-protected-intent",
+                "verified-source-later-changed",
+                "out-of-scope-vendor-symlink",
+                "unrelated-dirty-work",
+                "local-only-authoritative-truth",
+                "protected-public-surface",
+            },
+        )
+
+        hidden = [
+            item
+            for item in fixture["unique_truth_inventory"]
+            if item.get("hidden_in_duplicate")
+        ]
+        self.assertEqual(len(hidden), 1)
+        self.assertEqual(hidden[0]["id"], "UNIQ-RETRY-BACKOFF-0001")
+        self.assertEqual(hidden[0]["location"], "docs/current/guide-duplicate-b.md")
+        self.assertIn(
+            hidden[0]["location"], fixture["duplicated_mixed_purpose_docs"]["paths"]
+        )
+
+        self.assertIn(".diataxis/local-map.json", fixture["tree"])
+        missing_clone = fixture["local_only_authoritative_truth"]["missing_clone_case"]
+        self.assertEqual(
+            missing_clone["expected_status"], "declared-local-knowledge-unavailable"
+        )
+
+        protected = fixture["protected_public_surfaces"]
+        for key in ("readme", "community", "release", "docs_site_route", "wiki_declaration"):
+            self.assertIn(key, protected)
+
+        conflict_ids = {
+            item["id"]
+            for item in fixture["unique_truth_inventory"]
+            if item["kind"] == "conflicting-protected-intent"
+        }
+        self.assertEqual(len(conflict_ids), 2)
+        merge = fixture["branch_merge_conflict"]
+        self.assertEqual(merge["status"], "state-conflict")
+        self.assertEqual(merge["priority"], "P0")
+        self.assertTrue(merge["read_only"])
+        self.assertTrue(merge["reconstruction_preview"])
+        cleanup = fixture["no_git_cleanup"]
+        self.assertFalse(cleanup["git_available"])
+        self.assertEqual(cleanup["disposition"], "archive")
+        self.assertFalse(cleanup["hard_delete_approved"])
+
+    def test_approved_disposition_manifest_achieves_zero_unique_truth_loss(self):
+        result = zero_unique_truth_loss_oracle(
+            self.fixture, self.fixture["disposition_manifest"]
+        )
+
+        self.assertEqual(result["missing_ids"], [])
+        self.assertTrue(result["zero_unique_truth_loss"])
+
+    def test_oracle_rejects_manifest_that_silently_drops_the_hidden_unique_decision(self):
+        adversarial = self.fixture["adversarial_manifest_missing_unique_decision"]
+
+        result = zero_unique_truth_loss_oracle(
+            self.fixture, adversarial["disposition_manifest"]
+        )
+
+        self.assertFalse(result["zero_unique_truth_loss"])
+        self.assertIn("UNIQ-RETRY-BACKOFF-0001", result["missing_ids"])
+
+    def test_oracle_rejection_holds_even_though_the_bad_manifest_scores_better(self):
+        approved = self.fixture["approved_transformation"]
+        adversarial = self.fixture["adversarial_manifest_missing_unique_decision"]
+
+        # The adversarial manifest produces a *smaller* hot-path byte count than the approved
+        # one -- by a naive "fewer bytes is healthier" score it looks like an improvement.
+        self.assertLess(adversarial["hot_path_bytes_after"], approved["hot_path_bytes_after"])
+        self.assertEqual(adversarial["naive_structure_status"], "improved")
+
+        # The oracle must still refuse it: it is independent of any byte/structure score and
+        # only cares whether every unique load-bearing fact has a surviving disposition.
+        approved_result = zero_unique_truth_loss_oracle(
+            self.fixture, self.fixture["disposition_manifest"]
+        )
+        adversarial_result = zero_unique_truth_loss_oracle(
+            self.fixture, adversarial["disposition_manifest"]
+        )
+
+        self.assertTrue(approved_result["zero_unique_truth_loss"])
+        self.assertFalse(adversarial_result["zero_unique_truth_loss"])
+
+    def test_oracle_rejects_duplicate_unknown_and_moved_intent_entries(self):
+        fixture = self.fixture
+        manifest = deepcopy(fixture["disposition_manifest"])
+        manifest.append(deepcopy(manifest[0]))
+        manifest.append({"id": "UNIQ-FABRICATED", "disposition": "retain", "destination": "docs/x.md"})
+        moved = next(entry for entry in manifest if entry["id"] == "UNIQ-PROTECTED-README")
+        moved["destination"] = "docs/new-readme.md"
+        local = next(
+            entry for entry in manifest if entry["id"] == "UNIQ-LOCAL-AUTHORITATIVE-DECISIONS"
+        )
+        local["destination"] = "docs/shared-decisions.md"
+
+        result = zero_unique_truth_loss_oracle(fixture, manifest)
+
+        self.assertFalse(result["zero_unique_truth_loss"])
+        self.assertIn("UNIQ-RETRY-BACKOFF-0001", result["duplicate_ids"])
+        self.assertIn("UNIQ-FABRICATED", result["invalid_ids"])
+        self.assertIn("UNIQ-PROTECTED-README", result["intent_errors"])
+        self.assertIn("UNIQ-LOCAL-AUTHORITATIVE-DECISIONS", result["intent_errors"])
+
+    def test_disposition_manifest_accounts_for_every_unique_fact_and_preserves_intent(self):
+        fixture = self.fixture
+        inventory = {
+            item["id"]
+            for item in fixture["unique_truth_inventory"]
+            if item.get("requires_disposition") is True
+        }
+        manifest = fixture["disposition_manifest"]
+        manifest_ids = [entry["id"] for entry in manifest]
+        self.assertEqual(len(manifest_ids), len(set(manifest_ids)))
+        self.assertEqual(set(manifest_ids), inventory)
+
+        by_id = {entry["id"]: entry for entry in manifest}
+        local = by_id["UNIQ-LOCAL-AUTHORITATIVE-DECISIONS"]
+        self.assertEqual(local["disposition"], "local-preserve")
+        self.assertTrue(local["destination"].startswith(".local/"))
+        for item_id in (
+            "UNIQ-PROTECTED-README",
+            "UNIQ-PROTECTED-COMMUNITY",
+            "UNIQ-PROTECTED-RELEASE",
+            "UNIQ-PROTECTED-DOCS-SITE",
+            "UNIQ-PROTECTED-WIKI",
+        ):
+            self.assertEqual(by_id[item_id]["disposition"], "retain-protected")
+
+    def test_fixture_oracle_is_deterministic_and_does_not_claim_success_for_open_priority(self):
+        fixture = self.fixture
+        approved = fixture["disposition_manifest"]
+        first = zero_unique_truth_loss_oracle(fixture, approved)
+        second = zero_unique_truth_loss_oracle(fixture, approved)
+        self.assertEqual(first, second)
+        self.assertTrue(first["zero_unique_truth_loss"])
+
+        transformation = fixture["approved_transformation"]
+        self.assertEqual(transformation["open_p0_required_by_scope"], 0)
+        self.assertEqual(transformation["open_p1_required_by_scope"], 0)
+        self.assertLess(
+            transformation["hot_path_bytes_after"],
+            transformation["hot_path_bytes_before"],
+        )
+
+
 class TrajectoryGateTests(unittest.TestCase):
     def load(self, name):
         return json.loads((ROOT / "evals" / "trajectory" / name).read_text(encoding="utf-8"))
@@ -4420,6 +4691,193 @@ class TrajectoryGateTests(unittest.TestCase):
 
         self.assertGreaterEqual(commands.count("--json --agent"), 2)
         self.assertIn("--json --agent", doctor)
+
+    def _passing_doctor_receipt(self):
+        """A minimal doctor receipt the current gate already accepts, as a RED-test baseline."""
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["command"] = "doctor"
+        receipt["retrieval"]["actions"] = self.doctor_actions()
+        receipt["presentation"].pop("tree")
+        receipt["presentation"].pop("tree_features")
+        self.bind_doctor_findings(receipt, 0)
+        baseline = trajectory_gate.evaluate(receipt)
+        self.assertEqual(baseline["status"], "PASS", baseline["errors"])
+        return receipt
+
+    def test_red_gate_does_not_yet_enforce_the_scope_qualified_structure_rubric_v2_payload(self):
+        """Task 8 Step 1 (still unimplemented): doctor receipts must carry a scope-qualified
+        rubric v2 structural payload (rubric_version, scope, delta, structure_status,
+        trust_status, coverage, row provenance, freshness, priority counts). The gate does not
+        yet know about this contract, so it silently accepts a receipt missing it entirely --
+        this assertion is expected to fail until Task 8B implements the check."""
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["structure"] = {"rubric_version": 2}  # missing every other required field
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.invalid_structure_rubric_v2", result["errors"])
+
+    def test_red_gate_does_not_yet_reject_unqualified_current_truth_pass(self):
+        """Task 8 Step 1 (still unimplemented): an unqualified 'Current truth PASS' claim (no
+        scope attached) must be rejected. The gate does not yet parse outcome.current_truth at
+        all, so this assertion is expected to fail until Task 8B implements the check."""
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["current_truth"] = "PASS"
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.unqualified_current_truth_pass", result["errors"])
+
+    def test_red_gate_does_not_yet_reject_removal_without_disposition(self):
+        """Task 8 Step 1/4 (still unimplemented): removing a unique load-bearing section (here,
+        the Task 8A fixture's hidden retry-backoff decision) must carry an explicit disposition.
+        The gate does not yet read outcome.removed_sections, so this assertion is expected to
+        fail until Task 8B implements the check."""
+        fixture = _slop_fixture()
+        hidden_decision = next(
+            item
+            for item in fixture["unique_truth_inventory"]
+            if item["id"] == "UNIQ-RETRY-BACKOFF-0001"
+        )
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["removed_sections"] = [
+            {"id": hidden_decision["id"], "path": hidden_decision["location"]}
+        ]
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.missing_removal_disposition", result["errors"])
+
+    def test_red_gate_does_not_yet_reject_a_stale_approval_replay(self):
+        """Task 8 Step 1/6 (still unimplemented): replaying an approval recorded against a source
+        hash that has since changed (the Task 8A fixture's stale_approval case) must be rejected
+        rather than silently accepted. The gate does not yet compare approval hashes, so this
+        assertion is expected to fail until Task 8B implements the check."""
+        fixture = _slop_fixture()
+        stale = fixture["stale_approval"]
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["approval"] = {
+            "recovery_boundary": stale["recovery_boundary"],
+            "approved_source_hash": stale["approved_source_hash"],
+            "current_source_hash": stale["current_source_hash"],
+        }
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.stale_approval", result["errors"])
+
+    def test_red_gate_does_not_yet_require_a_recovery_boundary_on_mutation_receipts(self):
+        """Task 8 Step 1 (still unimplemented): mutation receipts (exact ID+fingerprint pairs)
+        must be bound to an approved recovery boundary. The gate does not yet read
+        outcome.mutation_receipts at all, so this assertion is expected to fail until Task 8B
+        implements the check."""
+        fixture = _slop_fixture()
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["mutation_receipts"] = deepcopy(
+            fixture["approved_transformation"]["mutation_receipts"]
+        )
+        # Deliberately omit outcome["recovery_boundary"].
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.missing_recovery_boundary", result["errors"])
+
+    def _valid_task8_structure(self, scope="."):
+        return {
+            "rubric_version": 2,
+            "scope": scope,
+            "delta": 5,
+            "structure_status": "improved",
+            "trust_status": "verified",
+            "coverage": {
+                "numerator": 1,
+                "denominator": 1,
+                "routes": [{"route": "README.md", "source": "state"}],
+            },
+            "row_provenance": [{"row": "entry", "source": "checker"}],
+            "freshness": {
+                "status": "fresh",
+                "routes": [{"route": "README.md", "source": "state"}],
+                "findings": [],
+            },
+            "priority_counts": {"P0": 0, "P1": 0, "P2": 1, "P3": 0},
+        }
+
+    def test_task8_v2_nested_evidence_is_fail_closed_and_valid_payload_passes(self):
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["scope"] = "."
+        receipt["retrieval"]["actions"][-1]["scope"] = "."
+        receipt["outcome"]["structure"] = self._valid_task8_structure()
+        accepted = trajectory_gate.evaluate(receipt)
+        self.assertEqual(accepted["status"], "PASS", accepted["errors"])
+
+        for field, value in (
+            ("coverage", {"numerator": 1, "denominator": 1, "routes": [42]}),
+            ("row_provenance", [{}]),
+            (
+                "freshness",
+                {"status": "fresh", "routes": [True], "findings": [42]},
+            ),
+        ):
+            with self.subTest(field=field):
+                mutated = deepcopy(receipt)
+                mutated["outcome"]["structure"][field] = value
+                result = trajectory_gate.evaluate(mutated)
+                self.assertEqual(result["status"], "FAIL")
+                self.assertIn("outcome.invalid_structure_rubric_v2", result["errors"])
+
+    def test_task8_scoped_truth_requires_evidence_and_authorized_mutations(self):
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["scope"] = "."
+        receipt["retrieval"]["actions"][-1]["scope"] = "."
+        receipt["outcome"]["current_truth"] = {"status": "PASS", "scope": "."}
+        result = trajectory_gate.evaluate(receipt)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.unqualified_current_truth_pass", result["errors"])
+
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"].update(
+            mutation_receipts=[
+                {
+                    "id": "DOC-1A2B3C4D",
+                    "fingerprint": "1a2b3c4d5e6f70819203a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
+                }
+            ],
+            recovery_boundary="approval-1",
+        )
+        result = trajectory_gate.evaluate(receipt)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.missing_approval", result["errors"])
+
+        receipt["outcome"]["approval"] = {
+            "approved": True,
+            "status": "approved",
+            "recovery_boundary": "approval-1",
+            "approved_source_hash": "sha256:same",
+            "current_source_hash": "sha256:same",
+        }
+        result = trajectory_gate.evaluate(receipt)
+        self.assertEqual(result["status"], "PASS", result["errors"])
+
+    def test_task8_recovery_and_no_git_cleanup_do_not_claim_success(self):
+        receipt = self._passing_doctor_receipt()
+        receipt["outcome"]["state_conflict"] = _slop_fixture()["branch_merge_conflict"]
+        result = trajectory_gate.evaluate(receipt)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.invalid_state_conflict_recovery", result["errors"])
+
+        receipt = self._passing_doctor_receipt()
+        cleanup = deepcopy(_slop_fixture()["no_git_cleanup"])
+        cleanup["disposition"] = "delete"
+        receipt["outcome"]["no_git_cleanup"] = cleanup
+        result = trajectory_gate.evaluate(receipt)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("outcome.invalid_no_git_cleanup", result["errors"])
 
 
 if __name__ == "__main__":

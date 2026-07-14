@@ -6,9 +6,11 @@
 
 <p align="center"><strong>Part of Statusnone Skills</strong></p>
 
-<p align="center"><strong>Your repository's documentation should help agents—not consume their context window.</strong></p>
+<p align="center"><strong>A repository documentation operating system for humans and agents.</strong></p>
 
 <p align="center">Bounded repository memory. Evidence-backed documentation.</p>
+
+Your repository's documentation should help agents and humans find trustworthy context without loading the whole tree.
 
 <p align="center">
   <a href="https://github.com/Statusnone420/Skills/actions/workflows/validate.yml"><img alt="CI" src="https://github.com/Statusnone420/Skills/actions/workflows/validate.yml/badge.svg"></a>
@@ -16,7 +18,7 @@
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-3B82F6"></a>
 </p>
 
-**Diátaxis Docs** is bounded repository memory and evidence-backed documentation for coding agents. **Doctor is the guided front door**; direct commands remain available when you already know the treatment. The system gives humans clean documentation while giving agents a small, trustworthy retrieval path instead of another context firehose.
+**Diátaxis Docs** is a repository documentation operating system. It builds a readable map/highway around the documentation a repository already owns, then gives humans and agents a small, evidence-backed retrieval path. Diátaxis is the organization compass—not the whole product. **Doctor is the guided front door**; direct commands remain available when you already know the treatment.
 
 > **Public alpha:** useful today and actively tested. Review proposed changes before approval and use the same Git safeguards you use for any coding agent.
 
@@ -36,12 +38,14 @@ Doctor's first pass is read-only. It maps what exists, checks obvious documentat
 
 ## What makes it different
 
-- **Bounded memory:** a human-readable map and current-state route keep retrieval deliberate; measured bytes are telemetry against a provisional 16 KiB optimization target, not a product limit.
+- **Bounded memory:** a human-readable map and current-state route keep retrieval deliberate; measured bytes are provenance-tagged telemetry against a provisional optimization target, not a product limit or deletion rule.
 - **Evidence before claims:** code, tests, configuration, and confirmed intent outrank stale prose.
 - **Quarantine instead of contamination:** uncertain candidates remain non-canonical until corroborated.
 - **Cold history:** generated adapters, archives, evaluation payloads, and Git history stay unloaded unless needed.
 - **Human documentation first:** Diátaxis helps each page serve a real reader need—not an agent-only memory database.
 - **Safe treatment:** structural work previews first; Doctor requires explicit treatment approval and prefers isolated branches or worktrees.
+- **Auditable continuity:** committed `.diataxis/` state, findings, hashes, events, and complete disposition manifests provide cross-session identity without an external database or daemon.
+- **Truth-aware health:** a scope-qualified structural score stays separate from Trust coverage, source-hash freshness, protected public surfaces, and local-only knowledge.
 
 ## The workflow
 
@@ -90,6 +94,10 @@ Compatibility is evidence-tiered—not universal. Static adapter validation is n
 - **100+ deterministic tests** across Windows and Linux CI.
 - Canonical/generated parity checks and sanitized, reproducible evaluation fixtures.
 
+Every finding has a content-derived `DOC-*` identity and full fingerprint. Line movement and timestamps do not retarget it; changed semantic identity does. Approved structural transformations carry exact ID/fingerprint pairs, protected-surface evidence, recovery boundaries, and a complete disposition manifest. Failed verification is a state conflict, never a successful closeout.
+
+The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,214 to 21,840 bytes; the 32,000-byte packaging guard is a documented regression check with 10,160 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
+
 ## Benchmark status
 
 The broader 108-trajectory model matrix and complete cross-harness pilots have not run. That limitation is published rather than hidden. See [Benchmark](BENCHMARK.md), [Evaluation](EVALUATION.md), and [Security](SECURITY.md).
@@ -100,7 +108,7 @@ Diátaxis Docs is an actively developed public alpha. The current priorities are
 
 ## Origin and independence
 
-The project grew from a vanished documentation skill, the [Diátaxis](https://diataxis.fr/) framework, documentation pressure in ADHD Matrix, and the corroboration/quarantine pattern explored in the public [Crimson Desert Report Hub](https://github.com/Statusnone420/Crimson-Desert-Report-Hub). Read the full [origin note](ORIGIN.md).
+The project grew from a vanished documentation skill and the [Diátaxis](https://diataxis.fr/) framework. Read the full [origin note](ORIGIN.md).
 
 Statusnone conceived and directed the project; Codex collaborated on planning, implementation, adversarial testing, and review. This is an independent project and is not affiliated with or endorsed by the Diátaxis project, OpenAI, Anthropic, xAI, GitHub, or other harness vendors.
 

@@ -10,6 +10,22 @@ The public alpha uses three gates so quality evidence does not become an uncontr
 2. **Sanitized trajectory gate:** host-neutral receipts record semantic answers, documentation-owned actions, host/external overhead, visible diagnostics, and exposed usage counters. Raw traces, hidden reasoning, private paths, and credentials are never public inputs.
 3. **Capped live canary:** release candidates may run a small, explicitly approved campaign against stable mapped, missing-map, and hostile fixtures. A campaign is limited to 12 runs; the checked-in example authorizes none.
 
+## Product contract and research provenance
+
+This is a repository documentation operating system, not a prompt concatenator. Init establishes a bounded map/highway once; Doctor diagnoses that highway read-only; context routes task-relevant truth; check reports structural evidence; and separate approvals drive any lifecycle mutation. Findings use content-derived stable IDs and full fingerprints. State, findings, verified hashes, events, and complete disposition manifests provide committed operational memory without an external database or daemon. Protected public entrances and local-only knowledge remain distinct routes with distinct authorization.
+
+The design uses established observations as motivation, not endorsement of this repository's exact rubric or weights:
+
+- [OpenAI Evals API](https://platform.openai.com/docs/api-reference/evals/run-output-item-object) documents reproducible evaluation artifacts and run outputs.
+- Anthropic's [Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) describes verifiable end states and interaction-quality rubrics for multi-turn agents.
+- Aider publishes [code-editing leaderboard methodology](https://aider.chat/docs/leaderboards/edit.html), including task completion and edit-format compliance.
+- The [SWE-agent paper](https://arxiv.org/abs/2405.15793) evaluates agent-computer interfaces for software engineering tasks.
+- [Lost in the Middle](https://arxiv.org/abs/2307.03172) motivates measuring retrieval and context placement rather than assuming a larger context is always better.
+- IBM's [content-quality guidance](https://www.ibm.com/docs/en/technical-content?topic=standards-content-quality) and the [OASIS DITA standard](https://www.oasis-open.org/standard/dita/) motivate task-oriented, structured documentation.
+- [Diátaxis](https://diataxis.fr/) motivates separating reader needs and documentation types.
+
+These references do not validate the local 100-point operationalization. The structural percentage, Trust precedence, scope rules, and byte telemetry are versioned repository contracts tested here. Freshness changes Trust, never the structural score. The historical no-schema/no-hash stance was a sensible alpha safeguard against speculative infrastructure; cross-session identity and drift evidence now justify the small committed control plane described above.
+
 Validate a receipt locally:
 
 ```text
@@ -56,4 +72,34 @@ Earlier probes are retained as failures rather than overwritten. They exposed ab
 
 The original release proposal included six scenarios × skill/baseline × three repetitions × Codex/Claude/Grok (108 trajectories). It has not run and is not the public-alpha default. Cross-harness compatibility pilots remain incomplete. Infrastructure failures remain failures and limitations, never positive results.
 
+### Adapter prompt telemetry
+
+Task 9 replaced the legacy all-command concatenation with command-specific progressive disclosure. The generator measured these UTF-8 prompt sizes before regeneration:
+
+| Command | Bytes |
+| --- | ---: |
+| doctor | 21,840 |
+| init | 20,658 |
+| context | 4,776 |
+| write | 10,484 |
+| update | 10,862 |
+| audit | 3,214 |
+| fix | 10,412 |
+| map | 9,705 |
+| classify | 3,227 |
+| migrate | 10,492 |
+| check | 8,135 |
+| cleanup | 10,511 |
+| help | 4,081 |
+
+The 32,000-byte value is a measured packaging regression guard with 10,160 bytes of headroom over the observed maximum. It is not a product limit, health input, or evidence-backed industry standard. The separate 16,384-byte repository hot-path figure remains provisional, provenance-tagged optimization telemetry only.
+
 No hidden reasoning, credentials, private paths, or private repository material are part of the public record. Raw task identifiers and unsanitized traces remain private; only final outputs, diffs, concise tool events, and measured counters may be exported.
+
+### Task 10 observed local dogfood
+
+On 2026-07-14, a local-only checker harness exercised 13 disposable repository conditions: healthy, no-docs, large slop with unique truth, conflicting intent, stale source, archive-heavy, stub map, vendor symlink, merged-state conflict, dirty worktree, no-Git, local-only authority, and protected public surfaces. All 13 repeated JSON results were deterministic, all 13 initial previews were zero-write, and all 13 privacy checks found no absolute fixture path or synthetic private sentinel in output. No external model was invoked, so these measurements cover deterministic routing and safety contracts, not model retrieval quality.
+
+The no-doc case returned an adoption preview with `content_reads: 0`; the large-slop case returned a bounded batch-limited preview without opening the unique fact; stale and merged state returned blocked Trust outcomes; the local-only case returned choice-required with present-uninspected candidates and absence claims disallowed; and protected-surface previews reported 9 synthetic surfaces. The authorized Cline local-authority run found a choice boundary with two local candidates, then an explicit local scope planned 12 files/94,889 bytes with zero content reads; selected read-only retrieval verified nine staged plan entries, including Chat Calm and performance work. No local body, private route, or map was copied into shared state or public output.
+
+A safe local checkout with a configured remote supplied the public-repository evidence: 10 protected surfaces were inventoried conservatively, the evidence was incomplete and scope-limited, and no relocation or mutation was attempted. No network clone was run. The 16,384-byte hot-path value and 21,840-byte prompt maximum remain measured telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.

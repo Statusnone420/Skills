@@ -145,12 +145,15 @@ class AdapterBuilderTests(unittest.TestCase):
 
     def test_web_prompts_are_standalone_compositions_with_bounded_size(self):
         import tools.build_adapters as builder
-        canonical_full = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
-        canonical_skill = canonical_full.split("---", 2)[-1]
+        doctor = (ROOT / "skills/docs/references/doctor.md").read_text(encoding="utf-8")
         commands = (ROOT / "skills/docs/references/commands.md").read_text(encoding="utf-8")
         memory = (ROOT / "skills/docs/references/memory.md").read_text(encoding="utf-8")
-        doctor = (ROOT / "skills/docs/references/doctor.md").read_text(encoding="utf-8")
-        isolation = (ROOT / "skills/docs/references/isolation.md").read_text(encoding="utf-8")
+        measurements = builder.prompt_measurements()
+        self.assertEqual(set(measurements), set(builder.COMMANDS))
+        self.assertGreaterEqual(
+            builder.PROMPT_REGRESSION_GUARD_BYTES - max(measurements.values()),
+            10_000,
+        )
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
@@ -166,17 +169,54 @@ class AdapterBuilderTests(unittest.TestCase):
                 self.assertIn("do not inspect a repository, run tools/git, create isolation", lowered)
                 self.assertIn("never claim inspection or edits", lowered)
                 self.assertNotIn("activate the shared skill", text.lower())
-                self.assertIn(canonical_skill, text)
-                self.assertIn(commands, text)
-                self.assertIn(memory, text)
-                self.assertLessEqual(len(text.encode("utf-8")), 16_000)
+                self.assertIn("Shared safety core (canonical):", text)
+                self.assertIn("Selected command contract (canonical):", text)
+                self.assertIn("No other command playbooks are loaded.", text)
+                self.assertNotIn(commands, text)
+                self.assertNotIn(memory, text)
+                self.assertEqual(len(text.encode("utf-8")), measurements[command])
+                self.assertLessEqual(
+                    len(text.encode("utf-8")), builder.PROMPT_REGRESSION_GUARD_BYTES
+                )
                 self.assertNotIn("name: docs", text)
                 if command == "doctor":
                     self.assertIn(doctor, text)
-                    self.assertNotIn(isolation, text)
                     self.assertIn("treatments remain draft-only", text)
                 else:
                     self.assertNotIn(doctor, text)
+
+    def test_web_prompt_composition_does_not_load_unrelated_playbooks(self):
+        import tools.build_adapters as builder
+        doctor = builder.web_prompt("doctor")
+        context = builder.web_prompt("context")
+        self.assertIn("# Doctor playbook", doctor)
+        self.assertNotIn("# Doctor playbook", context)
+        self.assertIn("Selected command contract (canonical):", context)
+        self.assertIn("`context <task>`", context)
+        self.assertNotIn("# Command playbook", doctor)
+
+    def test_web_prompt_keeps_the_complete_selected_command_contract(self):
+        import tools.build_adapters as builder
+
+        init = builder.web_prompt("init")
+        for phrase in (
+            "content opened",
+            "candidate ranking",
+            "anywhere_names",
+            "physical limit",
+            "protected intent",
+            "local-only",
+            "continuation",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase.lower(), init.lower())
+        self.assertNotIn("`context <task>`:", init)
+        self.assertNotIn("`doctor [goal]`:", init)
+
+        migrate = builder.web_prompt("migrate")
+        cleanup = builder.web_prompt("cleanup")
+        self.assertIn("preview exact moves", migrate.lower())
+        self.assertIn("preview splits, merges, archives, removals", cleanup.lower())
 
     def test_check_detects_web_prompt_parity_drift(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
@@ -209,8 +249,9 @@ class AdapterBuilderTests(unittest.TestCase):
                 cwd=ROOT,
                 check=True,
             )
+            import tools.build_adapters as builder
             (out / "web" / "docs-doctor.txt").write_text(
-                "x" * 16_001,
+                "x" * (builder.PROMPT_REGRESSION_GUARD_BYTES + 1),
                 encoding="utf-8",
             )
 
@@ -222,7 +263,7 @@ class AdapterBuilderTests(unittest.TestCase):
             )
 
             self.assertNotEqual(check.returncode, 0)
-            self.assertIn("web budget doctor", check.stderr)
+            self.assertIn("web regression guard doctor", check.stderr)
 
     def test_doctor_is_generated_and_reference_resources_have_parity(self):
         import tools.build_adapters as builder

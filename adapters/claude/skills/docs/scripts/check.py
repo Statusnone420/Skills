@@ -1,258 +1,246 @@
 #!/usr/bin/env python3
 """Read-only, standard-library documentation integrity checker."""
-import argparse, json, os, re, sys, unicodedata, stat
-from collections.abc import Mapping
+
+import argparse
+import json
+import os
+import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from urllib.parse import unquote
-
-MAX_HOT = 16 * 1024
-HEALTH_RUBRIC_VERSION = 1
-HEALTH_WEIGHTS = {
-    "entry": 20,
-    "path_safety": 15,
-    "links": 15,
-    "anchors": 10,
-    "reachability": 20,
-    "titles": 10,
-    "hot_path": 10,
-}
-LINK = re.compile(r"\[[^\]]*\]\(([^)]*)\)")
-HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*#*\s*$", re.M)
-H1 = re.compile(r"^#\s+(.+?)\s*#*\s*$", re.M)
 
 
-def health_meter(percentage):
-    percentage = int(percentage)
-    filled = max(0, min(20, percentage // 5))
-    cells = "█" * filled + "░" * (20 - filled)
-    return f"Docs [{cells}] {percentage}%"
-
-
-def _count(measurements, name):
-    value = measurements.get(name, 0)
-    if not isinstance(value, int) or isinstance(value, bool):
-        return 0
-    return max(0, value)
-
-
-def _fraction(numerator, denominator):
-    if denominator <= 0:
-        return 0
-    return min(1, max(0, numerator) / denominator)
-
-
-def health_summary(measurements: Mapping):
-    map_exists = measurements.get("map_exists") is True
-    maintained_files = _count(measurements, "maintained_files")
-    maintained_paths = _count(measurements, "maintained_paths")
-    safe_maintained_paths = min(maintained_paths, _count(measurements, "safe_maintained_paths"))
-    checked_links = _count(measurements, "checked_links")
-    valid_links = min(checked_links, _count(measurements, "valid_links"))
-    checked_anchors = _count(measurements, "checked_anchors")
-    valid_anchors = min(checked_anchors, _count(measurements, "valid_anchors"))
-    reachable_files = min(maintained_files, _count(measurements, "reachable_files"))
-    usable_unique_titles = min(maintained_files, _count(measurements, "usable_unique_titles"))
-    hot_bytes = _count(measurements, "hot_bytes")
-
-    earned = {
-        "entry": HEALTH_WEIGHTS["entry"] if map_exists else 0,
-        "path_safety": HEALTH_WEIGHTS["path_safety"] * _fraction(safe_maintained_paths, maintained_paths),
-        "links": HEALTH_WEIGHTS["links"] * _fraction(valid_links, checked_links),
-        "anchors": HEALTH_WEIGHTS["anchors"] if checked_anchors == 0 else HEALTH_WEIGHTS["anchors"] * _fraction(valid_anchors, checked_anchors),
-        "reachability": HEALTH_WEIGHTS["reachability"] * _fraction(reachable_files, maintained_files),
-        "titles": HEALTH_WEIGHTS["titles"] * _fraction(usable_unique_titles, maintained_files),
-        "hot_path": 0 if not map_exists else HEALTH_WEIGHTS["hot_path"] * min(1, MAX_HOT / max(hot_bytes, 1)),
+_SAFE_PUBLIC_CLI_ERRORS = frozenset(
+    {
+        "--agent requires --json",
+        "--init-discovery requires --json --agent",
+        "path traversal is not allowed",
+        "root must be a real directory",
     }
-    raw = {
-        "entry": {"map_exists": map_exists},
-        "path_safety": {"safe": safe_maintained_paths, "maintained": maintained_paths},
-        "links": {"valid": valid_links, "checked": checked_links},
-        "anchors": {"valid": valid_anchors, "checked": checked_anchors},
-        "reachability": {"reachable": reachable_files, "maintained": maintained_files},
-        "titles": {"usable_unique": usable_unique_titles, "maintained": maintained_files},
-        "hot_path": {"bytes": hot_bytes, "limit": MAX_HOT},
+)
+_PUBLIC_CONFINEMENT_ERROR = "symlink or reparse path component"
+_SAFE_PUBLIC_CONFINEMENT_ERRORS = frozenset(
+    {
+        _PUBLIC_CONFINEMENT_ERROR,
+        "symlink root",
+        "symlink path",
+        "explicit scope must not contain a reparse component",
     }
-    categories = {
-        name: {
-            "weight": HEALTH_WEIGHTS[name],
-            "earned": round(earned[name], 2),
-            "available": HEALTH_WEIGHTS[name],
-            "raw": raw[name],
-        }
-        for name in HEALTH_WEIGHTS
-    }
-    earned_weight = round(sum(category["earned"] for category in categories.values()), 2)
-    percentage = max(0, min(100, int(earned_weight + 0.5)))
-    return {
-        "rubric_version": HEALTH_RUBRIC_VERSION,
-        "percentage": percentage,
-        "meter": health_meter(percentage),
-        "earned_weight": earned_weight,
-        "available_weight": sum(HEALTH_WEIGHTS.values()),
-        "categories": categories,
-    }
+)
 
-def strip_fences(text):
-    out=[]; fenced=False; marker=None
-    for line in text.splitlines(True):
-        m=re.match(r"^\s*(```+|~~~+)", line)
-        if m:
-            if not fenced: fenced=True; marker=m.group(1)[0]
-            elif m.group(1)[0]==marker: fenced=False
-            out.append("\n"); continue
-        out.append("\n" if fenced else line)
-    return "".join(out)
+# Importing the internal package must not mutate the checker or inspected tree.
+_previous_dont_write_bytecode = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
 
-def slug(value):
-    value = unquote(value).strip().lower()
-    value = unicodedata.normalize("NFKC", value)
-    return re.sub(r"[^\w -]", "", value, flags=re.UNICODE).replace(" ", "-")
+from _docs_checker.health import (
+    HEALTH_RUBRIC_VERSION,
+    HEALTH_WEIGHTS,
+    PROVISIONAL_TARGET_BYTES,
+    _count,
+    _fraction,
+    evaluate_coverage,
+    evaluate_freshness,
+    health_meter,
+    health_summary,
+    normalized_content_digest,
+)
+from _docs_checker.discovery import discover_init_scope
+from _docs_checker.identity import (
+    _EVENT_ID,
+    _FINDING_ID,
+    _FINGERPRINT,
+    _IDENTITY_PATH_FIELDS,
+    _IDENTITY_PATH_LIST_FIELDS,
+    _IDENTITY_SCALAR_FIELDS,
+    _canonical_finding_evidence,
+    _canonical_path_identity,
+    _canonical_scalar_identity,
+    _normalize_event_id,
+    _normalize_fingerprint,
+    _require_mapping,
+    _require_sequence,
+    _require_string,
+    event_fingerprint,
+    event_id,
+    finding_fingerprint,
+    finding_id,
+    slug,
+)
+from _docs_checker.knowledge import (
+    LOCAL_MAP_MAX_BYTES,
+    LOCAL_MAP_PATH,
+    LOCAL_MAP_PREVIEW,
+    LOCAL_MAP_SCHEMA_VERSION,
+    inspect_local_map,
+    route_local_knowledge,
+)
+from _docs_checker.memory import (
+    EVENTS_FILE,
+    FINDINGS_FILE,
+    FINDING_STATUSES,
+    MAX_EVENTS_BYTES,
+    MAX_FINDINGS_BYTES,
+    MAX_JSON_DEPTH,
+    MAX_MANIFEST_BYTES,
+    MAX_STATE_BYTES,
+    PRIORITIES,
+    STATE_DIRECTORY,
+    STATE_FILE,
+    STATE_SCHEMA_VERSION,
+    _DIGEST,
+    _MANIFEST_DIGEST,
+    _MERGE_MARKER,
+    _OperationalMemoryIssue,
+    _SEMVER,
+    _StrictJSONError,
+    _decode_operational_bytes,
+    _memory_finding,
+    _normalize_checked_path,
+    _normalize_checked_pattern,
+    _normalize_checked_route,
+    _normalize_digest,
+    _normalize_manifest,
+    _operational_control,
+    _operational_file,
+    _operational_memory_findings,
+    _read_bounded_bytes,
+    _read_operational_file,
+    _reject_json_constant,
+    _require_exact_keys,
+    _require_int,
+    _strict_json_loads,
+    _strict_object,
+    _validate_finding_evidence,
+    _validate_json_nesting,
+    inspect_operational_memory,
+    load_operational_events,
+    load_operational_findings,
+    load_operational_state,
+    validate_operational_events,
+    validate_operational_findings,
+    validate_operational_state,
+)
+from _docs_checker.lifecycle import (
+    build_verified_event,
+    prepare_dispositions,
+    preview_memory_compaction,
+    select_persisted_findings,
+    transition_finding,
+)
+from _docs_checker.lifecycle_io import (
+    apply_state_conflict_recovery,
+    apply_verified_closeout,
+    prepare_verified_closeout,
+    preview_state_conflict_recovery,
+    validate_protected_intent_change,
+    verify_local_route_hashes,
+)
+from _docs_checker.metadata_io import is_expected_environmental_error
+from _docs_checker.paths import (
+    ANYWHERE_PRUNE_DIRS,
+    REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
+    STANDARD_PRUNE_DIRS,
+    _assert_no_reparse_components,
+    _first_reparse_component,
+    _is_pruned_relative,
+    _is_reparse,
+    _path_identity,
+    _raise_walk_error,
+    _relative_posix,
+    iter_markdown_scope,
+    normalize_repo_relative,
+    prune_summary,
+    route_matches_patterns,
+    safe_path,
+    unique_relative_paths,
+)
+from _docs_checker.scan import (
+    H1,
+    H2,
+    HEADING,
+    LINK,
+    CURRENT_ROUTE_LINK,
+    discover_markdown,
+    hot_path_summary,
+    scan_documents,
+    strip_fences,
+)
+from _docs_checker.surfaces import (
+    SURFACE_SCAN_LIMITS,
+    SURFACE_SCHEMA_VERSION,
+    classify_protected_surfaces,
+    inspect_protected_surfaces,
+    preview_protected_dispositions,
+    validate_protected_disposition_preview,
+)
+sys.dont_write_bytecode = _previous_dont_write_bytecode
+del _previous_dont_write_bytecode
 
-def _is_reparse(path):
-    try:
-        st = os.lstat(path)
-    except OSError:
-        return False
-    if stat.S_ISLNK(st.st_mode):
-        return True
-    return bool(getattr(st, "st_file_attributes", 0) & 0x400)
 
-def _assert_no_reparse_components(path):
-    """Reject symlink/junction/reparse components before any filesystem use."""
-    p = Path(path).absolute()
-    parts = p.parts
-    current = Path(parts[0])
-    for part in parts[1:]:
-        current = current / part
-        if _is_reparse(current):
-            raise ValueError("symlink or reparse path component")
-
-def safe_path(path, root):
-    """Resolve only paths whose existing components are non-symlink and root-confined."""
-    raw = os.path.abspath(os.fspath(path)); base = os.path.abspath(os.fspath(root))
-    if os.path.commonpath((raw, base)) != base: raise ValueError("path escapes root")
-    rel = os.path.relpath(raw, base)
-    current = base
-    _assert_no_reparse_components(base)
-    if current != raw and _is_reparse(current): raise ValueError("symlink root")
-    for part in rel.split(os.sep):
-        current = os.path.join(current, part)
-        if os.path.lexists(current) and _is_reparse(current): raise ValueError("symlink path")
-    return Path(raw)
-
-def hot_path_summary(root, hot_paths):
-    files=[]; total=0
-    for relative in hot_paths:
-        path = safe_path(root / relative, root)
-        if path.is_file() and not _is_reparse(path):
-            size = path.stat().st_size; total += size
-            files.append({"path":Path(relative).as_posix(),"bytes":size})
-    return {"files":files,"bytes":total,"limit":MAX_HOT,"percentage":round(total / MAX_HOT * 100, 2)}
-
-def unique_relative_paths(paths):
-    unique=[]; seen=set()
-    for relative in paths:
-        normalized = os.path.normpath(os.fspath(relative))
-        key = os.path.normcase(normalized)
-        if key not in seen:
-            seen.add(key); unique.append(Path(normalized).as_posix())
-    return unique
-
-def _check_with_measurements(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
-    root = Path(root); findings=[]; files=[]; candidate_files=[]
+def check(
+    root,
+    map_path="docs/README.md",
+    hot_paths=None,
+    scope="docs",
+    *,
+    _measurements=False,
+):
+    root = Path(root).absolute()
     _assert_no_reparse_components(root)
-    if Path(map_path).is_absolute() or any(x == '..' for x in Path(map_path).parts): raise ValueError("map must be repo-relative")
-    if hot_paths and any(Path(x).is_absolute() or any(y == '..' for y in Path(x).parts) for x in hot_paths): raise ValueError("hot paths must be repo-relative")
-    hot_paths = unique_relative_paths([map_path] + (hot_paths or []))
-    if Path(scope).is_absolute() or any(x == '..' for x in Path(scope).parts): raise ValueError("scope must be repo-relative")
-    scope_path = safe_path(root / scope, root)
-    if scope_path.exists() and not scope_path.is_dir(): raise ValueError("scope must be a directory")
-    mapfile = safe_path(root / map_path, root)
-    for r in hot_paths: safe_path(root / r, root)
-    for base, dirs, names in os.walk(root, followlinks=False):
-        dirs[:] = [d for d in dirs if not _is_reparse(Path(base)/d)]
-        for name in names:
-            p=Path(base)/name
-            if p.suffix.lower()==".md": candidate_files.append(p)
-            if _is_reparse(p): findings.append({"kind":"symlink","path":str(p.relative_to(root))}); continue
-            if p.suffix.lower()==".md": files.append(p)
-    scope_norm = scope.strip('/').replace('\\','/')
-    prefix = '' if scope_norm in ('', '.') else scope_norm.rstrip('/') + '/'
-    scoped=[p for p in files if (not prefix) or str(p.relative_to(root)).replace('\\','/').startswith(prefix)]
-    candidate_scoped=[p for p in candidate_files if (not prefix) or str(p.relative_to(root)).replace('\\','/').startswith(prefix)]
-    files=scoped+([mapfile] if mapfile in files and mapfile not in scoped else [])
-    candidate_files_for_health=candidate_scoped+([mapfile] if mapfile in candidate_files and mapfile not in candidate_scoped else [])
-    anchors={}; titles={}; first_h1={}
-    for p in files:
-        text=strip_fences(p.read_text(encoding="utf-8", errors="replace"))
-        hs=HEADING.findall(text); anchors[p]={slug(h) for h in hs}
-        first_h1[p]=next((h.strip() for h in H1.findall(text)), None)
-        if first_h1[p]: titles.setdefault(first_h1[p].lower(), []).append(str(p.relative_to(root)))
-    links={}; checked_links=0; valid_links=0; checked_anchors=0; valid_anchors=0
-    for p in files:
-        links[p]=[]; text=strip_fences(p.read_text(encoding="utf-8", errors="replace"))
-        for rawtarget in LINK.findall(text):
-            rawtarget=unquote(rawtarget); target, sep, anchor = rawtarget.partition('#')
-            if not target and anchor: target="#"+anchor
-            if target.startswith("#"): dest=p
-            elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target, re.I): continue
-            else: dest=None
-            checked_links += 1
-            if anchor: checked_anchors += 1
-            if dest is None:
-                try: dest=safe_path((p.parent/target), root)
-                except ValueError: findings.append({"kind":"outside-link","path":str(p.relative_to(root)),"target":target}); continue
-            if not dest.exists(): findings.append({"kind":"missing-link","path":str(p.relative_to(root)),"target":target}); continue
-            valid_links += 1
-            links[p].append(dest)
-            if anchor and dest not in anchors:
-                try:
-                    _assert_no_reparse_components(dest)
-                    anchors[dest] = {slug(h) for h in HEADING.findall(strip_fences(dest.read_text(encoding="utf-8", errors="replace")))}
-                except (OSError, UnicodeError, ValueError):
-                    anchors[dest] = set()
-            if anchor:
-                if slug(anchor) in anchors.get(dest,set()): valid_anchors += 1
-                else: findings.append({"kind":"missing-anchor","path":str(p.relative_to(root)),"target":target+"#"+anchor})
-    if not mapfile.exists() and scoped:
-        findings.append({"kind":"missing-map","map":map_path})
-    reachable=set()
-    if mapfile in files:
-        reachable={mapfile}; todo=[mapfile]
-        while todo:
-            for dest in links.get(todo.pop(),[]):
-                if dest in files and dest not in reachable: reachable.add(dest); todo.append(dest)
-        for p in scoped:
-            if p not in reachable: findings.append({"kind":"unreachable","path":str(p.relative_to(root)),"map":map_path})
-    for title, paths in titles.items():
-        if len(paths)>1: findings.append({"kind":"duplicate-title","title":title,"paths":paths})
-    maintained_path_names={str(p.relative_to(root)).replace('\\','/') for p in candidate_files_for_health}
-    implicated_paths={
-        finding.get("path")
-        for finding in findings
-        if finding.get("kind") in {"symlink", "outside-link"} and finding.get("path") in maintained_path_names
-    }
-    hot_path = hot_path_summary(root, hot_paths)
-    if hot_path["bytes"]>MAX_HOT: findings.append({"kind":"hot-path-bytes","bytes":hot_path["bytes"],"limit":MAX_HOT})
-    measurements = {
-        "map_exists": mapfile in files,
-        "maintained_files": len(files),
-        "maintained_paths": len(maintained_path_names),
-        "safe_maintained_paths": max(0, len(maintained_path_names) - len(implicated_paths)),
-        "checked_links": checked_links,
-        "valid_links": valid_links,
-        "checked_anchors": checked_anchors,
-        "valid_anchors": valid_anchors,
-        "reachable_files": len(reachable),
-        "usable_unique_titles": sum(len(paths) for paths in titles.values() if len(paths) == 1),
-        "hot_bytes": hot_path["bytes"],
-    }
-    return findings, hot_path, measurements
-
-
-def check(root, map_path="docs/README.md", hot_paths=None, scope="docs"):
-    findings, hot_path, _ = _check_with_measurements(root, map_path, hot_paths, scope)
+    map_norm = normalize_repo_relative(map_path, "map")
+    scope_norm = normalize_repo_relative(scope, "scope")
+    configured_hot_paths = unique_relative_paths(
+        [
+            normalize_repo_relative(path, "hot paths")
+            for path in (hot_paths or [])
+        ]
+    )
+    normalized_hot_paths = unique_relative_paths([map_norm] + configured_hot_paths)
+    scoped, findings, applied_prunes = discover_markdown(root, scope_norm)
+    findings.extend(inspect_operational_memory(root))
+    state = None
+    active_findings = []
+    try:
+        state = load_operational_state(root)
+    except (OSError, UnicodeError, ValueError):
+        pass
+    try:
+        active_findings = load_operational_findings(root)["findings"]
+    except (OSError, UnicodeError, ValueError):
+        pass
+    result = scan_documents(
+        root,
+        map_norm,
+        normalized_hot_paths,
+        scoped,
+        findings,
+        applied_prunes,
+        () if state is None else state["cold_paths"],
+    )
+    findings, hot_path, measurements = result
+    freshness = (
+        {"status": "unverified", "routes": [], "findings": []}
+        if state is None
+        else evaluate_freshness(root, state["verified_documents"])
+    )
+    findings.extend(freshness["findings"])
+    coverage = evaluate_coverage(
+        configured_routes=configured_hot_paths,
+        state=state,
+        map_routes=measurements["map_current_routes"],
+        freshness=freshness,
+    )
+    measurements.update(
+        {
+            "active_findings": [*findings, *active_findings],
+            "baseline": None if state is None else state["rubric"],
+            "freshness": freshness,
+            "coverage": coverage,
+        }
+    )
+    if _measurements:
+        return findings, hot_path, measurements
     return findings, hot_path
+
 
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
@@ -262,34 +250,150 @@ def main(argv=None):
     positional = []
     skip = False
     for arg in argv:
-        if skip: skip = False; continue
-        if arg in value_options: skip = True; continue
-        if arg.startswith("--"): continue
+        if skip:
+            skip = False
+            continue
+        if arg in value_options:
+            skip = True
+            continue
+        if arg.startswith("--"):
+            continue
         positional.append(arg)
     if "--json" in argv and not positional:
-        print(json.dumps({"status": "error", "has_findings": False, "error": "the following arguments are required: root", "findings": []}))
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "has_findings": False,
+                    "error": "the following arguments are required: root",
+                    "findings": [],
+                }
+            )
+        )
         return 2
-    ap=argparse.ArgumentParser(); ap.add_argument("root"); ap.add_argument("--json",action="store_true"); ap.add_argument("--agent",action="store_true"); ap.add_argument("--map",default="docs/README.md"); ap.add_argument("--hot",default=None); ap.add_argument("--scope",default="docs")
-    ns=ap.parse_args(argv)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("root")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--agent", action="store_true")
+    parser.add_argument("--init-discovery", action="store_true")
+    parser.add_argument("--map", default="docs/README.md")
+    parser.add_argument("--hot", default=None)
+    parser.add_argument("--scope", default=None)
+    namespace = parser.parse_args(argv)
     try:
-        if ns.agent and not ns.json: raise ValueError("--agent requires --json")
-        if any(part == ".." for part in Path(ns.root).parts): raise ValueError("path traversal is not allowed")
-        raw=Path(ns.root).expanduser().absolute()
-        _assert_no_reparse_components(raw)
-        if _is_reparse(raw) or not raw.is_dir(): raise ValueError("root must be a real directory")
-        root=safe_path(raw, raw); hot=ns.hot.split(",") if ns.hot else None
-        if Path(ns.map).is_absolute() or any(x=='..' for x in Path(ns.map).parts): raise ValueError("map must be repo-relative")
-        if hot and any(Path(x).is_absolute() or any(y=='..' for y in Path(x).parts) for x in hot): raise ValueError("hot paths must be repo-relative")
-        if Path(ns.scope).is_absolute() or any(x=='..' for x in Path(ns.scope).parts): raise ValueError("scope must be repo-relative")
-        findings, hot_path, measurements=_check_with_measurements(root, ns.map, hot, ns.scope)
-    except (OSError,ValueError,UnicodeError) as exc:
-        if ns.json: print(json.dumps({"status":"error","has_findings":False,"error":str(exc),"findings":[]}))
-        else: print(f"error: {exc}")
+        if namespace.agent and not namespace.json:
+            raise ValueError("--agent requires --json")
+        if namespace.init_discovery and not (
+            namespace.json and namespace.agent
+        ):
+            raise ValueError("--init-discovery requires --json --agent")
+        if any(part == ".." for part in Path(namespace.root).parts):
+            raise ValueError("path traversal is not allowed")
+        raw = Path(namespace.root).expanduser().absolute()
+        if namespace.init_discovery:
+            discovery = discover_init_scope(
+                raw,
+                explicit_scope=namespace.scope,
+                contract_version=2,
+            )
+        else:
+            _assert_no_reparse_components(raw)
+            if _is_reparse(raw) or not raw.is_dir():
+                raise ValueError("root must be a real directory")
+            root = safe_path(raw, raw)
+            scope_value = "docs" if namespace.scope is None else namespace.scope
+            map_norm = normalize_repo_relative(namespace.map, "map")
+            hot = (
+                [
+                    normalize_repo_relative(path, "hot paths")
+                    for path in namespace.hot.split(",")
+                ]
+                if namespace.hot
+                else None
+            )
+            scope_norm = normalize_repo_relative(scope_value, "scope")
+            findings, hot_path, measurements = check(
+                root, map_norm, hot, scope_norm, _measurements=True
+            )
+    except OSError as exc:
+        if not is_expected_environmental_error(exc):
+            raise
+        if namespace.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "has_findings": False,
+                        "error": "filesystem metadata unavailable",
+                        "findings": [],
+                    }
+                )
+            )
+        else:
+            print("error: filesystem metadata unavailable")
         return 2
-    if ns.json: print(json.dumps({"status":"findings" if findings else "clean","has_findings":bool(findings),"root":str(root),"hot_path":hot_path,"health":health_summary(measurements),"findings":findings},ensure_ascii=True))
+    except (ValueError, UnicodeError) as exc:
+        raw_detail = (
+            exc.args[0]
+            if type(exc) is ValueError
+            and len(exc.args) == 1
+            and type(exc.args[0]) is str
+            else None
+        )
+        detail = (
+            _PUBLIC_CONFINEMENT_ERROR
+            if raw_detail in _SAFE_PUBLIC_CONFINEMENT_ERRORS
+            else raw_detail
+            if raw_detail in _SAFE_PUBLIC_CLI_ERRORS
+            else "invalid command input"
+        )
+        if namespace.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "has_findings": False,
+                        "error": detail,
+                        "findings": [],
+                    }
+                )
+            )
+        else:
+            print(f"error: {detail}")
+        return 2
+    if namespace.init_discovery:
+        print(json.dumps(discovery, ensure_ascii=True))
+        return 0
+    if namespace.json:
+        print(
+            json.dumps(
+                {
+                    "status": "findings" if findings else "clean",
+                    "has_findings": bool(findings),
+                    "root": ".",
+                    "scope": scope_norm,
+                    "map": map_norm,
+                    "prunes": measurements["prunes"],
+                    "hot_path": hot_path,
+                    "health": health_summary(
+                        measurements,
+                        findings=measurements["active_findings"],
+                        baseline=measurements["baseline"],
+                        freshness=measurements["freshness"],
+                        coverage=measurements["coverage"],
+                    ),
+                    "findings": findings,
+                },
+                ensure_ascii=True,
+            )
+        )
     elif findings:
-        for f in findings: print(f"{f['kind']}: {f}")
-    else: print("clean")
-    return 0 if ns.agent else (1 if findings else 0)
+        for finding in findings:
+            print(f"{finding['kind']}: {finding}")
+    else:
+        print("clean")
+    return 0 if namespace.agent else (1 if findings else 0)
 
-if __name__ == "__main__": sys.exit(main())
+
+if __name__ == "__main__":
+    sys.exit(main())
