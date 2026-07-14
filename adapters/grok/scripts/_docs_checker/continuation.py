@@ -171,6 +171,32 @@ def validate_continuation_cursor(cursor):
     )
 
 
+def _batch_number_for_start(paths, start, file_limit, byte_limit):
+    """Return the deterministic ordinal for a slice beginning at ``start``."""
+    index = 0
+    number = 1
+    while index < start:
+        batch_count = 0
+        batch_bytes = 0
+        while index < len(paths) and batch_count < file_limit:
+            item_bytes = paths[index]["bytes"]
+            if batch_count and batch_bytes + item_bytes > byte_limit:
+                break
+            if not batch_count and item_bytes > byte_limit:
+                raise ValueError("content continuation cannot cross an oversized document")
+            batch_count += 1
+            batch_bytes += item_bytes
+            index += 1
+        if batch_count == 0:
+            raise ValueError("content continuation cannot make progress")
+        if index > start:
+            raise ValueError("content continuation does not begin at a batch boundary")
+        number += 1
+    if index != start:
+        raise ValueError("content continuation does not begin at a batch boundary")
+    return number
+
+
 def plan_content_batch(
     paths,
     evidence,
@@ -227,6 +253,27 @@ def plan_content_batch(
         batch_bytes += item["bytes"]
         index += 1
 
+    if index < len(paths) and not batch_paths:
+        return (
+            {
+                "paths": [],
+                "path_count": 0,
+                "bytes": 0,
+                "complete": False,
+                "truncated": False,
+                "next_boundary": None,
+                "blocked_by_metadata": True,
+            },
+            {
+                "schema_version": CONTINUATION_SCHEMA_VERSION,
+                "status": "blocked",
+                "batch": None,
+                "cursor": None,
+                "rejection": None,
+                "fresh_preview_required": False,
+            },
+        )
+
     complete = index == len(paths)
     next_boundary = None if complete else paths[index]["path"]
     batch = {
@@ -257,7 +304,7 @@ def plan_content_batch(
     return batch, {
         "schema_version": CONTINUATION_SCHEMA_VERSION,
         "status": status,
-        "batch": 1 + (start // file_limit),
+        "batch": _batch_number_for_start(paths, start, file_limit, byte_limit),
         "cursor": cursor,
         "rejection": None,
         "fresh_preview_required": False,

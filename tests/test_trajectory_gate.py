@@ -1242,7 +1242,7 @@ class TrajectoryGateTests(unittest.TestCase):
             ),
             (
                 "id-fingerprint-mismatch",
-                lambda compact, reported: compact[0].update(id=compact[1]["id"]),
+                lambda compact, reported: compact[0].update(id="DOC-FFFFFFFF"),
                 "retrieval.invalid_compact_findings",
             ),
             (
@@ -4789,12 +4789,8 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(baseline["status"], "PASS", baseline["errors"])
         return receipt
 
-    def test_red_gate_does_not_yet_enforce_the_scope_qualified_structure_rubric_v2_payload(self):
-        """Task 8 Step 1 (still unimplemented): doctor receipts must carry a scope-qualified
-        rubric v2 structural payload (rubric_version, scope, delta, structure_status,
-        trust_status, coverage, row provenance, freshness, priority counts). The gate does not
-        yet know about this contract, so it silently accepts a receipt missing it entirely --
-        this assertion is expected to fail until Task 8B implements the check."""
+    def test_gate_enforces_the_scope_qualified_structure_rubric_v2_payload(self):
+        """Doctor receipts require the complete scope-qualified rubric v2 payload."""
         receipt = self._passing_doctor_receipt()
         receipt["outcome"]["structure"] = {"rubric_version": 2}  # missing every other required field
 
@@ -4803,10 +4799,8 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("outcome.invalid_structure_rubric_v2", result["errors"])
 
-    def test_red_gate_does_not_yet_reject_unqualified_current_truth_pass(self):
-        """Task 8 Step 1 (still unimplemented): an unqualified 'Current truth PASS' claim (no
-        scope attached) must be rejected. The gate does not yet parse outcome.current_truth at
-        all, so this assertion is expected to fail until Task 8B implements the check."""
+    def test_gate_rejects_unqualified_current_truth_pass(self):
+        """A current-truth PASS claim without its scope is invalid."""
         receipt = self._passing_doctor_receipt()
         receipt["outcome"]["current_truth"] = "PASS"
 
@@ -4815,11 +4809,8 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("outcome.unqualified_current_truth_pass", result["errors"])
 
-    def test_red_gate_does_not_yet_reject_removal_without_disposition(self):
-        """Task 8 Step 1/4 (still unimplemented): removing a unique load-bearing section (here,
-        the Task 8A fixture's hidden retry-backoff decision) must carry an explicit disposition.
-        The gate does not yet read outcome.removed_sections, so this assertion is expected to
-        fail until Task 8B implements the check."""
+    def test_gate_rejects_removal_without_disposition(self):
+        """Removing unique load-bearing knowledge requires an explicit disposition."""
         fixture = _slop_fixture()
         hidden_decision = next(
             item
@@ -4836,11 +4827,8 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("outcome.missing_removal_disposition", result["errors"])
 
-    def test_red_gate_does_not_yet_reject_a_stale_approval_replay(self):
-        """Task 8 Step 1/6 (still unimplemented): replaying an approval recorded against a source
-        hash that has since changed (the Task 8A fixture's stale_approval case) must be rejected
-        rather than silently accepted. The gate does not yet compare approval hashes, so this
-        assertion is expected to fail until Task 8B implements the check."""
+    def test_gate_rejects_a_stale_approval_replay(self):
+        """An approval recorded against changed source evidence cannot be replayed."""
         fixture = _slop_fixture()
         stale = fixture["stale_approval"]
         receipt = self._passing_doctor_receipt()
@@ -4855,11 +4843,8 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("outcome.stale_approval", result["errors"])
 
-    def test_red_gate_does_not_yet_require_a_recovery_boundary_on_mutation_receipts(self):
-        """Task 8 Step 1 (still unimplemented): mutation receipts (exact ID+fingerprint pairs)
-        must be bound to an approved recovery boundary. The gate does not yet read
-        outcome.mutation_receipts at all, so this assertion is expected to fail until Task 8B
-        implements the check."""
+    def test_gate_requires_a_recovery_boundary_on_mutation_receipts(self):
+        """Mutation receipts must be bound to an approved recovery boundary."""
         fixture = _slop_fixture()
         receipt = self._passing_doctor_receipt()
         receipt["outcome"]["mutation_receipts"] = deepcopy(

@@ -1,6 +1,7 @@
 """Bounded, metadata-only first-contact documentation discovery."""
 
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -62,6 +63,9 @@ _DOC_ROOT_KEYS = frozenset(name.casefold() for name in DOCUMENTATION_ROOT_NAMES)
 _PACKAGE_CONTAINER_KEYS = frozenset(
     name.casefold() for name in PACKAGE_CONTAINER_NAMES
 )
+_WINDOWS_SHORT_COMPONENT = re.compile(r"^.+~[1-9][0-9]*(?:\..*)?$", re.IGNORECASE)
+
+
 def _add_candidate(state, relative, source):
     relative = normalize_repo_relative(relative, "candidate root")
     identity = _path_identity(relative)
@@ -140,6 +144,7 @@ def _discover_local_candidates(state, local_entry):
     if state["halted"]:
         return
     local_root_has_document = False
+    pending = []
     for child in children:
         child_relative = _join_relative(local_relative, child.name)
         reason = _prune_reason(child_relative) or local_prune_reason(child_relative)
@@ -204,15 +209,13 @@ def _discover_local_candidates(state, local_entry):
                     evidence = "documentation-shaped-file-metadata"
                     break
         if evidence is not None:
-            _add_local_candidate(state, child_relative, evidence)
-            if state["halted"]:
-                return
+            pending.append((child_relative, evidence))
     if local_root_has_document:
-        _add_local_candidate(
-            state,
-            local_relative,
-            "documentation-shaped-file-metadata",
-        )
+        pending.append((local_relative, "documentation-shaped-file-metadata"))
+    for relative, evidence in sorted(pending, key=lambda item: _sort_key(item[0])):
+        _add_local_candidate(state, relative, evidence)
+        if state["halted"]:
+            return
 
 
 def _discover_automatic_candidates(state, *, include_local):
@@ -325,6 +328,8 @@ def _plan_content_batch(
     )
     if continuation_result["status"] == "rejected":
         state["continuation_rejected"] = True
+    elif continuation_result["status"] == "blocked" and scope_metadata["paths"]:
+        state["content_blocked"] = True
     elif batch["truncated"]:
         state["content_truncated"] = True
         boundary_kind = (
@@ -343,6 +348,11 @@ def _validated_explicit_scope(state, explicit_scope):
     candidate = Path(raw.replace("\\", os.sep).replace("/", os.sep))
     if any(part == ".." for part in candidate.parts):
         raise ValueError("explicit scope must not contain '..' segments")
+    if any(
+        part.rstrip(" .") != part or _WINDOWS_SHORT_COMPONENT.fullmatch(part)
+        for part in candidate.parts
+    ):
+        raise ValueError("explicit scope contains a Windows-ambiguous path segment")
     normalized = normalize_repo_relative(raw, "explicit scope")
     parts = () if normalized == "." else tuple(Path(normalized).parts)
     if any(part.casefold() in _ANYWHERE_PRUNE_KEYS for part in parts):
@@ -384,6 +394,7 @@ def _initial_state(root, contract_version):
         "candidate_truncated": False,
         "scope_truncated": False,
         "content_truncated": False,
+        "content_blocked": False,
         "continuation_rejected": False,
         "halted": False,
         "physical_limit": None,
@@ -532,7 +543,7 @@ def discover_init_scope(
         status = "stopped"
         requires_user_action = True
         user_action = "restart-fresh-discovery"
-    elif state["candidate_truncated"] or state["scope_truncated"]:
+    elif state["candidate_truncated"] or state["scope_truncated"] or state["content_blocked"]:
         status = "stopped"
         requires_user_action = True
         user_action = "narrow-scope-or-continuation"

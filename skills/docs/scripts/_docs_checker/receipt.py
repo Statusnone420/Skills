@@ -41,7 +41,7 @@ def discovery_fields(version):
 def project_discovery_result(result, version, *, absolute_root):
     """Project internal orchestration data onto one exact public contract."""
     fields = discovery_fields(version)
-    projected = {key: result[key] for key in fields}
+    projected = {key: result[key] for key in sorted(fields)}
     projected["schema_version"] = version
     projected["root"] = str(absolute_root) if version == DISCOVERY_CONTRACT_V1 else "."
     return projected

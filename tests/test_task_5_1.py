@@ -1088,6 +1088,108 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
         )
         return action, errors, context
 
+    def test_explicit_scope_rejects_windows_ambiguous_pruned_aliases(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "node_modules").mkdir()
+            (root / "node_modules" / "README.md").write_text(
+                "# Private dependency docs\n", encoding="utf-8"
+            )
+
+            for scope in ("node_modules.", "node_modules ", "NODEMO~1"):
+                with self.subTest(scope=scope), self.assertRaisesRegex(
+                    ValueError, "explicit scope"
+                ):
+                    discover_v2(root, scope)
+
+    def test_byte_limited_continuation_numbers_and_validates_every_batch(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(20):
+                (docs / f"{index:02d}.md").write_bytes(b"x" * (27 * 1024))
+
+            payloads = []
+            cursor = None
+            while True:
+                payload = discover_v2(root, "docs", cursor)
+                payloads.append(payload)
+                _, errors, _ = self._validated_action(payload)
+                self.assertEqual(errors, [])
+                cursor = payload["continuation"]["cursor"]
+                if cursor is None:
+                    break
+
+            self.assertEqual(
+                [item["continuation"]["batch"] for item in payloads],
+                [1, 2, 3],
+            )
+            flattened = [
+                item["path"]
+                for payload in payloads
+                for item in payload["content_batch"]["paths"]
+            ]
+            self.assertEqual(flattened, [f"docs/{index:02d}.md" for index in range(20)])
+
+    def test_oversized_first_document_stops_honestly_without_dead_cursor(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            (docs / "oversized.md").write_bytes(b"x" * (300 * 1024))
+
+            payload = discover_v2(root, "docs")
+            _, errors, _ = self._validated_action(payload)
+
+            self.assertEqual(payload["status"], "stopped")
+            self.assertEqual(payload["content_batch"]["paths"], [])
+            self.assertTrue(payload["content_batch"]["blocked_by_metadata"])
+            self.assertFalse(payload["content_batch"]["truncated"])
+            self.assertEqual(payload["continuation"]["status"], "blocked")
+            self.assertIsNone(payload["continuation"]["batch"])
+            self.assertIsNone(payload["continuation"]["cursor"])
+            self.assertEqual(payload["next_boundary"], [])
+            self.assertEqual(errors, [])
+
+    def test_local_root_candidate_precedes_children_and_validates(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            local = root / ".local"
+            (local / "zeta-plan").mkdir(parents=True)
+            (local / "README.md").write_text("# Local knowledge\n", encoding="utf-8")
+
+            payload = discover_v2(root)
+            _, errors, _ = self._validated_action(payload)
+
+            expected = [".local", ".local/zeta-plan"]
+            self.assertEqual(
+                [item["path"] for item in payload["local_knowledge"]["candidates"]],
+                expected,
+            )
+            self.assertEqual(
+                [item["path"] for item in payload["candidates"]],
+                expected,
+            )
+            self.assertEqual(errors, [])
+
+    def test_v2_receipt_rejects_stale_checksum_without_recomputing_it(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
+            action = trajectory_discovery_capture.build_doctor_discovery_action(
+                discover_v2(root, "docs")
+            )
+            action["selection_reason"] = "sole-candidate"
+            errors = []
+
+            trajectory_discovery_contract.validate_doctor_discovery_action(
+                action, errors
+            )
+
+            self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
+
     def test_cli_json_sanitizes_arbitrary_errors_and_repository_root(self):
         private = r"C:\private-checkout\credentials.txt SECRET"
         for error in (ValueError(private), UnicodeError(private)):

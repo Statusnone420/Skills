@@ -468,8 +468,19 @@ def health_summary(
     earned_weight = round(
         sum(category["earned"] for category in categories.values()), 2
     )
-    percentage = max(0, min(100, int(earned_weight + 0.5)))
-    structure_status = "healthy" if percentage == 100 else "needs-attention"
+    percentage = (
+        100
+        if earned_weight == 100
+        else max(0, min(99, int(earned_weight + 0.5)))
+    )
+    structure_status = (
+        "healthy"
+        if all(
+            category["earned"] == category["available"]
+            for category in categories.values()
+        )
+        else "needs-attention"
+    )
 
     freshness = (
         measurements.get("freshness") if freshness is None else freshness

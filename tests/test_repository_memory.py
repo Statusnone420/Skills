@@ -298,6 +298,50 @@ class RepositoryMemoryTests(unittest.TestCase):
         self.assertEqual(summary["percentage"], 100)
         self.assertEqual(summary["structure_status"], "healthy")
 
+    def test_unresolved_structural_loss_cannot_round_up_to_healthy(self):
+        summary = docs_checker.health_summary(
+            complete_measurements(checked_links=40, valid_links=39),
+            freshness={"status": "fresh", "routes": []},
+            coverage={
+                "numerator": 1,
+                "denominator": 1,
+                "routes": [
+                    {
+                        "route": "docs/STATE.md",
+                        "verified": True,
+                        "sources": ["state:verified-document"],
+                    }
+                ],
+            },
+        )
+
+        self.assertLess(summary["percentage"], 100)
+        self.assertEqual(summary["structure_status"], "needs-attention")
+        self.assertEqual(summary["verdict"], "needs-attention")
+
+    def test_local_map_bytes_must_match_latest_event_reference(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            control = create_repository(root)
+            local_map = control / "local-map.json"
+            original = b'{"schema_version":1}\n'
+            local_map.write_bytes(original)
+            event = valid_event()
+            event["local_map_digest"] = "sha256:" + hashlib.sha256(original).hexdigest()
+            write_events(control / "events.jsonl", [event])
+
+            local_map.write_bytes(b'{"schema_version":2}\n')
+            findings = docs_checker.inspect_operational_memory(root)
+
+            self.assertTrue(
+                any(
+                    item["path"] == ".diataxis/local-map.json"
+                    and item["detail"]
+                    == "local map does not match its verified event reference"
+                    for item in findings
+                )
+            )
+
     def test_stub_map_cannot_earn_reachability_or_navigation_credit(self):
         measurements = complete_measurements(
             map_has_body=False,

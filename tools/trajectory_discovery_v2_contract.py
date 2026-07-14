@@ -299,6 +299,19 @@ def _content_segment_start(batch_paths, scope_paths):
     return None
 
 
+def _content_batch_number(scope_paths, start, expected_content_batch):
+    offset = 0
+    number = 1
+    while offset < start:
+        expected, _boundary_kind = expected_content_batch(scope_paths[offset:], False)
+        width = len(expected["paths"])
+        if width == 0:
+            return None
+        offset += width
+        number += 1
+    return number if offset == start else None
+
+
 def _valid_v2_content_window(action, expected_content_batch):
     """Validate the actual continuation window with the canonical v1 limits."""
     continuation = action.get("continuation")
@@ -335,7 +348,9 @@ def _valid_v2_content_window(action, expected_content_batch):
     if start is None:
         return False
     expected_batch, boundary_kind = expected_content_batch(scope_paths[start:], False)
-    expected_number = 1 + start // INIT_DISCOVERY_LIMITS["content_files"]
+    expected_number = _content_batch_number(
+        scope_paths, start, expected_content_batch
+    )
     if dict(batch) != expected_batch or continuation.get("batch") != expected_number:
         return False
     if continuation_status == "available":
@@ -401,7 +416,9 @@ def _v1_compatibility_action(action, profile, expected_content_batch):
     }
     _project_v1_prune_evidence(projected)
     projected["schema_version"] = 1
-    if profile in {"root-documents", "local-candidates"}:
+    if profile in {"root-documents", "local-candidates"} or action["continuation"][
+        "status"
+    ] == "blocked":
         projected.update(
             {
                 "status": "no-candidates",
@@ -450,7 +467,11 @@ def _v1_compatibility_action(action, profile, expected_content_batch):
         }
     elif action["continuation"]["status"] == "rejected" or (
         action["continuation"]["status"] in {"available", "complete"}
-        and action["continuation"]["batch"] != 1
+        and _content_segment_start(
+            action["content_batch"]["paths"],
+            action["scope_metadata"]["paths"],
+        )
+        not in {None, 0}
     ):
         expected_batch, boundary_kind = expected_content_batch(
             action["scope_metadata"]["paths"],

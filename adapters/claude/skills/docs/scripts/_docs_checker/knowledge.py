@@ -158,7 +158,7 @@ def validate_local_knowledge_receipt(local, evidence_reads):
         order = (path.casefold(), path) if type(path) is str else None
         if (
             normalized != path
-            or not path.startswith(".local/")
+            or (path != ".local" and not path.startswith(".local/"))
             or (previous is not None and order <= previous)
             or candidate["visibility"] != "local-only"
             or candidate["source"] != "conventional-local-root"
