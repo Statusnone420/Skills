@@ -1425,11 +1425,20 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                 ]
                 stderr = (result.stderr or "").replace(str(root), "<repo>")
                 stderr = stderr.replace(root.as_posix(), "<repo>")
+                stdout = (result.stdout or "").replace(str(root), "<repo>")
+                stdout = stdout.replace(root.as_posix(), "<repo>")
+                if os.name == "nt":
+                    root_text = root.as_posix()
+                    if len(root_text) >= 3 and root_text[1] == ":":
+                        stdout = stdout.replace(
+                            f"/{root_text[0].lower()}{root_text[2:]}",
+                            "<repo>",
+                        )
                 probes.append(
                     {
                         "command": rendered,
                         "returncode": result.returncode,
-                        "stdout": (result.stdout or "")[:512],
+                        "stdout": stdout[:512],
                         "stderr": stderr[:512],
                     }
                 )
