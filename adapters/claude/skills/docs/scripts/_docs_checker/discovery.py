@@ -1,9 +1,11 @@
 """Bounded, metadata-first first-contact documentation discovery."""
 
 import hashlib
+import json
 import os
 import re
 import stat
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .continuation import (
@@ -20,6 +22,7 @@ from .discovery_io import (
     _record_exclusion,
     _safe_directory_entry,
     _scan_selected_scope,
+    _take_metadata_operation,
     inspect_root_entries,
     scan_root_document_scope,
     validate_root,
@@ -46,10 +49,9 @@ from .paths import (
     prune_summary,
 )
 from .receipt import (
-    DISCOVERY_CONTRACT_V1,
-    DISCOVERY_CONTRACT_V2,
+    DISCOVERY_CONTRACT_VERSION,
+    DISCOVERY_FIELDS,
     discovery_fields,
-    project_discovery_result,
 )
 from .root_evidence import (
     MAINTAINED_ROOT_DOCUMENT_NAMES,
@@ -66,6 +68,68 @@ _PACKAGE_CONTAINER_KEYS = frozenset(
     name.casefold() for name in PACKAGE_CONTAINER_NAMES
 )
 _WINDOWS_SHORT_COMPONENT = re.compile(r"^.+~[1-9][0-9]*(?:\..*)?$", re.IGNORECASE)
+_CORPUS_COVERAGE_VERSION = "init-corpus-v1"
+_CORPUS_ORDERING_VERSION = "repo-relative-casefold-v1"
+_CORPUS_COVERAGE_MODES = frozenset({"selected-scope-exact", "empty-adoption"})
+
+
+class CorpusValidationError(ValueError):
+    """One stable corpus-completeness failure."""
+
+    def __init__(self, classification):
+        super().__init__(classification)
+        self.classification = classification
+
+
+def _canonical_corpus_bytes(value):
+    try:
+        return (
+            json.dumps(
+                value,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+        raise ValueError("corpus payload is not canonical JSON") from exc
+
+
+def _corpus_path_identity(path):
+    return normalize_repo_relative(path, "corpus path").casefold()
+
+
+def _corpus_object(paths, selected_scope, coverage_mode):
+    paths = sorted(paths, key=_sort_key)
+    digest_input = {
+        "ordering_version": _CORPUS_ORDERING_VERSION,
+        "paths": paths,
+    }
+    return {
+        "coverage_version": _CORPUS_COVERAGE_VERSION,
+        "coverage_mode": coverage_mode,
+        "ordering_version": _CORPUS_ORDERING_VERSION,
+        "selected_scope": selected_scope,
+        "write_boundary": "." if coverage_mode == "empty-adoption" else selected_scope,
+        "path_count": len(paths),
+        "paths_digest": "sha256:"
+        + hashlib.sha256(_canonical_corpus_bytes(digest_input)).hexdigest(),
+    }
+
+
+def _corpus_scan_failure(classification):
+    return {
+        "complete": False,
+        "paths": [],
+        "content_reads": 0,
+        "corpus": None,
+        "boundary": {
+            "classification": classification,
+            "phase": "corpus-scan",
+        },
+    }
 
 
 def _add_candidate(state, relative, source):
@@ -320,20 +384,98 @@ def _empty_continuation(*, blocked=False):
     }
 
 
-def _content_identity_factory(state):
+def _windows_change_time(path):
+    """Return NTFS change time without opening a document body."""
+    import ctypes
+    from ctypes import wintypes
+
+    class FileBasicInfo(ctypes.Structure):
+        _fields_ = (
+            ("creation_time", ctypes.c_longlong),
+            ("last_access_time", ctypes.c_longlong),
+            ("last_write_time", ctypes.c_longlong),
+            ("change_time", ctypes.c_longlong),
+            ("file_attributes", wintypes.DWORD),
+        )
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.GetFileInformationByHandleEx.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+    )
+    kernel32.GetFileInformationByHandleEx.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    handle = kernel32.CreateFileW(
+        os.fspath(path),
+        0,
+        0x00000001 | 0x00000002 | 0x00000004,
+        None,
+        3,
+        0x00200000 | 0x02000000,
+        None,
+    )
+    invalid_handle = wintypes.HANDLE(-1).value
+    if handle in (None, invalid_handle):
+        raise OSError(ctypes.get_last_error(), "metadata identity unavailable")
+    try:
+        info = FileBasicInfo()
+        if not kernel32.GetFileInformationByHandleEx(
+            handle,
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        ):
+            raise OSError(ctypes.get_last_error(), "metadata identity unavailable")
+        return info.change_time
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _change_identity_factory(state):
     cache = {}
 
-    def content_identity(evidence):
+    def change_identity(evidence):
         path = evidence["path"]
         if path not in cache:
-            digest = hashlib.sha256()
-            with (state["root"] / Path(path)).open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            cache[path] = digest.hexdigest()
+            if not _take_metadata_operation(state, "content", path):
+                raise OSError("metadata identity limit reached")
+            current = os.lstat(state["root"] / Path(path))
+            expected = tuple(
+                evidence[field]
+                for field in ("bytes", "modified_ns", "mode")
+            )
+            observed = (
+                current.st_size,
+                current.st_mtime_ns,
+                current.st_mode,
+            )
+            identity_changed = bool(
+                (evidence["device"] and evidence["device"] != current.st_dev)
+                or (evidence["inode"] and evidence["inode"] != current.st_ino)
+            )
+            if expected != observed or identity_changed or _info_is_reparse(current):
+                raise OSError("metadata identity changed during discovery")
+            cache[path] = (
+                _windows_change_time(state["root"] / Path(path))
+                if os.name == "nt"
+                else current.st_ctime_ns
+            )
         return cache[path]
 
-    return content_identity
+    return change_identity
 
 
 def _plan_content_batch(
@@ -350,15 +492,10 @@ def _plan_content_batch(
             state["selected_evidence"],
             selected_scope,
             continuation=continuation,
-            discovery_contract_version=state["contract_version"],
             repository_identity=state["repository_identity"],
             file_limit=INIT_DISCOVERY_LIMITS["content_files"],
             byte_limit=INIT_DISCOVERY_LIMITS["content_bytes"],
-            content_identity=(
-                _content_identity_factory(state)
-                if state["contract_version"] == DISCOVERY_CONTRACT_V2
-                else None
-            ),
+            change_identity=_change_identity_factory(state),
         )
     except OSError:
         state["content_blocked"] = True
@@ -419,11 +556,10 @@ def _validated_explicit_scope(state, explicit_scope):
     return raw, normalized, overrides
 
 
-def _initial_state(root, contract_version):
+def _initial_state(root):
     return {
         "root": root,
-        "contract_version": contract_version,
-        "legacy_missing_ok": contract_version == DISCOVERY_CONTRACT_V1,
+        "legacy_missing_ok": False,
         "candidates": [],
         "candidate_keys": set(),
         "local_candidate_keys": set(),
@@ -435,6 +571,7 @@ def _initial_state(root, contract_version):
         "content_truncated": False,
         "content_blocked": False,
         "continuation_rejected": False,
+        "content_reads": 0,
         "halted": False,
         "physical_limit": None,
         "scandir_calls": 0,
@@ -457,20 +594,219 @@ def _initial_state(root, contract_version):
     }
 
 
+def scan_selected_document_corpus(root, selected_scope, coverage_mode):
+    """Rederive one bounded metadata-only Markdown corpus for Init closeout."""
+    if coverage_mode not in _CORPUS_COVERAGE_MODES:
+        raise ValueError("corpus coverage mode is invalid")
+    raw_selected_scope = selected_scope
+    try:
+        selected_scope = normalize_repo_relative(selected_scope, "selected scope")
+    except (TypeError, ValueError):
+        return _corpus_scan_failure("incomplete-corpus")
+    if coverage_mode == "empty-adoption" and selected_scope != ".":
+        raise ValueError("empty-adoption requires root write jurisdiction")
+
+    root = Path(root).absolute()
+    state = _initial_state(root)
+    try:
+        validate_root(state)
+        _, normalized_scope, root_only_overrides = _validated_explicit_scope(
+            state,
+            raw_selected_scope,
+        )
+        if state["halted"]:
+            return _corpus_scan_failure(
+                "incomplete-corpus" if state["io_errors"] else "corpus-scope-limited"
+            )
+        if normalized_scope == ".":
+            inspect_root_entries(
+                state,
+                is_root_document=is_maintained_root_document,
+                evidence_factory=root_document_evidence,
+                surface_observation=surface_observation_allowed,
+            )
+            metadata = scan_root_document_scope(state)
+        else:
+            metadata = _scan_selected_scope(
+                state,
+                normalized_scope,
+                root_only_overrides,
+                local_prune=local_prune_reason,
+                surface_observation=surface_observation_allowed,
+                evidence_factory=root_document_evidence,
+            )
+    except (OSError, TypeError, ValueError):
+        return _corpus_scan_failure("incomplete-corpus")
+
+    if (
+        state["physical_limit"] is not None
+        or state["scope_truncated"]
+        or metadata.get("truncated")
+    ):
+        return _corpus_scan_failure("corpus-scope-limited")
+    if state["halted"] or state["io_errors"] or metadata.get("complete") is not True:
+        return _corpus_scan_failure("incomplete-corpus")
+
+    paths = [item["path"] for item in metadata["paths"]]
+    paths.sort(key=_sort_key)
+    return {
+        "complete": True,
+        "paths": paths,
+        "content_reads": state["content_reads"],
+        "corpus": _corpus_object(paths, normalized_scope, coverage_mode),
+        "boundary": None,
+    }
+
+
+def validate_corpus_coverage(starting_scan, dispositions):
+    """Require one exact whole-file base disposition per scanned path."""
+    if not isinstance(starting_scan, Mapping) or starting_scan.get("complete") is not True:
+        raise CorpusValidationError("corpus-scope-limited")
+    paths = starting_scan.get("paths")
+    if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
+        raise CorpusValidationError("incomplete-corpus")
+
+    scanned = {}
+    for path in paths:
+        try:
+            normalized = normalize_repo_relative(path, "scanned corpus path")
+            identity = _corpus_path_identity(normalized)
+        except (TypeError, ValueError) as exc:
+            raise CorpusValidationError("incomplete-corpus") from exc
+        if identity in scanned:
+            raise CorpusValidationError("duplicate-document-disposition")
+        scanned[identity] = normalized
+
+    if not isinstance(dispositions, Sequence) or isinstance(
+        dispositions,
+        (str, bytes, bytearray),
+    ):
+        raise CorpusValidationError("incomplete-corpus")
+    normalized_items = []
+    covered = set()
+    subordinate_paths = set()
+    for item in dispositions:
+        if not isinstance(item, Mapping):
+            raise CorpusValidationError("unsupported-item-granularity")
+        section = item.get("section")
+        if not isinstance(section, Mapping):
+            raise CorpusValidationError("unsupported-item-granularity")
+        section = dict(section)
+        whole_file = section == {"kind": "whole-file"}
+        subordinate = section.get("kind") == "atx-section-v1"
+        if not whole_file and not subordinate:
+            raise CorpusValidationError("unsupported-item-granularity")
+        try:
+            path = normalize_repo_relative(item.get("path"), "disposition path")
+            identity = _corpus_path_identity(path)
+        except (TypeError, ValueError) as exc:
+            raise CorpusValidationError("foreign-disposition") from exc
+        expected_spelling = scanned.get(identity)
+        if expected_spelling is None:
+            raise CorpusValidationError("foreign-disposition")
+        if path != expected_spelling:
+            raise CorpusValidationError("duplicate-document-disposition")
+        if whole_file:
+            if identity in covered:
+                raise CorpusValidationError("duplicate-document-disposition")
+            covered.add(identity)
+        else:
+            subordinate_paths.add(identity)
+        normalized_items.append(dict(item))
+
+    if not subordinate_paths.issubset(covered):
+        raise CorpusValidationError("unsupported-item-granularity")
+    if covered != set(scanned):
+        raise CorpusValidationError("incomplete-corpus")
+    normalized_items.sort(
+        key=lambda item: (
+            _sort_key(item["path"]),
+            0 if dict(item["section"]) == {"kind": "whole-file"} else 1,
+            str(item.get("item_id", "")).casefold(),
+            str(item.get("item_id", "")),
+        )
+    )
+    return tuple(normalized_items)
+
+
+def derive_result_corpus(starting_scan, document_operations):
+    """Derive the approval-bound result path set without reading document bodies."""
+    if not isinstance(starting_scan, Mapping) or starting_scan.get("complete") is not True:
+        raise CorpusValidationError("corpus-scope-limited")
+    corpus = starting_scan.get("corpus")
+    paths = starting_scan.get("paths")
+    if not isinstance(corpus, Mapping) or not isinstance(paths, Sequence):
+        raise CorpusValidationError("incomplete-corpus")
+    if not isinstance(document_operations, Sequence) or isinstance(
+        document_operations,
+        (str, bytes, bytearray),
+    ):
+        raise ValueError("document operations must be an array")
+
+    by_identity = {}
+    for path in paths:
+        normalized = normalize_repo_relative(path, "starting corpus path")
+        identity = _corpus_path_identity(normalized)
+        if identity in by_identity:
+            raise CorpusValidationError("duplicate-document-disposition")
+        by_identity[identity] = normalized
+
+    seen_operations = set()
+    creates = {}
+    deletes = set()
+    for raw in document_operations:
+        if not isinstance(raw, Mapping):
+            raise ValueError("document operation must be an object")
+        operation = raw.get("operation")
+        if operation not in {"CREATE", "REPLACE", "DELETE"}:
+            raise ValueError("document operation is invalid")
+        path = normalize_repo_relative(raw.get("path"), "document operation path")
+        identity = _corpus_path_identity(path)
+        if identity in seen_operations:
+            raise ValueError("document operation paths must be unique")
+        seen_operations.add(identity)
+        if operation == "CREATE":
+            if identity in by_identity:
+                raise ValueError("CREATE requires an absent path")
+            creates[identity] = path
+        elif operation == "REPLACE":
+            if identity not in by_identity:
+                raise ValueError("REPLACE requires an existing corpus path")
+        else:
+            if identity not in by_identity:
+                raise ValueError("DELETE requires an existing corpus path")
+            deletes.add(identity)
+
+    result_paths = [
+        path for identity, path in by_identity.items() if identity not in deletes
+    ]
+    result_paths.extend(creates.values())
+    result_paths.sort(key=_sort_key)
+    return _corpus_object(
+        result_paths,
+        corpus["selected_scope"],
+        corpus["coverage_mode"],
+    )
+
+
 def discover_init_scope(
     root,
     explicit_scope=None,
     continuation=None,
     *,
-    contract_version=DISCOVERY_CONTRACT_V1,
+    contract_version=DISCOVERY_CONTRACT_VERSION,
+    _prepared_state=None,
 ):
     """Return deterministic first-contact metadata with bounded content identity."""
     discovery_fields(contract_version)
-    if contract_version == DISCOVERY_CONTRACT_V1 and continuation is not None:
-        raise ValueError("discovery contract version 1 does not support continuation")
     root = Path(root).absolute()
-    state = _initial_state(root, contract_version)
-    validate_root(state)
+    if _prepared_state is None:
+        state = _initial_state(root)
+        validate_root(state)
+    else:
+        state = _prepared_state
+        if state.get("root") != root:
+            raise ValueError("prepared discovery root does not match")
 
     requested_scope = (
         None if explicit_scope is None else os.fspath(explicit_scope)
@@ -491,30 +827,15 @@ def discover_init_scope(
         selected_scope = None
         selection_reason = "discovery-truncated"
         metadata_phases = 1
-    elif explicit_narrow or (
-        contract_version == DISCOVERY_CONTRACT_V2
-        and explicit_scope is not None
-        and normalized_scope != "."
-    ):
-        if contract_version == DISCOVERY_CONTRACT_V2:
-            inspect_root_entries(
-                state,
-                is_root_document=is_maintained_root_document,
-                evidence_factory=root_document_evidence,
-                surface_observation=surface_observation_allowed,
-            )
-        if state["halted"]:
-            selected_scope = None
-            selection_reason = "discovery-truncated"
-        else:
-            _add_candidate(state, normalized_scope, "explicit")
-            selected_scope = normalized_scope
-            selection_reason = "explicit-scope"
+    elif explicit_narrow:
+        _add_candidate(state, normalized_scope, "explicit")
+        selected_scope = normalized_scope
+        selection_reason = "explicit-scope"
         metadata_phases = 1
     else:
         _discover_automatic_candidates(
             state,
-            include_local=contract_version == DISCOVERY_CONTRACT_V2,
+            include_local=True,
         )
         candidates = state["candidates"]
         metadata_phases = 1
@@ -527,9 +848,6 @@ def discover_init_scope(
         elif candidates:
             selected_scope = None
             selection_reason = "choice-required"
-        elif contract_version == DISCOVERY_CONTRACT_V1:
-            selected_scope = None
-            selection_reason = "no-candidates"
         elif state["root_documents"]:
             selected_scope = "."
             selection_reason = "sole-root-document-scope"
@@ -560,6 +878,13 @@ def discover_init_scope(
         inspected_scope = selected_scope
         if not explicit_narrow:
             metadata_phases += 1
+    if explicit_narrow and not state["halted"]:
+        inspect_root_entries(
+            state,
+            is_root_document=is_maintained_root_document,
+            evidence_factory=root_document_evidence,
+            surface_observation=surface_observation_allowed,
+        )
     if (
         selected_scope is not None
         and not state["physical_limit"]
@@ -576,8 +901,6 @@ def discover_init_scope(
         continuation_result = _empty_continuation(blocked=True)
 
     no_doc_preview = bool(
-        contract_version == DISCOVERY_CONTRACT_V2
-        and
         selected_scope == "." and not scope_metadata["paths"] and not state["halted"]
     )
     if state["continuation_rejected"]:
@@ -602,12 +925,8 @@ def discover_init_scope(
         user_action = "review-no-doc-adoption-preview"
     elif state["content_truncated"]:
         status = "batch-limited"
-        if contract_version == DISCOVERY_CONTRACT_V1:
-            requires_user_action = True
-            user_action = "after-content-batch-choose-continuation-or-narrow-scope"
-        else:
-            requires_user_action = False
-            user_action = "continue-init-inspection"
+        requires_user_action = False
+        user_action = "continue-init-inspection"
     else:
         status = "ready"
         requires_user_action = False
@@ -625,13 +944,15 @@ def discover_init_scope(
         "inspect the declared local knowledge map when present."
     )
     root_evidence_complete = bool(
-        not state["candidate_truncated"] and not state["io_errors"]
+        not explicit_narrow
+        and not state["candidate_truncated"]
+        and not state["io_errors"]
     )
     internal_result = {
-        "schema_version": contract_version,
+        "schema_version": DISCOVERY_CONTRACT_VERSION,
         "mode": "init-discovery",
         "status": status,
-        "root": str(root),
+        "root": ".",
         "requested_scope": requested_scope,
         "normalized_scope": normalized_scope,
         "jurisdiction_scope": jurisdiction_scope,
@@ -707,19 +1028,41 @@ def discover_init_scope(
         "user_action": user_action,
         "scope_limited": True,
         "repository_exhaustive": False,
-        "content_reads": 0,
+        "content_reads": state["content_reads"],
     }
-    return project_discovery_result(
-        internal_result,
-        contract_version,
-        absolute_root=root,
-    )
+    if set(internal_result) != DISCOVERY_FIELDS:
+        raise AssertionError("discovery result fields drifted from schema 3")
+    return internal_result
+
+
+def prepare_init_discovery(root, initialization_preflight):
+    """Budget root/control probes before optional operational preflight."""
+    root = Path(root).absolute()
+    state = _initial_state(root)
+    validate_root(state)
+    result = None
+    if not state["halted"]:
+        control = _lstat_path(
+            state,
+            root / ".diataxis",
+            ".diataxis",
+            phase="candidate",
+            missing_ok=True,
+        )
+        if control is not None and not state["halted"]:
+            result = initialization_preflight(root)
+    return state, result
 
 
 __all__ = (
+    "CorpusValidationError",
     "DOCUMENTATION_ROOT_NAMES",
     "INIT_DISCOVERY_LIMITS",
     "MAINTAINED_ROOT_DOCUMENT_NAMES",
     "PACKAGE_CONTAINER_NAMES",
+    "derive_result_corpus",
     "discover_init_scope",
+    "prepare_init_discovery",
+    "scan_selected_document_corpus",
+    "validate_corpus_coverage",
 )

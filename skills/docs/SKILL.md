@@ -34,6 +34,8 @@ Docs [██████████████░░░░░░] 70%
 
 The percentage comes from checker evidence, not subjective judgment: exactly 20 literal cells, one cell per five percentage points; the line is standalone, never inside a code fence or backticks. Other commands must not perform hidden retrieval solely to calculate it.
 
+For `init`, use the single Init progress channel defined in `init.md`; report the structural score as prose (for example, `Structural score: 83%`) and never render the generic `Docs` health meter.
+
 Rubric v2 keeps the structural percentage separate from Trust. Overall health requires clean structure, verified declared current-truth coverage, fresh state-declared digests, and no blocking open priority; byte telemetry never changes the percentage or verdict.
 
 For `check`, report the deterministic structural score only. No advice and no edits.

@@ -10,10 +10,10 @@ import re
 from .paths import normalize_repo_relative
 
 
-CONTINUATION_SCHEMA_VERSION = 1
-CONTINUATION_POLICY_VERSION = "init-content-v1"
+CONTINUATION_SCHEMA_VERSION = 3
+CONTINUATION_POLICY_VERSION = "init-content-v3"
 CONTINUATION_ORDERING_VERSION = "repo-relative-casefold-v1"
-DISCOVERY_CURSOR_CONTRACT_VERSION = 2
+DISCOVERY_CURSOR_CONTRACT_VERSION = 3
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]+$")
 _MAX_TOKEN_LENGTH = 8192
@@ -27,12 +27,11 @@ _CURSOR_FIELDS = frozenset(
         "next_index",
         "after_path",
         "corpus_fingerprint",
+        "change_fingerprint",
         "repository_binding",
         "checksum",
     }
 )
-
-
 def _canonical_digest(value):
     encoded = json.dumps(
         value,
@@ -95,7 +94,7 @@ def decode_continuation_token(token: str) -> dict:
         raise ValueError("content continuation token is invalid") from exc
 
 
-def corpus_fingerprint(evidence, *, content_identity=None):
+def corpus_fingerprint(evidence, *, change_identity=None):
     stable = []
     for item in evidence:
         entry = {
@@ -106,8 +105,8 @@ def corpus_fingerprint(evidence, *, content_identity=None):
             "device": item["device"],
             "inode": item["inode"],
         }
-        if content_identity is not None:
-            entry["content_sha256"] = content_identity(item)
+        if change_identity is not None:
+            entry["change_identity"] = change_identity(item)
         stable.append(entry)
     return _canonical_digest(
         {
@@ -146,18 +145,19 @@ def _build_cursor(
     next_index,
     after_path,
     fingerprint,
+    change_fingerprint,
     binding,
-    discovery_contract_version,
 ):
     cursor = {
         "schema_version": CONTINUATION_SCHEMA_VERSION,
-        "discovery_contract_version": discovery_contract_version,
+        "discovery_contract_version": DISCOVERY_CURSOR_CONTRACT_VERSION,
         "policy_version": CONTINUATION_POLICY_VERSION,
         "ordering_version": CONTINUATION_ORDERING_VERSION,
         "selected_scope": selected_scope,
         "next_index": next_index,
         "after_path": after_path,
         "corpus_fingerprint": fingerprint,
+        "change_fingerprint": change_fingerprint,
         "repository_binding": binding,
     }
     cursor["checksum"] = _cursor_checksum(cursor)
@@ -170,7 +170,6 @@ def _validated_start(
     paths,
     fingerprint,
     binding,
-    discovery_contract_version,
 ):
     if cursor is None:
         return 0
@@ -179,7 +178,7 @@ def _validated_start(
     cursor_scope = normalize_repo_relative(cursor["selected_scope"], "cursor scope")
     next_index = cursor.get("next_index")
     if (
-        cursor.get("discovery_contract_version") != discovery_contract_version
+        cursor.get("discovery_contract_version") != DISCOVERY_CURSOR_CONTRACT_VERSION
         or cursor_scope != selected_scope
         or not 1 <= next_index < len(paths)
         or cursor.get("after_path") != paths[next_index - 1]["path"]
@@ -209,6 +208,8 @@ def validate_continuation_cursor(cursor):
         or type(cursor["after_path"]) is not str
         or type(cursor["corpus_fingerprint"]) is not str
         or _DIGEST.fullmatch(cursor["corpus_fingerprint"]) is None
+        or type(cursor["change_fingerprint"]) is not str
+        or _DIGEST.fullmatch(cursor["change_fingerprint"]) is None
         or type(cursor["repository_binding"]) is not str
         or _DIGEST.fullmatch(cursor["repository_binding"]) is None
         or type(cursor["checksum"]) is not str
@@ -276,58 +277,32 @@ def _total_batches(paths, file_limit, byte_limit):
     return total or 1
 
 
-def _continuation_for_contract(value, discovery_contract_version):
-    if discovery_contract_version == DISCOVERY_CURSOR_CONTRACT_VERSION:
-        return value
-    return {
-        key: value[key]
-        for key in (
-            "schema_version",
-            "status",
-            "batch",
-            "cursor",
-            "rejection",
-            "fresh_preview_required",
-        )
-    }
-
-
 def plan_content_batch(
     paths,
     evidence,
     selected_scope,
     *,
     continuation=None,
-    discovery_contract_version,
     repository_identity,
     file_limit,
     byte_limit,
-    content_identity=None,
+    change_identity=None,
 ):
     """Plan one exact slice and return its next state-free cursor."""
-    fingerprint = corpus_fingerprint(evidence)
+    if not callable(change_identity):
+        raise ValueError("change identity callback is required")
+    metadata_fingerprint = corpus_fingerprint(evidence)
     binding = repository_binding(repository_identity)
     try:
         total_batches = _total_batches(paths, file_limit, byte_limit)
     except ValueError:
         total_batches = None
-    if (
-        continuation is not None
-        and content_identity is not None
-        and validate_continuation_cursor(continuation)
-        and continuation["next_index"] < len(evidence)
-    ):
-        fingerprint = corpus_fingerprint(
-            evidence,
-            content_identity=content_identity,
-        )
     start = _validated_start(
         continuation,
         selected_scope,
         paths,
-        fingerprint,
+        metadata_fingerprint,
         binding,
-        discovery_contract_version,
     )
     if start is None:
         return (
@@ -340,7 +315,7 @@ def plan_content_batch(
                 "next_boundary": None,
                 "blocked_by_metadata": True,
             },
-            _continuation_for_contract({
+            {
                 "schema_version": CONTINUATION_SCHEMA_VERSION,
                 "status": "rejected",
                 "batch": None,
@@ -349,7 +324,37 @@ def plan_content_batch(
                 "total_batches": total_batches,
                 "rejection": "stale-or-tampered",
                 "fresh_preview_required": True,
-            }, discovery_contract_version),
+            },
+        )
+
+    change_fingerprint = corpus_fingerprint(
+        evidence,
+        change_identity=change_identity,
+    )
+    if continuation is not None and not hmac.compare_digest(
+        continuation["change_fingerprint"],
+        change_fingerprint,
+    ):
+        return (
+            {
+                "paths": [],
+                "path_count": 0,
+                "bytes": 0,
+                "complete": False,
+                "truncated": False,
+                "next_boundary": None,
+                "blocked_by_metadata": True,
+            },
+            {
+                "schema_version": CONTINUATION_SCHEMA_VERSION,
+                "status": "rejected",
+                "batch": None,
+                "cursor": None,
+                "token": None,
+                "total_batches": total_batches,
+                "rejection": "stale-or-tampered",
+                "fresh_preview_required": True,
+            },
         )
 
     batch_paths = []
@@ -376,7 +381,7 @@ def plan_content_batch(
                 "next_boundary": None,
                 "blocked_by_metadata": True,
             },
-            _continuation_for_contract({
+            {
                 "schema_version": CONTINUATION_SCHEMA_VERSION,
                 "status": "blocked",
                 "batch": None,
@@ -385,7 +390,7 @@ def plan_content_batch(
                 "total_batches": total_batches,
                 "rejection": None,
                 "fresh_preview_required": False,
-            }, discovery_contract_version),
+            },
         )
 
     complete = index == len(paths)
@@ -404,30 +409,21 @@ def plan_content_batch(
         token = None
         status = "complete"
     elif batch_paths:
-        if content_identity is not None:
-            fingerprint = corpus_fingerprint(
-                evidence,
-                content_identity=content_identity,
-            )
         cursor = _build_cursor(
             selected_scope,
             index,
             batch_paths[-1]["path"],
-            fingerprint,
+            metadata_fingerprint,
+            change_fingerprint,
             binding,
-            discovery_contract_version,
         )
-        token = (
-            encode_continuation_token(cursor)
-            if discovery_contract_version == DISCOVERY_CURSOR_CONTRACT_VERSION
-            else None
-        )
+        token = encode_continuation_token(cursor)
         status = "available"
     else:
         cursor = None
         token = None
         status = "blocked"
-    return batch, _continuation_for_contract({
+    return batch, {
         "schema_version": CONTINUATION_SCHEMA_VERSION,
         "status": status,
         "batch": _batch_number_for_start(paths, start, file_limit, byte_limit),
@@ -436,7 +432,7 @@ def plan_content_batch(
         "total_batches": total_batches,
         "rejection": None,
         "fresh_preview_required": False,
-    }, discovery_contract_version)
+    }
 
 
 __all__ = (

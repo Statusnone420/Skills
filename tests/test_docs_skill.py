@@ -340,6 +340,18 @@ class DocsSkillContractTests(unittest.TestCase):
             r"report.{0,80}before/after\s+structural\s+score.{0,80}trust\s+coverage",
         )
 
+    def test_init_and_doctor_route_deterministic_closeout_and_recovery_entrypoints(self):
+        init = self._init_text().lower()
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+
+        self.assertIn("scripts/init_closeout.py", init)
+        self.assertIn("preview < request.json", init)
+        self.assertIn("apply < request.json", init)
+        self.assertIn("do not manually reconstruct", init)
+        self.assertIn("--doctor-recovery-preview", doctor)
+        self.assertIn("--doctor-recovery-apply", doctor)
+        self.assertIn("execute only the freshly recomputed action", doctor)
+
     def test_init_deletion_safety_distinguishes_git_and_no_git_recovery(self):
         init = self._init_text()
         isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
@@ -1396,7 +1408,7 @@ class DocsSkillContractTests(unittest.TestCase):
                     "protected_surfaces",
                 },
             )
-            self.assertEqual(payload["schema_version"], 2)
+            self.assertEqual(payload["schema_version"], 3)
             self.assertEqual(payload["root"], ".")
             self.assertEqual(payload["mode"], "init-discovery")
             self.assertEqual(payload["status"], "ready")
@@ -2081,10 +2093,10 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertEqual(batch["next_boundary"], "handbook/012.md")
             self.assertEqual(payload["status"], "batch-limited")
             self.assertEqual(payload["content_reads"], 0)
-            self.assertTrue(payload["requires_user_action"])
+            self.assertFalse(payload["requires_user_action"])
             self.assertEqual(
                 payload["user_action"],
-                "after-content-batch-choose-continuation-or-narrow-scope",
+                "continue-init-inspection",
             )
 
         with self.subTest(limit="bytes"), tempfile.TemporaryDirectory() as td:

@@ -5,10 +5,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).parents[1]
 CHECKER = ROOT / "skills" / "docs" / "scripts" / "check.py"
+sys.path.insert(0, str(CHECKER.parent))
+
+import check as docs_checker
 
 from tests.init_journey_fixture import (
     build_large_init_fixture,
@@ -53,6 +57,101 @@ def run_init_cli_process(
 
 
 class InitJourneyCliTests(unittest.TestCase):
+    def test_cli_emits_only_schema_three_discovery_and_continuation(self):
+        with tempfile.TemporaryDirectory() as td:
+            fixture = build_large_init_fixture(Path(td))
+            payload = run_init_cli(fixture.root)
+
+            self.assertEqual(payload["schema_version"], 3)
+            self.assertEqual(payload["continuation"]["schema_version"], 3)
+            cursor = payload["continuation"]["cursor"]
+            self.assertEqual(cursor["schema_version"], 3)
+            self.assertEqual(cursor["discovery_contract_version"], 3)
+            self.assertEqual(cursor["policy_version"], "init-content-v3")
+
+    def test_multi_batch_change_identity_is_metadata_only_and_truthfully_accounted(self):
+        class TrackedBinaryRead:
+            def __init__(self, stream, relative, tracker):
+                self._stream = stream
+                self._relative = relative
+                self._tracker = tracker
+
+            def __enter__(self):
+                self._stream.__enter__()
+                self._tracker["paths"].append(self._relative)
+                return self
+
+            def __exit__(self, *args):
+                return self._stream.__exit__(*args)
+
+            def read(self, size=-1):
+                chunk = self._stream.read(size)
+                self._tracker["bytes"] += len(chunk)
+                return chunk
+
+            def __getattr__(self, name):
+                return getattr(self._stream, name)
+
+        with tempfile.TemporaryDirectory() as td:
+            fixture = build_large_init_fixture(Path(td))
+            tracker = {"paths": [], "bytes": 0}
+            real_open = Path.open
+
+            def tracked_open(path, *args, **kwargs):
+                stream = real_open(path, *args, **kwargs)
+                mode = args[0] if args else kwargs.get("mode", "r")
+                try:
+                    relative = path.relative_to(fixture.root).as_posix()
+                except ValueError:
+                    return stream
+                if mode == "rb" and relative in fixture.shared_paths:
+                    return TrackedBinaryRead(stream, relative, tracker)
+                return stream
+
+            payloads = []
+            actual_reads_by_payload = []
+            cursor = None
+            with mock.patch.object(Path, "open", tracked_open):
+                for _ in range(32):
+                    reads_before = len(tracker["paths"])
+                    payload = docs_checker.discover_init_scope(
+                        fixture.root,
+                        continuation=cursor,
+                        contract_version=3,
+                    )
+                    payloads.append(payload)
+                    actual_reads_by_payload.append(
+                        len(tracker["paths"]) - reads_before
+                    )
+                    if payload["continuation"]["status"] != "available":
+                        break
+                    cursor = payload["continuation"]["cursor"]
+                else:
+                    self.fail("Init continuation did not reach a terminal response")
+
+            with self.subTest("bounded identity opens"):
+                self.assertEqual(tracker["paths"], [])
+            with self.subTest("bounded identity bytes"):
+                self.assertEqual(tracker["bytes"], 0)
+            with self.subTest("truthful content-read receipts"):
+                self.assertEqual(
+                    [payload["content_reads"] for payload in payloads],
+                    actual_reads_by_payload,
+                )
+            with self.subTest("semantic evidence remains unopened"):
+                self.assertTrue(
+                    all(
+                        payload["evidence_reads"]
+                        == {
+                            "count": 0,
+                            "bytes": 0,
+                            "byte_limit": 64 * 1024,
+                            "sources": [],
+                        }
+                        for payload in payloads
+                    )
+                )
+
     def test_cli_tied_roots_reports_one_recommended_choice_without_content(self):
         with tempfile.TemporaryDirectory() as td:
             fixture = build_small_init_fixture(

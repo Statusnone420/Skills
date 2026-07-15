@@ -18,22 +18,92 @@ sys.path.insert(0, str(TOOLS))
 
 import check as docs_checker
 from _docs_checker import discovery as docs_discovery
-import trajectory_discovery_capture
-import trajectory_discovery_contract
-import trajectory_routes
+from _docs_checker import continuation as docs_continuation
+from _docs_checker import receipt as discovery_receipt
 from _docs_checker.continuation import (
     decode_continuation_token,
     encode_continuation_token,
 )
 
 
-def discover_v2(root, explicit_scope=None, continuation=None):
+def discover_current(root, explicit_scope=None, continuation=None):
     return docs_checker.discover_init_scope(
         root,
         explicit_scope,
         continuation,
-        contract_version=2,
     )
+
+
+class Task51StrictDiscoveryV3Tests(unittest.TestCase):
+    def test_default_is_the_only_exact_schema_three_contract(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
+
+            default = docs_checker.discover_init_scope(root, "docs")
+            self.assertEqual(default["schema_version"], 3)
+            self.assertEqual(default["root"], ".")
+            self.assertEqual(set(default), discovery_receipt.DISCOVERY_FIELDS)
+            self.assertEqual(
+                docs_checker.discover_init_scope(root, "docs", contract_version=3),
+                default,
+            )
+
+            for version in (1, 2, 0, 4, None, True, "3"):
+                with self.subTest(version=repr(version)), self.assertRaisesRegex(
+                    ValueError,
+                    "^unsupported discovery contract version$",
+                ):
+                    docs_checker.discover_init_scope(
+                        root,
+                        "docs",
+                        contract_version=version,
+                    )
+
+    def test_only_exact_v3_continuations_are_accepted(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            for index in range(13):
+                (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
+
+            first = docs_checker.discover_init_scope(root, "docs")
+            self.assertEqual(first["schema_version"], 3)
+            cursor = first["continuation"]["cursor"]
+            self.assertEqual(first["continuation"]["schema_version"], 3)
+            self.assertEqual(cursor["schema_version"], 3)
+            self.assertEqual(cursor["discovery_contract_version"], 3)
+            self.assertEqual(cursor["policy_version"], "init-content-v3")
+            self.assertEqual(set(cursor), docs_continuation._CURSOR_FIELDS)
+            self.assertTrue(docs_continuation.validate_continuation_cursor(cursor))
+
+            legacy = deepcopy(cursor)
+            legacy.pop("change_fingerprint")
+            legacy["schema_version"] = 1
+            legacy["discovery_contract_version"] = 2
+            legacy["policy_version"] = "init-content-v1"
+            legacy["checksum"] = docs_continuation._cursor_checksum(legacy)
+            self.assertFalse(docs_continuation.validate_continuation_cursor(legacy))
+            with self.assertRaisesRegex(
+                ValueError,
+                "^content continuation cursor is invalid$",
+            ):
+                docs_continuation.encode_continuation_token(legacy)
+
+            rejected = docs_checker.discover_init_scope(
+                root,
+                "docs",
+                continuation=legacy,
+            )
+            self.assertEqual(rejected["status"], "stopped")
+            self.assertEqual(rejected["continuation"]["status"], "rejected")
+            self.assertEqual(
+                rejected["continuation"]["rejection"],
+                "stale-or-tampered",
+            )
+            self.assertTrue(rejected["continuation"]["fresh_preview_required"])
 
 
 class Task51ReproducedDefectTests(unittest.TestCase):
@@ -43,8 +113,8 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             (root / "README.md").write_text("# Repository\n", encoding="utf-8")
             (root / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
 
-            automatic = discover_v2(root)
-            explicit = discover_v2(root, explicit_scope=".")
+            automatic = discover_current(root)
+            explicit = discover_current(root, explicit_scope=".")
 
             for payload in (automatic, explicit):
                 with self.subTest(requested_scope=payload["requested_scope"]):
@@ -69,9 +139,9 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             for index in range(13):
                 (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
 
-            first = discover_v2(root, explicit_scope="docs")
+            first = discover_current(root, explicit_scope="docs")
             cursor = first["continuation"]["cursor"]
-            second = discover_v2(
+            second = discover_current(
                 root,
                 explicit_scope="docs",
                 continuation=cursor,
@@ -90,6 +160,8 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             self.assertEqual(first_paths + second_paths, sorted(first_paths + second_paths))
             self.assertEqual(first["content_reads"], 0)
             self.assertEqual(second["content_reads"], 0)
+            self.assertEqual(first["evidence_reads"]["count"], 0)
+            self.assertEqual(second["evidence_reads"]["count"], 0)
 
     def test_continuation_receipt_exposes_shell_safe_token_and_total_batches(self):
         with tempfile.TemporaryDirectory() as td:
@@ -99,7 +171,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             for index in range(13):
                 (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
 
-            first = discover_v2(root, explicit_scope="docs")
+            first = discover_current(root, explicit_scope="docs")
             continuation = first["continuation"]
             self.assertEqual(
                 set(continuation),
@@ -124,7 +196,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             self.assertFalse(first["requires_user_action"])
             self.assertEqual(first["user_action"], "continue-init-inspection")
 
-            second = discover_v2(
+            second = discover_current(
                 root,
                 explicit_scope="docs",
                 continuation=continuation["cursor"],
@@ -140,7 +212,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             docs.mkdir()
             for index in range(13):
                 (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
-            cursor = discover_v2(root, "docs")["continuation"]["cursor"]
+            cursor = discover_current(root, "docs")["continuation"]["cursor"]
 
             token = encode_continuation_token(cursor)
             self.assertEqual(decode_continuation_token(token), cursor)
@@ -196,7 +268,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
                 "scandir",
                 side_effect=PermissionError(raw_message),
             ):
-                payload = discover_v2(root)
+                payload = discover_current(root)
 
             self.assertEqual(payload["status"], "stopped")
             self.assertIsNone(payload["selected_scope"])
@@ -223,43 +295,7 @@ class Task51ReproducedDefectTests(unittest.TestCase):
             self.assertNotIn(str(root), json.dumps(payload["completeness"]))
 
 
-class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
-    def test_real_v1_receipt_remains_exact_and_v2_roundtrips_through_task6(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            docs = root / "docs"
-            docs.mkdir()
-            for index in range(13):
-                (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
-
-            v1 = docs_checker.discover_init_scope(root, "docs", contract_version=1)
-            self.assertEqual(v1["schema_version"], 1)
-            self.assertEqual(
-                set(v1),
-                trajectory_discovery_capture.DOCTOR_DISCOVERY_RECEIPT_FIELDS | {"root"},
-            )
-            v1_action = trajectory_discovery_capture.build_doctor_discovery_action(v1)
-            v1_errors = []
-            trajectory_discovery_contract.validate_doctor_discovery_action(
-                v1_action,
-                v1_errors,
-            )
-            self.assertEqual(v1_errors, [])
-
-            v2 = docs_checker.discover_init_scope(root, "docs", contract_version=2)
-            roundtripped = json.loads(json.dumps(v2, allow_nan=False))
-            v2_action = trajectory_discovery_capture.build_doctor_discovery_action(roundtripped)
-            v2_errors = []
-            trajectory_discovery_contract.validate_doctor_discovery_action(
-                v2_action,
-                v2_errors,
-            )
-            self.assertEqual(v2_errors, [])
-            self.assertEqual(
-                trajectory_routes.validate_doctor_route([v2_action], scope="docs"),
-                [],
-            )
-
+class Task51DiscoveryV3ReceiptTests(unittest.TestCase):
     def test_unknown_receipt_version_fails_explicit_dispatch(self):
         with tempfile.TemporaryDirectory() as td, self.assertRaisesRegex(
             ValueError,
@@ -267,23 +303,13 @@ class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
         ):
             docs_checker.discover_init_scope(Path(td), contract_version=99)
 
-    def test_v2_no_doc_adoption_preview_is_a_valid_terminal_task6_route(self):
+    def test_no_doc_adoption_preview_is_a_valid_terminal_receipt(self):
         with tempfile.TemporaryDirectory() as td:
-            payload = discover_v2(Path(td))
-            action = trajectory_discovery_capture.build_doctor_discovery_action(payload)
-            errors = []
-            context = trajectory_discovery_contract.validate_doctor_discovery_action(
-                action,
-                errors,
-            )
+            payload = discover_current(Path(td))
 
             self.assertEqual(payload["status"], "adoption-preview")
-            self.assertEqual(errors, [])
-            self.assertEqual(context["selected_scope"], ".")
-            self.assertEqual(
-                trajectory_routes.validate_doctor_route([action], scope="."),
-                [],
-            )
+            self.assertEqual(payload["selected_scope"], ".")
+            self.assertTrue(discovery_receipt.validate_discovery_receipt(payload))
 
     def test_root_documents_are_separate_evidence_without_changing_directory_ranking(self):
         with tempfile.TemporaryDirectory() as td:
@@ -292,27 +318,22 @@ class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
             (root / "docs").mkdir()
             (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
 
-            v1 = docs_checker.discover_init_scope(root, contract_version=1)
-            v2 = docs_checker.discover_init_scope(root, contract_version=2)
+            current = docs_checker.discover_init_scope(root)
 
-            self.assertEqual([item["path"] for item in v1["candidates"]], ["docs"])
-            self.assertEqual(v1["selected_scope"], "docs")
-            self.assertNotIn("root_documents", v1)
-            self.assertEqual([item["path"] for item in v2["candidates"]], ["docs"])
-            self.assertEqual(v2["selected_scope"], "docs")
+            self.assertEqual([item["path"] for item in current["candidates"]], ["docs"])
+            self.assertEqual(current["selected_scope"], "docs")
             self.assertEqual(
-                [item["path"] for item in v2["root_documents"]["paths"]],
+                [item["path"] for item in current["root_documents"]["paths"]],
                 ["README.md"],
             )
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "README.md").write_text("# Root\n", encoding="utf-8")
-            automatic = docs_checker.discover_init_scope(root, contract_version=2)
+            automatic = docs_checker.discover_init_scope(root)
             explicit = docs_checker.discover_init_scope(
                 root,
                 explicit_scope=".",
-                contract_version=2,
             )
             self.assertEqual(automatic["selected_scope"], ".")
             self.assertEqual(explicit["selected_scope"], ".")
@@ -322,7 +343,7 @@ class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
             root = Path(td)
             (root / "EVALUATION.md").write_text("# Evaluation\n", encoding="utf-8")
 
-            root_only = discover_v2(root)
+            root_only = discover_current(root)
             self.assertEqual(root_only["selected_scope"], ".")
             self.assertEqual(root_only["status"], "ready")
             self.assertEqual(
@@ -332,17 +353,15 @@ class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
 
             (root / "docs").mkdir()
             (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
-            v1 = docs_checker.discover_init_scope(root, contract_version=1)
-            v2 = discover_v2(root)
-            self.assertEqual([item["path"] for item in v1["candidates"]], ["docs"])
-            self.assertEqual([item["path"] for item in v2["candidates"]], ["docs"])
-            self.assertEqual(v2["selected_scope"], "docs")
+            current = discover_current(root)
+            self.assertEqual([item["path"] for item in current["candidates"]], ["docs"])
+            self.assertEqual(current["selected_scope"], "docs")
             self.assertEqual(
-                [item["path"] for item in v2["root_documents"]["paths"]],
+                [item["path"] for item in current["root_documents"]["paths"]],
                 ["EVALUATION.md"],
             )
 
-    def test_v2_api_and_cli_io_failures_never_expose_absolute_or_raw_os_text(self):
+    def test_api_and_cli_io_failures_never_expose_absolute_or_raw_os_text(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             raw = f"SECRET-CREDENTIAL at {root}"
@@ -351,7 +370,7 @@ class Task51ReceiptV2CompatibilityTests(unittest.TestCase):
                 "scandir",
                 side_effect=PermissionError(raw),
             ):
-                payload = docs_checker.discover_init_scope(root, contract_version=2)
+                payload = docs_checker.discover_init_scope(root)
             serialized = json.dumps(payload, sort_keys=True)
             self.assertNotIn(str(root), serialized)
             self.assertNotIn("SECRET-CREDENTIAL", serialized)
@@ -390,7 +409,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             (root / "application.py").write_text("print('ok')\n", encoding="utf-8")
             (root / "notes.md").write_text("# Not maintained truth\n", encoding="utf-8")
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
 
             self.assertEqual(payload["status"], "adoption-preview")
             self.assertEqual(payload["selection_reason"], "no-maintained-documentation")
@@ -410,8 +429,8 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             (root / "README.md").write_text("# Root\n", encoding="utf-8")
             (root / "random.md").write_text("# Random\n", encoding="utf-8")
 
-            automatic = discover_v2(root)
-            explicit = discover_v2(root, explicit_scope="./")
+            automatic = discover_current(root)
+            explicit = discover_current(root, explicit_scope="./")
 
             self.assertEqual(
                 [item["path"] for item in automatic["candidates"]],
@@ -438,7 +457,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             for index in range(13):
                 (docs / f"{index:02d}.md").write_bytes(b"AAAA")
 
-            first = discover_v2(root, explicit_scope="docs")
+            first = discover_current(root, explicit_scope="docs")
             cursor = first["continuation"]["cursor"]
             changed = docs / "00.md"
             original_stat = changed.stat()
@@ -448,7 +467,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
                 ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
             )
 
-            stale = discover_v2(
+            stale = discover_current(
                 root,
                 explicit_scope="docs",
                 continuation=cursor,
@@ -467,7 +486,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             for index in range(13):
                 (docs / f"{index:02d}.md").write_bytes(b"AAAA")
 
-            first = discover_v2(root, explicit_scope="docs")
+            first = discover_current(root, explicit_scope="docs")
             cursor = first["continuation"]["cursor"]
             changed = docs / "12.md"
             original_stat = changed.stat()
@@ -477,7 +496,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
                 ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
             )
 
-            stale = discover_v2(
+            stale = discover_current(
                 root,
                 explicit_scope="docs",
                 continuation=cursor,
@@ -493,7 +512,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             for index in range(129):
                 (root / f"entry-{index:03d}").mkdir()
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
 
             self.assertEqual(payload["status"], "stopped")
             self.assertIsNone(payload["selected_scope"])
@@ -517,7 +536,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
                 "scandir",
                 side_effect=unreadable,
             ):
-                payload = discover_v2(root, explicit_scope="docs")
+                payload = discover_current(root, explicit_scope="docs")
 
             serialized = json.dumps(payload, sort_keys=True)
             self.assertEqual(payload["status"], "stopped")
@@ -540,7 +559,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             batches = []
             cursor = None
             while True:
-                payload = discover_v2(
+                payload = discover_current(
                     root,
                     explicit_scope="docs",
                     continuation=cursor,
@@ -563,11 +582,11 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             docs.mkdir()
             for index in range(13):
                 (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
-            first = discover_v2(root, "docs")
+            first = discover_current(root, "docs")
 
             tampered = dict(first["continuation"]["cursor"])
             tampered["next_index"] += 1
-            tampered_result = discover_v2(
+            tampered_result = discover_current(
                 root,
                 "docs",
                 continuation=tampered,
@@ -577,7 +596,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             self.assertEqual(tampered_result["user_action"], "restart-fresh-discovery")
 
             (docs / "12.md").write_text("changed-size", encoding="utf-8")
-            stale_result = discover_v2(
+            stale_result = discover_current(
                 root,
                 "docs",
                 continuation=first["continuation"]["cursor"],
@@ -599,7 +618,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             docs.mkdir()
             for index in range(13):
                 (docs / f"{index:02d}.md").write_text("x", encoding="utf-8")
-            cursor = discover_v2(root, "docs")["continuation"]["cursor"]
+            cursor = discover_current(root, "docs")["continuation"]["cursor"]
             mutations = []
             non_json = dict(cursor)
             non_json["next_index"] = object()
@@ -610,7 +629,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
 
             for candidate in mutations:
                 with self.subTest(candidate_type=type(candidate).__name__):
-                    result = discover_v2(
+                    result = discover_current(
                         root,
                         "docs",
                         continuation=candidate,
@@ -618,7 +637,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
                     self.assertEqual(result["continuation"]["status"], "rejected")
                     self.assertEqual(result["content_batch"]["paths"], [])
 
-    def test_cursor_binds_v2_receipt_and_resume_reconsumes_counters_and_prunes(self):
+    def test_cursor_binds_schema_three_receipt_and_resume_reconsumes_counters_and_prunes(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             docs = root / "docs"
@@ -628,11 +647,11 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             (docs / ".cache" / "private.md").parent.mkdir()
             (docs / ".cache" / "private.md").write_text("SECRET", encoding="utf-8")
 
-            first = discover_v2(root, "docs")
+            first = discover_current(root, "docs")
             cursor = first["continuation"]["cursor"]
-            resumed = discover_v2(root, "docs", cursor)
+            resumed = discover_current(root, "docs", cursor)
 
-            self.assertEqual(cursor["discovery_contract_version"], 2)
+            self.assertEqual(cursor["discovery_contract_version"], 3)
             self.assertGreater(resumed["observed"]["metadata_operations"], 0)
             self.assertLessEqual(
                 resumed["observed"]["metadata_operations"],
@@ -646,7 +665,7 @@ class Task51RootAndContinuationTests(unittest.TestCase):
 
             foreign = dict(cursor)
             foreign["discovery_contract_version"] = 1
-            rejected = discover_v2(root, "docs", foreign)
+            rejected = discover_current(root, "docs", foreign)
             self.assertEqual(rejected["continuation"]["status"], "rejected")
             self.assertEqual(rejected["content_batch"]["paths"], [])
 
@@ -684,7 +703,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
                 return real_lstat(path)
 
             with mock.patch.object(docs_discovery.os, "lstat", side_effect=unreadable):
-                payload = discover_v2(root)
+                payload = discover_current(root)
 
             self.assertEqual(payload["status"], "stopped")
             self.assertEqual(payload["candidates"], [])
@@ -710,7 +729,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
                 return real_scandir(path)
 
             with mock.patch.object(docs_discovery.os, "scandir", side_effect=scandir):
-                payload = discover_v2(root, "handbook")
+                payload = discover_current(root, "handbook")
 
             self.assertEqual(payload["status"], "stopped")
             self.assertEqual(payload["content_batch"]["paths"], [])
@@ -737,7 +756,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
                 return real_scandir(path)
 
             with mock.patch.object(docs_discovery.os, "scandir", side_effect=scandir):
-                payload = discover_v2(root, "handbook")
+                payload = discover_current(root, "handbook")
 
             self.assertEqual(payload["status"], "stopped")
             self.assertEqual(payload["completeness"]["status"], "incomplete")
@@ -751,7 +770,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
             side_effect=RuntimeError("programming defect"),
         ):
             with self.assertRaisesRegex(RuntimeError, "programming defect"):
-                discover_v2(Path(td))
+                discover_current(Path(td))
 
     def test_expected_os_error_errno_is_sanitized_but_unknown_errno_propagates(self):
         with tempfile.TemporaryDirectory() as td:
@@ -761,7 +780,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
                 "scandir",
                 side_effect=OSError(errno.EIO, "SECRET device path"),
             ):
-                payload = discover_v2(root)
+                payload = discover_current(root)
             self.assertEqual(payload["completeness"]["status"], "incomplete")
             self.assertNotIn("SECRET", json.dumps(payload))
 
@@ -771,7 +790,7 @@ class Task51RecoverableMetadataFailureTests(unittest.TestCase):
                 side_effect=OSError(9999, "programming misuse"),
             ):
                 with self.assertRaises(OSError):
-                    discover_v2(root)
+                    discover_current(root)
 
 
 class Task51LocalKnowledgeTests(unittest.TestCase):
@@ -832,7 +851,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
                 "read_bytes",
                 side_effect=AssertionError("documentation content read"),
             ):
-                payload = discover_v2(root)
+                payload = discover_current(root)
 
             self.assertEqual(payload["status"], "adoption-preview")
             self.assertEqual(payload["selected_scope"], ".")
@@ -864,7 +883,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
                 if has_git:
                     (root / ".git").mkdir()
 
-                payload = discover_v2(
+                payload = discover_current(
                     root,
                     explicit_scope=".local/0.3.0-campaign",
                 )
@@ -884,7 +903,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
             (root / ".local" / "alpha-campaign").mkdir(parents=True)
             (root / ".local" / "beta-decisions").mkdir(parents=True)
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
 
             self.assertEqual(payload["status"], "ready")
             self.assertEqual(payload["selected_scope"], "docs")
@@ -903,7 +922,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
             (root / "docs").mkdir(parents=True)
             (root / "documentation").mkdir(parents=True)
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
 
             self.assertEqual(payload["status"], "choice-required")
             self.assertEqual(payload["recommended_scope"], "docs")
@@ -919,7 +938,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
             (root / ".local" / "alpha-campaign").mkdir(parents=True)
             (root / ".local" / "beta-decisions").mkdir(parents=True)
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
 
             self.assertEqual(payload["status"], "adoption-preview")
             self.assertEqual(payload["selected_scope"], ".")
@@ -953,7 +972,7 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
                 return real_scandir(path)
 
             with mock.patch.object(os, "scandir", side_effect=tracked):
-                payload = discover_v2(root)
+                payload = discover_current(root)
 
             self.assertEqual(
                 [item["path"] for item in payload["local_knowledge"]["candidates"]],
@@ -1208,7 +1227,7 @@ class Task51ProtectedSurfaceTests(unittest.TestCase):
             campaign.mkdir(parents=True)
             (campaign / "KICKOFF-PROMPT.md").write_text("PRIVATE TOPIC", encoding="utf-8")
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
             protected_paths = [item["path"] for item in payload["protected_surfaces"]["items"]]
             self.assertEqual(protected_paths, ["README.md", "SECURITY.md"])
             shared_lane = json.dumps(payload["protected_surfaces"], sort_keys=True)
@@ -1272,7 +1291,7 @@ class Task51ProtectedSurfaceTests(unittest.TestCase):
             )
             (root / "README.md").write_text("# Root\n", encoding="utf-8")
 
-            payload = discover_v2(root, explicit_scope="docs")
+            payload = discover_current(root, explicit_scope="docs")
 
         self.assertEqual(payload["protected_surfaces"]["host"], "github")
         paths = {item["path"] for item in payload["protected_surfaces"]["items"]}
@@ -1353,13 +1372,9 @@ class Task51ProtectedSurfaceTests(unittest.TestCase):
 
 class Task51IndependentReviewRepairTests(unittest.TestCase):
     def _validated_action(self, payload):
-        action = trajectory_discovery_capture.build_doctor_discovery_action(payload)
-        errors = []
-        context = trajectory_discovery_contract.validate_doctor_discovery_action(
-            action,
-            errors,
-        )
-        return action, errors, context
+        valid = discovery_receipt.validate_discovery_receipt(payload)
+        errors = [] if valid else ["retrieval.invalid_doctor_init_discovery"]
+        return payload, errors, {} if not valid else {"selected_scope": payload["selected_scope"]}
 
     def test_explicit_scope_rejects_windows_ambiguous_pruned_aliases(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1373,7 +1388,27 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 with self.subTest(scope=scope), self.assertRaisesRegex(
                     ValueError, "explicit scope"
                 ):
-                    discover_v2(root, scope)
+                    discover_current(root, scope)
+
+    def test_schema_three_receipt_rejects_invalid_content_read_counts(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs").mkdir()
+            (root / "docs" / "README.md").write_text(
+                "# Docs\n",
+                encoding="utf-8",
+            )
+            original = discover_current(root, "docs")
+
+            for invalid in ("0", True, -1):
+                with self.subTest(invalid=repr(invalid)):
+                    changed = deepcopy(original)
+                    changed["content_reads"] = invalid
+                    _, errors, _ = self._validated_action(changed)
+                    self.assertIn(
+                        "retrieval.invalid_doctor_init_discovery",
+                        errors,
+                    )
 
     def test_byte_limited_continuation_numbers_and_validates_every_batch(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1386,7 +1421,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             payloads = []
             cursor = None
             while True:
-                payload = discover_v2(root, "docs", cursor)
+                payload = discover_current(root, "docs", cursor)
                 payloads.append(payload)
                 _, errors, _ = self._validated_action(payload)
                 self.assertEqual(errors, [])
@@ -1412,7 +1447,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             docs.mkdir()
             (docs / "oversized.md").write_bytes(b"x" * (300 * 1024))
 
-            payload = discover_v2(root, "docs")
+            payload = discover_current(root, "docs")
             _, errors, _ = self._validated_action(payload)
 
             self.assertEqual(payload["status"], "stopped")
@@ -1432,7 +1467,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             (local / "zeta-plan").mkdir(parents=True)
             (local / "README.md").write_text("# Local knowledge\n", encoding="utf-8")
 
-            payload = discover_v2(root)
+            payload = discover_current(root)
             _, errors, _ = self._validated_action(payload)
 
             expected = [".local", ".local/zeta-plan"]
@@ -1443,20 +1478,14 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             self.assertEqual(payload["candidates"], [])
             self.assertEqual(errors, [])
 
-    def test_v2_receipt_rejects_stale_checksum_without_recomputing_it(self):
+    def test_schema_three_receipt_rejects_incoherent_selection_reason(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "docs").mkdir()
             (root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
-            action = trajectory_discovery_capture.build_doctor_discovery_action(
-                discover_v2(root, "docs")
-            )
-            action["selection_reason"] = "sole-candidate"
-            errors = []
-
-            trajectory_discovery_contract.validate_doctor_discovery_action(
-                action, errors
-            )
+            payload = discover_current(root, "docs")
+            payload["selection_reason"] = "sole-candidate"
+            _, errors, _ = self._validated_action(payload)
 
             self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
 
@@ -1517,7 +1546,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 "lexists",
                 side_effect=AssertionError("uncounted lexists probe"),
             ):
-                payload = discover_v2(root)
+                payload = discover_current(root)
 
             self.assertEqual(payload["status"], "adoption-preview")
             self.assertEqual(
@@ -1537,10 +1566,10 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 source.write_text("same", encoding="utf-8")
                 os.link(source, second_root / "docs" / source.name)
 
-            first = discover_v2(first_root, "docs")
+            first = discover_current(first_root, "docs")
             cursor = first["continuation"]["cursor"]
-            same_root = discover_v2(first_root, "docs", cursor)
-            foreign = discover_v2(second_root, "docs", cursor)
+            same_root = discover_current(first_root, "docs", cursor)
+            foreign = discover_current(second_root, "docs", cursor)
 
             self.assertEqual(same_root["continuation"]["status"], "complete")
             self.assertEqual(foreign["continuation"]["status"], "rejected")
@@ -1579,7 +1608,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
         self.assertFalse(extra["absence_claim_allowed"])
         self.assertTrue(exact["absence_claim_allowed"])
 
-    def test_task6_accepts_every_real_v2_status_and_candidate_source(self):
+    def test_receipt_validator_accepts_every_current_status_and_candidate_source(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             payloads = []
@@ -1587,78 +1616,78 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             docs_root = base / "root-source"
             (docs_root / "docs").mkdir(parents=True)
             (docs_root / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
-            payloads.append(("root-source", discover_v2(docs_root)))
+            payloads.append(("root-source", discover_current(docs_root)))
 
             direct = base / "direct-child"
             (direct / "component" / "docs").mkdir(parents=True)
             (direct / "component" / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
-            payloads.append(("direct-child", discover_v2(direct)))
+            payloads.append(("direct-child", discover_current(direct)))
 
             container = base / "container"
             (container / "packages" / "one" / "docs").mkdir(parents=True)
             (container / "packages" / "one" / "docs" / "README.md").write_text("# Docs\n", encoding="utf-8")
-            payloads.append(("container", discover_v2(container)))
+            payloads.append(("container", discover_current(container)))
 
             explicit = base / "explicit"
             (explicit / "handbook").mkdir(parents=True)
             (explicit / "handbook" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-            payloads.append(("explicit", discover_v2(explicit, "handbook")))
+            payloads.append(("explicit", discover_current(explicit, "handbook")))
 
             root_only = base / "root-only"
             root_only.mkdir()
             (root_only / "README.md").write_text("# Root\n", encoding="utf-8")
-            payloads.append(("root-only-auto", discover_v2(root_only)))
-            payloads.append(("root-only-explicit", discover_v2(root_only, ".")))
+            payloads.append(("root-only-auto", discover_current(root_only)))
+            payloads.append(("root-only-explicit", discover_current(root_only, ".")))
 
             local = base / "local-choice"
             (local / ".local" / "release-plan").mkdir(parents=True)
-            payloads.append(("local-choice", discover_v2(local)))
+            payloads.append(("local-choice", discover_current(local)))
 
             local_mixed = base / "local-mixed-choice"
             (local_mixed / "docs").mkdir(parents=True)
             (local_mixed / ".local" / "release-plan").mkdir(parents=True)
-            payloads.append(("local-mixed-choice", discover_v2(local_mixed)))
+            payloads.append(("local-mixed-choice", discover_current(local_mixed)))
 
             explicit_local = base / "explicit-local"
             (explicit_local / ".local" / "release-plan").mkdir(parents=True)
             payloads.append(
                 (
                     "explicit-local",
-                    discover_v2(explicit_local, ".local/release-plan"),
+                    discover_current(explicit_local, ".local/release-plan"),
                 )
             )
 
             choice = base / "shared-choice"
             (choice / "docs").mkdir(parents=True)
             (choice / "documentation").mkdir()
-            payloads.append(("shared-choice", discover_v2(choice)))
+            payloads.append(("shared-choice", discover_current(choice)))
 
             batch = base / "batch"
             (batch / "docs").mkdir(parents=True)
             for index in range(13):
                 (batch / "docs" / f"{index:02d}.md").write_text("x", encoding="utf-8")
-            limited = discover_v2(batch, "docs")
+            limited = discover_current(batch, "docs")
             payloads.append(("batch-limited", limited))
             payloads.append(
                 (
                     "resumed-complete",
-                    discover_v2(batch, "docs", limited["continuation"]["cursor"]),
+                    discover_current(batch, "docs", limited["continuation"]["cursor"]),
                 )
             )
             tampered = dict(limited["continuation"]["cursor"])
             tampered["next_index"] += 1
-            payloads.append(("rejected-continuation", discover_v2(batch, "docs", tampered)))
+            payloads.append(("rejected-continuation", discover_current(batch, "docs", tampered)))
 
             empty = base / "empty"
             empty.mkdir()
-            payloads.append(("adoption-preview", discover_v2(empty)))
-            payloads.append(("adoption-preview-explicit", discover_v2(empty, ".")))
+            payloads.append(("adoption-preview", discover_current(empty)))
+            payloads.append(("adoption-preview-explicit", discover_current(empty, ".")))
 
             wide = base / "wide"
             wide.mkdir()
             for index in range(129):
                 (wide / f"entry-{index:03d}").mkdir()
-            payloads.append(("stopped", discover_v2(wide)))
+            payloads.append(("stopped", discover_current(wide)))
 
             statuses = set()
             sources = set()
@@ -1688,13 +1717,13 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 sources,
             )
 
-    def test_v2_bridge_rejects_coordinated_cross_field_and_cursor_mutations(self):
+    def test_schema_three_receipt_rejects_coordinated_cross_field_and_cursor_mutations(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "docs").mkdir()
             for index in range(13):
                 (root / "docs" / f"{index:02d}.md").write_text("x", encoding="utf-8")
-            original = discover_v2(root, "docs")
+            original = discover_current(root, "docs")
 
             mutations = {}
             for field, value in (
@@ -1749,8 +1778,8 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-            first = discover_v2(root)
-            second = discover_v2(root, continuation=first["continuation"]["cursor"])
+            first = discover_current(root)
+            second = discover_current(root, continuation=first["continuation"]["cursor"])
             self.assertEqual(first["continuation"]["status"], "available")
             self.assertEqual(second["continuation"]["status"], "complete")
 

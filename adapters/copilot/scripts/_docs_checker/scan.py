@@ -1,6 +1,8 @@
 """Markdown discovery, link analysis, reachability, titles, and hot-path telemetry."""
 
+import hashlib
 import re
+import unicodedata
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -30,6 +32,111 @@ CURRENT_ROUTE_LINK = re.compile(
 )
 SOURCES_LINE = re.compile(r"^Sources:[ \t]*(.+)$", re.M)
 BACKTICK_ROUTE = re.compile(r"`([^`]+)`")
+
+
+class _SectionParseError(ValueError):
+    def __init__(self):
+        super().__init__("malformed-section-source")
+        self.classification = "malformed-section-source"
+
+
+def _section_heading_text(value):
+    closer = re.search(r"[ \t\v\f]+#+[ \t\v\f]*$", value)
+    if closer is not None:
+        value = value[: closer.start()]
+    normalized = " ".join(unicodedata.normalize("NFC", value).split()).casefold()
+    if not normalized:
+        raise _SectionParseError()
+    return normalized
+
+
+def parse_atx_sections(data):
+    """Parse strict UTF-8 ATX headings into approval-bindable raw byte spans."""
+    if type(data) is not bytes:
+        raise _SectionParseError()
+    try:
+        data.decode("utf-8", "strict")
+    except UnicodeDecodeError as exc:
+        raise _SectionParseError() from exc
+
+    headings = []
+    open_headings = []
+    ancestors = []
+    occurrences = {}
+    fence = None
+    offset = 0
+
+    for raw_line in data.splitlines(keepends=True):
+        content = raw_line.rstrip(b"\r\n")
+        try:
+            line = content.decode("utf-8", "strict")
+        except UnicodeDecodeError as exc:
+            raise _SectionParseError() from exc
+
+        fence_match = re.match(r"^( {0,3})(`{3,}|~{3,})(.*)$", line)
+        if fence is not None:
+            if fence_match is not None and fence_match.group(2)[0] == fence[0]:
+                marker = fence_match.group(2)
+                suffix = fence_match.group(3)
+                if len(marker) >= fence[1]:
+                    if suffix.strip(" \t\v\f"):
+                        raise _SectionParseError()
+                    fence = None
+            offset += len(raw_line)
+            continue
+
+        if fence_match is not None:
+            marker = fence_match.group(2)
+            suffix = fence_match.group(3)
+            if marker[0] == "`" and "`" in suffix:
+                raise _SectionParseError()
+            fence = (marker[0], len(marker))
+            offset += len(raw_line)
+            continue
+
+        heading_match = re.match(
+            r"^( {0,3})(#{1,6})(?:[ \t\v\f](.*)|)$",
+            line,
+        )
+        if heading_match is not None:
+            level = len(heading_match.group(2))
+            heading_text = _section_heading_text(heading_match.group(3) or "")
+
+            while open_headings and headings[open_headings[-1]]["level"] >= level:
+                headings[open_headings.pop()]["end_byte"] = offset
+            while ancestors and ancestors[-1][0] >= level:
+                ancestors.pop()
+            heading_path = [item[1] for item in ancestors] + [heading_text]
+            identity = (level, tuple(heading_path))
+            occurrence = occurrences.get(identity, 0) + 1
+            occurrences[identity] = occurrence
+            headings.append(
+                {
+                    "kind": "atx-section-v1",
+                    "level": level,
+                    "heading_path": heading_path,
+                    "occurrence": occurrence,
+                    "start_byte": offset,
+                    "end_byte": None,
+                    "raw_span_digest": None,
+                }
+            )
+            index = len(headings) - 1
+            open_headings.append(index)
+            ancestors.append((level, heading_text))
+        offset += len(raw_line)
+
+    if fence is not None:
+        raise _SectionParseError()
+    for index in open_headings:
+        headings[index]["end_byte"] = len(data)
+    for section in headings:
+        start = section["start_byte"]
+        end = section["end_byte"]
+        section["raw_span_digest"] = (
+            "sha256:" + hashlib.sha256(data[start:end]).hexdigest()
+        )
+    return headings
 
 
 def strip_fences(text):
@@ -409,6 +516,7 @@ __all__ = (
     "CURRENT_ROUTE_LINK",
     "discover_markdown",
     "hot_path_summary",
+    "parse_atx_sections",
     "scan_documents",
     "strip_fences",
 )

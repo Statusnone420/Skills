@@ -5,6 +5,7 @@ import os
 import re
 import stat
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 
 # Directory names excluded from recursive documentation scans. Metadata,
@@ -46,6 +47,43 @@ STANDARD_PRUNE_DIRS = ANYWHERE_PRUNE_DIRS + REPOSITORY_ROOT_ONLY_PRUNE_DIRS
 _ANYWHERE_PRUNE_KEYS = frozenset(name.casefold() for name in ANYWHERE_PRUNE_DIRS)
 _ROOT_ONLY_PRUNE_KEYS = frozenset(
     name.casefold() for name in REPOSITORY_ROOT_ONLY_PRUNE_DIRS
+)
+_PRIVATE_SHARED_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.-])\.local(?:[\\/]|$)"
+)
+_WINDOWS_DRIVE_ABSOLUTE_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.\\/-])[A-Z]:[\\/]"
+)
+_WINDOWS_UNC_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.\\/-])\\{2,}[^\\/\s]+"
+)
+_FORWARD_UNC_OR_DOUBLE_ROOT_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.:\\/-])/{2,}[^\\/\s]+"
+)
+_WINDOWS_ROOTED_MULTISEGMENT_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.\\/-])\\(?!\\)(?:[^\W_]|[._-][^\W_])[^\\/\s]*[\\/](?:[^\W_]|[._-][^\W_])[^\\/\s]*"
+)
+_WINDOWS_ROOTED_FILENAME_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.\\/-])\\(?!\\)[^\\/\s]*\.[A-Za-z0-9][^\\/\s]*"
+)
+_WINDOWS_ROOTED_KNOWN_DIR_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.\\/-])\\(?!\\)(?:Users|Windows|ProgramData|Program Files|Documents and Settings|System Volume Information|\$Recycle\.Bin)(?=$|[\\/\s,.;:)\]])"
+)
+_FILE_URI_ROUTE = re.compile(
+    r"(?i)(?<![A-Za-z0-9+.-])file:(?:/{1,}|\\{1,})"
+)
+_PUBLIC_HTTP_URL = re.compile(r"(?i)\bhttps?://[^\s<>]+")
+_LOCAL_POSIX_URL_VALUE = re.compile(
+    r"(?<![A-Za-z0-9_./-])/(?:home|root|etc|var|tmp|private|mnt|media|opt|usr|bin|sbin|dev|proc|sys|run|srv|boot|Users|Volumes|Applications|System|Library)/[^/?#&\s]+"
+)
+_FILESYSTEM_URL_KEYS = frozenset(
+    {"dir", "directory", "file", "folder", "path", "root", "source"}
+)
+_POSIX_ABSOLUTE_ROUTE = re.compile(
+    r"(?<![A-Za-z0-9_./-])/(?!/)(?:[^\s/\\]+/)*[^\s/\\]+"
+)
+_TRAVERSAL_ROUTE = re.compile(
+    r"(?<![A-Za-z0-9_.-])\.\.(?:[\\/]|$)"
 )
 
 
@@ -116,6 +154,72 @@ def normalize_repo_relative(value, name):
     if any(part == ".." for part in normalized.parts):
         raise ValueError(f"{name} must be repo-relative")
     return "." if os.fspath(normalized) in ("", ".") else normalized.as_posix()
+
+
+def _http_url_exposes_route(value):
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    for raw_component in (parsed.query, parsed.fragment):
+        component = unquote(raw_component)
+        if any(
+            pattern.search(component) is not None
+            for pattern in (
+                _PRIVATE_SHARED_ROUTE,
+                _FILE_URI_ROUTE,
+                _WINDOWS_DRIVE_ABSOLUTE_ROUTE,
+                _WINDOWS_UNC_ROUTE,
+                _WINDOWS_ROOTED_MULTISEGMENT_ROUTE,
+                _WINDOWS_ROOTED_FILENAME_ROUTE,
+                _WINDOWS_ROOTED_KNOWN_DIR_ROUTE,
+                _TRAVERSAL_ROUTE,
+                _LOCAL_POSIX_URL_VALUE,
+            )
+        ):
+            return True
+        for key, item in parse_qsl(raw_component, keep_blank_values=True):
+            if key.casefold() not in _FILESYSTEM_URL_KEYS:
+                continue
+            if any(
+                pattern.search(item) is not None
+                for pattern in (
+                    _FORWARD_UNC_OR_DOUBLE_ROOT_ROUTE,
+                    _POSIX_ABSOLUTE_ROUTE,
+                )
+            ):
+                return True
+    return False
+
+
+def shared_text_exposes_route(value):
+    """Return whether shared prose directly exposes a private or unsafe route."""
+    if not isinstance(value, str):
+        return False
+    if any(
+        pattern.search(value) is not None
+        for pattern in (
+            _PRIVATE_SHARED_ROUTE,
+            _FILE_URI_ROUTE,
+            _WINDOWS_DRIVE_ABSOLUTE_ROUTE,
+            _WINDOWS_UNC_ROUTE,
+            _WINDOWS_ROOTED_MULTISEGMENT_ROUTE,
+            _WINDOWS_ROOTED_FILENAME_ROUTE,
+            _WINDOWS_ROOTED_KNOWN_DIR_ROUTE,
+            _TRAVERSAL_ROUTE,
+        )
+    ):
+        return True
+    if any(_http_url_exposes_route(match.group(0)) for match in _PUBLIC_HTTP_URL.finditer(value)):
+        return True
+    http_neutral_text = _PUBLIC_HTTP_URL.sub("", value)
+    return any(
+        pattern.search(http_neutral_text) is not None
+        for pattern in (
+            _FORWARD_UNC_OR_DOUBLE_ROOT_ROUTE,
+            _POSIX_ABSOLUTE_ROUTE,
+        )
+    )
 
 
 def _relative_posix(path, root):
@@ -250,5 +354,6 @@ __all__ = (
     "prune_summary",
     "route_matches_patterns",
     "safe_path",
+    "shared_text_exposes_route",
     "unique_relative_paths",
 )

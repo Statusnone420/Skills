@@ -33,7 +33,7 @@ The generated web adapters now disclose only the selected command contract plus 
 | --- | ---: |
 | Smallest command prompt | 3,214 bytes (`audit`) |
 | Largest command prompt | 21,840 bytes (`doctor`) |
-| Regression guard | 32,000 bytes, selected after measurement with 10,160 bytes of headroom |
+| Regression guard | 32,000 bytes, selected after that measurement with 10,160 bytes of headroom |
 
 The former exact 16,000-byte concatenated-prompt check was retired. It compressed canonical behavior without product evidence. Repository map/current-truth hot-path bytes remain separate provisional telemetry and are not a score or health gate.
 
@@ -52,10 +52,10 @@ The first dogfood pass used only the completed read-only checker against 13 disp
 | Local-only authority | `choice-required`, local candidates present-uninspected, absence claim disallowed, `content_reads: 0` |
 | Protected-surface inventory | 9 synthetic protected surfaces; 10 in the safe local public checkout, with incomplete evidence honestly reported |
 | Vendor symlink | Created out-of-scope vendor symlink; checker remained structure-healthy and did not traverse it |
-| Context-cost telemetry | Maximum generated web prompt 21,840 bytes; repository hot-path bytes remained provenance-tagged provisional telemetry |
+| Context-cost telemetry | Maximum generated web prompt 26,596 bytes; repository hot-path bytes remained provenance-tagged provisional telemetry |
 
 The authorized Cline local-authority check reproduced the routing boundary: automatic discovery returned a choice boundary with two local candidates and no absence claim; an explicit local scope planned 12 files/94,889 bytes with `content_reads: 0`; selected read-only retrieval verified nine staged plan entries, including Chat Calm and performance work. The route/body stayed private and no local map or orientation hook was written. A safe local checkout with a configured remote provided the public-repository evidence; no network clone was performed. These are deterministic contract observations, not a claim about arbitrary model navigation.
 
 ## What remains to measure
 
-External-model navigation quality, live cross-harness behavior, and a network-backed public-repository comparison remain unmeasured. The 16 KiB hot-path value and 21,840-byte prompt maximum remain telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.
+External-model navigation quality, live cross-harness behavior, and a network-backed public-repository comparison remain unmeasured. The 16 KiB hot-path value and 26,596-byte prompt maximum remain telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.

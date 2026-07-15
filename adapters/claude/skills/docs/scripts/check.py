@@ -12,6 +12,8 @@ from pathlib import Path
 _SAFE_PUBLIC_CLI_ERRORS = frozenset(
     {
         "--agent requires --json",
+        "--doctor-recovery-preview and --doctor-recovery-apply are mutually exclusive",
+        "Doctor recovery cannot be combined with --init-discovery",
         "--init-discovery requires --json --agent",
         "--continuation requires --init-discovery --json --agent",
         "content continuation token is invalid",
@@ -45,7 +47,14 @@ from _docs_checker.health import (
     health_summary,
     normalized_content_digest,
 )
-from _docs_checker.discovery import discover_init_scope
+from _docs_checker.discovery import (
+    derive_result_corpus,
+    discover_init_scope,
+    prepare_init_discovery,
+    scan_selected_document_corpus,
+    validate_corpus_coverage,
+)
+from _docs_checker.init_closeout import inspect_initialization_preflight
 from _docs_checker.continuation import decode_continuation_token
 from _docs_checker.identity import (
     _EVENT_ID,
@@ -114,6 +123,7 @@ from _docs_checker.memory import (
     _strict_object,
     _validate_finding_evidence,
     _validate_json_nesting,
+    build_initialization_state,
     inspect_operational_memory,
     load_operational_events,
     load_operational_findings,
@@ -186,6 +196,8 @@ _PARSER.add_argument("root")
 _PARSER.add_argument("--json", action="store_true")
 _PARSER.add_argument("--agent", action="store_true")
 _PARSER.add_argument("--init-discovery", action="store_true")
+_PARSER.add_argument("--doctor-recovery-preview", action="store_true")
+_PARSER.add_argument("--doctor-recovery-apply", default=None, metavar="APPROVAL")
 _PARSER.add_argument("--continuation", default=None)
 _PARSER.add_argument("--map", default="docs/README.md")
 _PARSER.add_argument("--hot", default=None)
@@ -265,7 +277,13 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     argv = list(sys.argv[1:] if argv is None else argv)
-    value_options = {"--map", "--hot", "--scope", "--continuation"}
+    value_options = {
+        "--map",
+        "--hot",
+        "--scope",
+        "--continuation",
+        "--doctor-recovery-apply",
+    }
     positional = []
     skip = False
     for arg in argv:
@@ -278,7 +296,15 @@ def main(argv=None):
         if arg.startswith("--"):
             continue
         positional.append(arg)
-    if "--json" in argv and not positional:
+    machine_output = any(
+        option in argv
+        for option in (
+            "--json",
+            "--doctor-recovery-preview",
+            "--doctor-recovery-apply",
+        )
+    )
+    if machine_output and not positional:
         print(
             json.dumps(
                 {
@@ -291,9 +317,22 @@ def main(argv=None):
         )
         return 2
     namespace = _PARSER.parse_args(argv)
+    recovery_mode = (
+        namespace.doctor_recovery_preview
+        or namespace.doctor_recovery_apply is not None
+    )
     try:
         if namespace.agent and not namespace.json:
             raise ValueError("--agent requires --json")
+        if (
+            namespace.doctor_recovery_preview
+            and namespace.doctor_recovery_apply is not None
+        ):
+            raise ValueError(
+                "--doctor-recovery-preview and --doctor-recovery-apply are mutually exclusive"
+            )
+        if recovery_mode and namespace.init_discovery:
+            raise ValueError("Doctor recovery cannot be combined with --init-discovery")
         if namespace.init_discovery and not (
             namespace.json and namespace.agent
         ):
@@ -314,13 +353,33 @@ def main(argv=None):
         # validate_root; the façade must not preflight ancestors through a
         # platform-specific Path operation before that boundary.
         raw = Path(os.path.abspath(os.path.expanduser(os.fspath(namespace.root))))
-        if namespace.init_discovery:
-            discovery = discover_init_scope(
-                raw,
-                explicit_scope=namespace.scope,
-                continuation=continuation,
-                contract_version=2,
+        if recovery_mode:
+            recovery_preview = preview_state_conflict_recovery(raw)
+            recovery_response = (
+                recovery_preview
+                if namespace.doctor_recovery_preview
+                else apply_state_conflict_recovery(
+                    raw,
+                    recovery_preview,
+                    approved_preview=namespace.doctor_recovery_apply,
+                    verification=None,
+                )
             )
+        elif namespace.init_discovery:
+            discovery_state, discovery = prepare_init_discovery(
+                raw,
+                lambda candidate: inspect_initialization_preflight(
+                    candidate,
+                    control_present=True,
+                ),
+            )
+            if discovery is None:
+                discovery = discover_init_scope(
+                    raw,
+                    explicit_scope=namespace.scope,
+                    continuation=continuation,
+                    _prepared_state=discovery_state,
+                )
         else:
             _assert_no_reparse_components(raw)
             if _is_reparse(raw) or not raw.is_dir():
@@ -343,7 +402,7 @@ def main(argv=None):
     except OSError as exc:
         if not is_expected_environmental_error(exc):
             raise
-        if namespace.json:
+        if namespace.json or recovery_mode:
             print(
                 json.dumps(
                     {
@@ -372,7 +431,7 @@ def main(argv=None):
             if raw_detail in _SAFE_PUBLIC_CLI_ERRORS
             else "invalid command input"
         )
-        if namespace.json:
+        if namespace.json or recovery_mode:
             print(
                 json.dumps(
                     {
@@ -386,9 +445,23 @@ def main(argv=None):
         else:
             print(f"error: {detail}")
         return 2
+    if recovery_mode:
+        print(
+            json.dumps(
+                recovery_response,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        )
+        return 0 if recovery_response.get("status") in {
+            "approval-required",
+            "recovered",
+        } else 2
     if namespace.init_discovery:
         print(json.dumps(discovery, ensure_ascii=True))
-        return 0
+        return 2 if discovery.get("status") == "state-conflict" else 0
     if namespace.json:
         print(
             json.dumps(

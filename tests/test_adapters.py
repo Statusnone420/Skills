@@ -98,6 +98,7 @@ class AdapterBuilderTests(unittest.TestCase):
         }
         self.assertEqual(set(builder.CHECKER_FILES), canonical_scripts)
         self.assertIn("scripts/check.py", builder.CHECKER_FILES)
+        self.assertIn("scripts/init_closeout.py", builder.CHECKER_FILES)
         self.assertEqual(
             {
                 path.rsplit("/", 1)[-1]
@@ -121,6 +122,7 @@ class AdapterBuilderTests(unittest.TestCase):
                 "memory.py",
                 "lifecycle.py",
                 "lifecycle_io.py",
+                "init_closeout.py",
                 "health.py",
             },
         )
@@ -231,6 +233,31 @@ class AdapterBuilderTests(unittest.TestCase):
         cleanup = builder.web_prompt("cleanup")
         self.assertIn("preview exact moves", migrate.lower())
         self.assertIn("preview splits, merges, archives, removals", cleanup.lower())
+
+    def test_init_web_prompt_uses_the_init_engine_without_generic_lifecycle_duplication(self):
+        import tools.build_adapters as builder
+
+        init = " ".join(builder.web_prompt("init").lower().split())
+        write = builder.web_prompt("write").lower()
+        self.assertNotIn("## verified lifecycle closeout", init)
+        self.assertIn("## verified lifecycle closeout", write)
+        for promise in (
+            "scripts/init_closeout.py",
+            ".diataxis/local-map.json",
+            "exact path is untracked",
+            "normal git ignore evaluation proves it ignored",
+            "never private local filenames, topics, aliases, or bodies",
+            "missing source or anchor",
+            "exact intent authorization",
+            "failed protected-surface verification rolls back",
+            "i/o or staged-verification failure rolls back",
+            "process interruption leaves",
+            "torn or orphan recovery evidence is p0",
+            "successful event is the final mutation",
+            "post-event work is recovery cleanup only",
+        ):
+            with self.subTest(promise=promise):
+                self.assertIn(promise, init)
 
     def test_check_detects_web_prompt_parity_drift(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
