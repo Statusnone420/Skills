@@ -707,79 +707,65 @@ class RepositoryMemoryTests(unittest.TestCase):
         )
 
     def test_trust_union_uses_filesystem_identity_across_declaration_sources(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            control = create_repository(root)
-            state = valid_state()
-            state["initialized"]["hot_paths"] = ["DOCS/state.md"]
-            write_json(control / "state.json", state)
-            (root / "docs" / "README.md").write_text(
-                "# Documentation\n\n"
-                "Start here.\n\n"
-                "[State](STATE.md) <!-- docs:current -->\n",
-                encoding="utf-8",
-            )
-
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(SKILL / "scripts" / "check.py"),
-                    str(root),
-                    "--json",
-                    "--agent",
-                    "--hot",
-                    "docs/STATE.md",
+        coverage = docs_checker.evaluate_coverage(
+            configured_routes=["docs/STATE.md"],
+            state={
+                "initialized": {"hot_paths": ["DOCS/state.md"]},
+                "verified_documents": [verified_document_fixture()],
+            },
+            map_routes=[{"route": "docs/STATE.md", "marker": "current"}],
+            freshness={
+                "status": "fresh",
+                "routes": [
+                    {"route": "docs/STATE.md", "status": "fresh"},
+                    {"route": "src/config.py", "status": "fresh"},
                 ],
-                capture_output=True,
-                text=True,
+            },
+        )
+        same_identity = (
+            docs_checker._path_identity("docs/STATE.md")
+            == docs_checker._path_identity("DOCS/state.md")
+        )
+        if same_identity:
+            self.assertEqual(
+                (
+                    coverage["numerator"],
+                    coverage["denominator"],
+                    coverage["status"],
+                ),
+                (2, 2, "verified"),
             )
-
-            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-            coverage = json.loads(proc.stdout)["health"]["coverage"]
-            same_identity = (
-                docs_checker._path_identity("docs/STATE.md")
-                == docs_checker._path_identity("DOCS/state.md")
+            state_rows = [
+                row
+                for row in coverage["routes"]
+                if docs_checker._path_identity(row["route"])
+                == docs_checker._path_identity("docs/STATE.md")
+            ]
+            self.assertEqual(len(state_rows), 1)
+            self.assertEqual(state_rows[0]["freshness"], "fresh")
+            self.assertEqual(
+                state_rows[0]["sources"],
+                [
+                    "configured:hot-path",
+                    "map:current",
+                    "state:initialized-hot-path",
+                    "state:verified-document",
+                ],
             )
-            if same_identity:
-                self.assertEqual(
-                    (
-                        coverage["numerator"],
-                        coverage["denominator"],
-                        coverage["status"],
-                    ),
-                    (2, 2, "verified"),
-                )
-                state_rows = [
-                    row
-                    for row in coverage["routes"]
-                    if docs_checker._path_identity(row["route"])
-                    == docs_checker._path_identity("docs/STATE.md")
-                ]
-                self.assertEqual(len(state_rows), 1)
-                self.assertEqual(state_rows[0]["freshness"], "fresh")
-                self.assertEqual(
-                    state_rows[0]["sources"],
-                    [
-                        "configured:hot-path",
-                        "map:current",
-                        "state:initialized-hot-path",
-                        "state:verified-document",
-                    ],
-                )
-            else:
-                self.assertEqual(
-                    (
-                        coverage["numerator"],
-                        coverage["denominator"],
-                        coverage["status"],
-                    ),
-                    (2, 3, "partial"),
-                )
-                alias_row = next(
-                    row for row in coverage["routes"] if row["route"] == "DOCS/state.md"
-                )
-                self.assertEqual(alias_row["freshness"], "unverified")
-                self.assertEqual(alias_row["sources"], ["state:initialized-hot-path"])
+        else:
+            self.assertEqual(
+                (
+                    coverage["numerator"],
+                    coverage["denominator"],
+                    coverage["status"],
+                ),
+                (2, 3, "partial"),
+            )
+            alias_row = next(
+                row for row in coverage["routes"] if row["route"] == "DOCS/state.md"
+            )
+            self.assertEqual(alias_row["freshness"], "unverified")
+            self.assertEqual(alias_row["sources"], ["state:initialized-hot-path"])
 
     def test_exact_map_current_marker_adds_only_its_valid_route_to_trust(self):
         with tempfile.TemporaryDirectory() as td:

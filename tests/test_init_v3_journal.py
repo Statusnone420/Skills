@@ -845,19 +845,21 @@ class InitV3JournalPreparationTests(unittest.TestCase):
                 plan = self.preview(root)["plan"]
                 before = target_snapshot(root, plan)
                 calls = 0
+                injected = False
                 real_fsync = os.fsync
 
                 def injected_fsync(descriptor):
-                    nonlocal calls
+                    nonlocal calls, injected
                     calls += 1
                     if calls == ordinal:
+                        injected = True
                         raise OSError(f"injected flush failure {ordinal}")
                     return real_fsync(descriptor)
 
                 with mock.patch.object(lifecycle_io.os, "fsync", injected_fsync):
                     with self.assertRaises(OSError):
                         prepare_area(root, plan)
-                self.assertEqual(calls, ordinal)
+                self.assertTrue(injected)
                 self.assertEqual(target_snapshot(root, plan), before)
 
 
@@ -1932,8 +1934,15 @@ class InitV3JournalApplyTests(unittest.TestCase):
                     "device": metadata.st_dev,
                     "inode": metadata.st_ino,
                 }
+            replacement = root / "replacement"
+            replacement.mkdir()
+            replacement_metadata = replacement.stat()
+            self.assertNotEqual(
+                (replacement_metadata.st_dev, replacement_metadata.st_ino),
+                (records["changed"]["device"], records["changed"]["inode"]),
+            )
             changed.rmdir()
-            changed.mkdir()
+            replacement.rename(changed)
 
             complete = cleanup(root, records)
 

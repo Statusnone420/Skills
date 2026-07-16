@@ -419,6 +419,31 @@ class InitV3TerminalCleanupTests(unittest.TestCase):
             self.assertEqual(spoofed["writes"], 0)
             self.assertTrue(finalize.is_dir())
 
+    def test_posix_cleanup_capability_gate_matches_rename_primitive(self):
+        supported = {
+            lifecycle_io.os.open,
+            lifecycle_io.os.stat,
+            lifecycle_io.os.unlink,
+            lifecycle_io.os.rmdir,
+            lifecycle_io.os.rename,
+        }
+        with mock.patch.object(
+            lifecycle_io.os,
+            "supports_dir_fd",
+            supported,
+        ), mock.patch.object(
+            lifecycle_io.os,
+            "O_DIRECTORY",
+            0,
+            create=True,
+        ), mock.patch.object(
+            lifecycle_io.os,
+            "O_NOFOLLOW",
+            0,
+            create=True,
+        ):
+            self.assertTrue(lifecycle_io._posix_cleanup_supported_v3())
+
     @unittest.skipIf(os.name == "nt", "POSIX dir-fd anchoring contract")
     def test_posix_results_symlink_swap_stays_anchored_and_preserves_external_sentinel(self):
         with tempfile.TemporaryDirectory() as td:

@@ -4,7 +4,7 @@ import fnmatch
 import os
 import re
 import stat
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 
@@ -148,7 +148,12 @@ def normalize_repo_relative(value, name):
     """Return one normalized POSIX-style repository-relative path."""
     raw = os.fspath(value)
     candidate = Path(raw.replace("\\", os.sep).replace("/", os.sep))
-    if candidate.is_absolute() or candidate.drive or any(part == ".." for part in candidate.parts):
+    if (
+        candidate.is_absolute()
+        or candidate.drive
+        or PureWindowsPath(raw).drive
+        or any(part == ".." for part in candidate.parts)
+    ):
         raise ValueError(f"{name} must be repo-relative")
     normalized = Path(os.path.normpath(os.fspath(candidate)))
     if any(part == ".." for part in normalized.parts):

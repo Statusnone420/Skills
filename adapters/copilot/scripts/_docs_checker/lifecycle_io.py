@@ -3468,7 +3468,7 @@ def _windows_dispose_cleanup_pin_v3(pin):
 
 
 def _posix_cleanup_supported_v3():
-    required = (os.open, os.stat, os.unlink, os.rmdir, os.replace)
+    required = (os.open, os.stat, os.unlink, os.rmdir, os.rename)
     return (
         hasattr(os, "O_DIRECTORY")
         and hasattr(os, "O_NOFOLLOW")
@@ -3600,7 +3600,7 @@ def _open_cleanup_tree_v3(expected_parent, recovery_root, action):
             if transaction is not None:
                 if os.path.lexists(tombstone):
                     raise ValueError("initialization recovery cleanup tombstone already exists")
-                os.replace(
+                os.rename(
                     recovery_root.name,
                     tombstone.name,
                     src_dir_fd=parent_pin["fd"],
