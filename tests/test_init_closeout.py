@@ -243,6 +243,51 @@ def assert_failure_envelope(case, payload):
 
 
 class InitCloseoutProcessTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "Windows path identity test")
+    def test_adopt_preview_matches_explicit_scope_case_insensitively_on_windows(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repository"
+            build_repository(root)
+            receipt_path = Path(td) / "init-receipt.json"
+            before = tree_snapshot(root)
+
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "adopt-preview",
+                    "--scope",
+                    "DOCS",
+                    "--receipt-file",
+                    str(receipt_path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                process.returncode,
+                0,
+                process.stderr or process.stdout,
+            )
+            preview = json.loads(process.stdout)
+            self.assertEqual(preview["status"], "approval-required")
+            self.assertEqual(preview["selected_scope"], "DOCS")
+            self.assertEqual(preview["source_files_revalidated"], 103)
+            self.assertEqual(preview["handling_summary"]["left_unchanged"], 103)
+            self.assertEqual(preview["document_change_count"], 0)
+            self.assertEqual(preview["writes"], 0)
+            categories = preview["score_receipt"]["categories"]
+            self.assertEqual(categories["path_safety"]["raw"]["safe"], 103)
+            self.assertEqual(categories["path_safety"]["raw"]["maintained"], 103)
+            self.assertEqual(categories["titles"]["raw"]["maintained"], 103)
+            self.assertEqual(categories["reachability"]["raw"]["maintained"], 103)
+            self.assertTrue(receipt_path.is_file())
+            self.assertEqual(tree_snapshot(root), before)
+
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell transport test")
     def test_documented_init_powershell_transport_executes_preview_and_apply(self):
         init_reference = (SCRIPTS.parent / "references" / "init.md").read_text(
@@ -250,12 +295,15 @@ class InitCloseoutProcessTests(unittest.TestCase):
         )
         self.assertIn(
             "& '<python>' '<installed-skill>/scripts/init_closeout.py' "
-            "'<repository-root>' preview --request-file '<request-json>'",
+            "'<repository-root>' adopt-preview --receipt-file "
+            "'<outside-repository-receipt.json>'",
             init_reference,
         )
         self.assertIn(
             "& '<python>' '<installed-skill>/scripts/init_closeout.py' "
-            "'<repository-root>' apply --request-file '<request-json>'",
+            "'<repository-root>' adopt-apply --receipt-file "
+            "'<same-outside-repository-receipt.json>' --approval "
+            "'<exact-engine-emitted-approval>'",
             init_reference,
         )
 
@@ -265,21 +313,22 @@ class InitCloseoutProcessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "repository"
             build_repository(root)
-            request_path = Path(td) / "init-request.json"
-            request_path.write_bytes(canonical_bytes(build_request(root)))
+            receipt_path = Path(td) / "init-receipt.json"
+            before_preview = tree_snapshot(root)
 
-            def invoke(operation):
-                command = " ".join(
-                    (
-                        "&",
-                        powershell_literal(sys.executable),
-                        powershell_literal(CLOSEOUT),
-                        powershell_literal(root),
-                        operation,
-                        "--request-file",
-                        powershell_literal(request_path),
-                    )
+            def invoke(operation, approval=None):
+                arguments = (
+                    "&",
+                    powershell_literal(sys.executable),
+                    powershell_literal(CLOSEOUT),
+                    powershell_literal(root),
+                    operation,
+                    "--receipt-file",
+                    powershell_literal(receipt_path),
                 )
+                if approval is not None:
+                    arguments += ("--approval", powershell_literal(approval))
+                command = " ".join(arguments)
                 return subprocess.run(
                     [
                         "powershell",
@@ -294,7 +343,7 @@ class InitCloseoutProcessTests(unittest.TestCase):
                     check=False,
                 )
 
-            preview_process = invoke("preview")
+            preview_process = invoke("adopt-preview")
             self.assertEqual(
                 preview_process.returncode,
                 0,
@@ -302,17 +351,16 @@ class InitCloseoutProcessTests(unittest.TestCase):
             )
             preview = json.loads(preview_process.stdout)
             self.assertEqual(preview["status"], "approval-required")
-
-            request_path.write_bytes(
-                canonical_bytes(
-                    build_request(
-                        root,
-                        "apply",
-                        preview["approval"],
-                    )
-                )
+            self.assertEqual(preview["writes"], 0)
+            self.assertEqual(tree_snapshot(root), before_preview)
+            self.assertTrue(receipt_path.is_file())
+            self.assertEqual(
+                preview["approval"],
+                "Approve $docs init preview "
+                f"{preview['preview_id']} with manifest {preview['manifest_sha256']}",
             )
-            apply_process = invoke("apply")
+
+            apply_process = invoke("adopt-apply", preview["approval"])
             self.assertEqual(
                 apply_process.returncode,
                 0,

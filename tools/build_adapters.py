@@ -29,6 +29,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/lifecycle.py",
     "scripts/_docs_checker/lifecycle_io.py",
     "scripts/_docs_checker/init_closeout.py",
+    "scripts/_docs_checker/init_adoption.py",
     "scripts/_docs_checker/health.py",
 )
 CANONICAL_RESOURCE_FILES = (

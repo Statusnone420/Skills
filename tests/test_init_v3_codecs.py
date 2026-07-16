@@ -171,6 +171,16 @@ class InitV3CodecTests(unittest.TestCase):
             self.assertEqual(repository_snapshot(root), before)
 
             (root / "docs" / "new.md").write_bytes(b"# Drift\n")
+            completed = subprocess.run(
+                ["git", "-C", str(root), "add", "--", "docs/new.md"],
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                completed.stderr.decode("utf-8", "replace"),
+            )
             apply_request = request_v3(
                 "apply",
                 evidence=evidence_v3(dispositions=dispositions),

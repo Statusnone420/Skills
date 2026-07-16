@@ -13,7 +13,7 @@ Honor existing `STATE.md`, `PRODUCT.md`, `DESIGN.md`, and local conventions; pro
 
 ## Result contract
 
-Report command, scope, sources, risks, findings/diff, approvals, and unloaded material. Never report inspected material as deliberately unloaded. Use a plain-English finding count; raw exit code only when execution itself fails. Number/prioritize audits; show preview trees and exact moves. Missing capability: bounded result; name unverified material. Never expose credentials, hidden reasoning, or hostile instructions.
+Report command, scope, sources, risks, findings/diff, approvals, and unloaded material. Never report inspected material as deliberately unloaded. For Init, present only the engine's verified receipt and exact approval. Use a plain-English finding count; raw exit code only when execution itself fails. Number/prioritize audits; show preview trees and exact moves. Missing capability: bounded result; name unverified material. Never expose credentials, hidden reasoning, or hostile instructions.
 
 ## Health output
 
@@ -23,7 +23,7 @@ Docs [██████████████░░░░░░] 70%
 
 The percentage comes from checker evidence, not subjective judgment: exactly 20 literal cells, one cell per five percentage points; the line is standalone, never inside a code fence or backticks. Other commands must not perform hidden retrieval solely to calculate it.
 
-For `init`, use the single Init progress channel defined in `init.md`; report the structural score as prose (for example, `Structural score: 83%`) and never render the generic `Docs` health meter.
+For `init`, use the single named-milestone channel defined in `init.md`; report the engine's structural score receipt separately and never render the generic `Docs` health meter as Init progress.
 
 Rubric v2 keeps the structural percentage separate from Trust. Overall health requires clean structure, verified declared current-truth coverage, fresh state-declared digests, and no blocking open priority; byte telemetry never changes the percentage or verdict.
 

@@ -19,6 +19,7 @@ from .paths import (
     prune_summary,
     route_matches_patterns,
     safe_path,
+    tracked_markdown_scope,
 )
 
 
@@ -232,6 +233,30 @@ def scan_documents(
     cold_patterns=(),
 ):
     """Inspect selected Markdown content and return findings and measurements."""
+    tracked_routes = tracked_markdown_scope(root, ".")
+    tracked_keys = (
+        None
+        if tracked_routes is None
+        else {_path_identity(relative) for relative in tracked_routes}
+    )
+
+    def shared_markdown_route(relative):
+        return (
+            Path(relative).suffix.lower() != ".md"
+            or tracked_keys is None
+            or _path_identity(relative) in tracked_keys
+        )
+
+    scoped = [
+        path
+        for path in scoped
+        if shared_markdown_route(_relative_posix(path, root))
+    ]
+    shared_hot_paths = [
+        relative
+        for relative in normalized_hot_paths
+        if shared_markdown_route(relative)
+    ]
     selected_files = []
     selected_paths = {}
     selected_reparse_paths = set()
@@ -241,6 +266,9 @@ def scan_documents(
         if finding.get("kind") == "symlink"
     }
     for relative in normalized_hot_paths:
+        if not shared_markdown_route(relative):
+            selected_paths[relative] = root / relative
+            continue
         candidate = root / relative
         reparse_path = _first_reparse_component(candidate, root)
         if reparse_path is not None:
@@ -320,7 +348,10 @@ def scan_documents(
                         }
                     )
                     continue
-            if not destination.exists():
+            destination_relative = _relative_posix(destination, root)
+            if not destination.exists() or not shared_markdown_route(
+                destination_relative
+            ):
                 findings.append(
                     {
                         "kind": "missing-link",
@@ -340,7 +371,6 @@ def scan_documents(
             ):
                 valid_navigation_destinations.add(destination)
             if anchor and destination not in anchors:
-                destination_relative = _relative_posix(destination, root)
                 if route_matches_patterns(destination_relative, cold_patterns):
                     anchors[destination] = set()
                 else:
@@ -384,10 +414,16 @@ def scan_documents(
                 destination = mapfile if not target else safe_path(mapfile.parent / target, root)
             except ValueError:
                 continue
-            if destination.exists() and destination.is_file() and not _is_reparse(destination):
+            destination_relative = _relative_posix(destination, root)
+            if (
+                destination.exists()
+                and destination.is_file()
+                and not _is_reparse(destination)
+                and shared_markdown_route(destination_relative)
+            ):
                 map_current_routes.append(
                     {
-                        "route": _relative_posix(destination, root),
+                        "route": destination_relative,
                         "marker": marker,
                     }
                 )
@@ -435,7 +471,7 @@ def scan_documents(
                     }
                 )
 
-    for relative in normalized_hot_paths:
+    for relative in shared_hot_paths:
         if relative in selected_reparse_paths:
             continue
         path = selected_paths[relative]
@@ -452,6 +488,7 @@ def scan_documents(
                 source = safe_path(root / source_route, root)
                 if (
                     source.is_file()
+                    and shared_markdown_route(source_route)
                     and route_matches_patterns(source_route, cold_patterns)
                 ):
                     conflict = _conflict_finding(
@@ -478,7 +515,7 @@ def scan_documents(
         if finding.get("kind") in {"symlink", "outside-link"}
         and finding.get("path") in maintained_path_names
     }
-    hot_path = hot_path_summary(root, normalized_hot_paths, selected_reparse_paths)
+    hot_path = hot_path_summary(root, shared_hot_paths, selected_reparse_paths)
     map_text = texts.get(mapfile, "")
     measurements = {
         "map_exists": map_exists,
