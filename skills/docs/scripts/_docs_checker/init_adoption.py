@@ -117,7 +117,11 @@ def build_adoption_request(
         )
 
     map_path = _map_path(paths, selected_scope)
-    health = _structural_health(root, selected_scope, map_path)
+    health_scope = selected_scope
+    if selected_scope != ".":
+        scope_depth = len(Path(selected_scope).parts)
+        health_scope = Path(*Path(paths[0]).parts[:scope_depth]).as_posix()
+    health = _structural_health(root, health_scope, map_path)
     dispositions = [
         {
             "item_id": f"{relative}#<whole-file>",

@@ -243,6 +243,51 @@ def assert_failure_envelope(case, payload):
 
 
 class InitCloseoutProcessTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "Windows path identity test")
+    def test_adopt_preview_matches_explicit_scope_case_insensitively_on_windows(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repository"
+            build_repository(root)
+            receipt_path = Path(td) / "init-receipt.json"
+            before = tree_snapshot(root)
+
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "adopt-preview",
+                    "--scope",
+                    "DOCS",
+                    "--receipt-file",
+                    str(receipt_path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                process.returncode,
+                0,
+                process.stderr or process.stdout,
+            )
+            preview = json.loads(process.stdout)
+            self.assertEqual(preview["status"], "approval-required")
+            self.assertEqual(preview["selected_scope"], "DOCS")
+            self.assertEqual(preview["source_files_revalidated"], 103)
+            self.assertEqual(preview["handling_summary"]["left_unchanged"], 103)
+            self.assertEqual(preview["document_change_count"], 0)
+            self.assertEqual(preview["writes"], 0)
+            categories = preview["score_receipt"]["categories"]
+            self.assertEqual(categories["path_safety"]["raw"]["safe"], 103)
+            self.assertEqual(categories["path_safety"]["raw"]["maintained"], 103)
+            self.assertEqual(categories["titles"]["raw"]["maintained"], 103)
+            self.assertEqual(categories["reachability"]["raw"]["maintained"], 103)
+            self.assertTrue(receipt_path.is_file())
+            self.assertEqual(tree_snapshot(root), before)
+
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell transport test")
     def test_documented_init_powershell_transport_executes_preview_and_apply(self):
         init_reference = (SCRIPTS.parent / "references" / "init.md").read_text(

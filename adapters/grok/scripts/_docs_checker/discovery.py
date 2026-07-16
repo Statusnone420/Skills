@@ -606,8 +606,16 @@ def _tracked_scope_paths(tracked_paths, selected_scope):
             for path in tracked_paths
             if "/" not in path and is_maintained_root_document(path)
         ]
-    prefix = selected_scope + "/"
-    return [path for path in tracked_paths if path.startswith(prefix)]
+    scope_parts = Path(_path_identity(selected_scope)).parts
+    matches = []
+    for path in tracked_paths:
+        path_parts = Path(_path_identity(path)).parts
+        if (
+            len(path_parts) > len(scope_parts)
+            and path_parts[: len(scope_parts)] == scope_parts
+        ):
+            matches.append(path)
+    return matches
 
 
 def _budgeted_tracked_route_info(state, relative, *, phase):
