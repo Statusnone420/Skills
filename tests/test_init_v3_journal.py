@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -1273,6 +1274,11 @@ class InitV3JournalApplyTests(unittest.TestCase):
                 result = real_replace(source, target)
                 if relative == "AGENTS.md" and not injected:
                     rogue.write_bytes(b"# Unapproved document\n")
+                    subprocess.run(
+                        ["git", "-C", str(root), "add", "--", "docs/rogue.md"],
+                        capture_output=True,
+                        check=True,
+                    )
                     injected = True
                 return result
 

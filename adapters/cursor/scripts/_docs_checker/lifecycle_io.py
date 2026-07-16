@@ -3167,6 +3167,11 @@ def _validate_live_init_commit_v3(root, transaction_id):
         root,
         expected_corpus["selected_scope"],
         expected_corpus["coverage_mode"],
+        additional_shared_paths=[
+            result["path"]
+            for result in normalized_manifest["document_results"]
+            if result["result_digest"] != _ABSENT_DIGEST
+        ],
     )
     if (
         observed_corpus.get("complete") is not True
@@ -4411,6 +4416,11 @@ def _verify_pre_event_v3(root, plan, journal):
         root,
         expected_corpus["selected_scope"],
         expected_corpus["coverage_mode"],
+        additional_shared_paths=[
+            operation["path"]
+            for operation in plan["document_operations"]
+            if operation["result_digest"] != _ABSENT_DIGEST
+        ],
     )
     if (
         observed_corpus.get("complete") is not True

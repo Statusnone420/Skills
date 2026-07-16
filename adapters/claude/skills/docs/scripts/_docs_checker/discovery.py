@@ -47,6 +47,7 @@ from .paths import (
     _path_identity,
     normalize_repo_relative,
     prune_summary,
+    tracked_markdown_scope,
 )
 from .receipt import (
     DISCOVERY_CONTRACT_VERSION,
@@ -594,7 +595,140 @@ def _initial_state(root):
     }
 
 
-def scan_selected_document_corpus(root, selected_scope, coverage_mode):
+def _tracked_scope_paths(tracked_paths, selected_scope):
+    """Return tracked routes governed by one selected discovery scope."""
+    if tracked_paths is None:
+        return None
+    if selected_scope == ".":
+        return [
+            path
+            for path in tracked_paths
+            if "/" not in path and is_maintained_root_document(path)
+        ]
+    prefix = selected_scope + "/"
+    return [path for path in tracked_paths if path.startswith(prefix)]
+
+
+def _tracked_scope_metadata(state, selected_scope, tracked_paths):
+    """Build bounded metadata without traversing local-only filesystem trees."""
+    paths = _tracked_scope_paths(tracked_paths, selected_scope)
+    if paths is None:
+        return None
+    metadata = _empty_scope_metadata()
+    metadata["complete"] = True
+    for relative in paths:
+        if metadata["path_count"] >= INIT_DISCOVERY_LIMITS["selected_markdown_paths"]:
+            state["scope_truncated"] = True
+            metadata.update(
+                complete=False,
+                truncated=True,
+                next_boundary=relative,
+            )
+            _record_boundary(state, "selected-markdown-paths", relative)
+            break
+        try:
+            info = os.lstat(state["root"] / Path(relative))
+        except OSError:
+            state["io_errors"].append(
+                {
+                    "phase": "scope",
+                    "path": relative,
+                    "kind": "metadata-io",
+                }
+            )
+            state["halted"] = True
+            metadata["complete"] = False
+            break
+        if _info_is_reparse(info) or not stat.S_ISREG(info.st_mode):
+            state["halted"] = True
+            metadata["complete"] = False
+            _record_boundary(state, "unsafe-container", relative)
+            break
+        metadata["observed_path_count"] += 1
+        metadata["observed_bytes"] += info.st_size
+        if metadata["bytes"] + info.st_size > INIT_DISCOVERY_LIMITS["selected_markdown_bytes"]:
+            state["scope_truncated"] = True
+            metadata.update(
+                complete=False,
+                truncated=True,
+                next_boundary=relative,
+            )
+            _record_boundary(state, "selected-markdown-bytes", relative)
+            break
+        metadata["paths"].append({"path": relative, "bytes": info.st_size})
+        metadata["path_count"] += 1
+        metadata["bytes"] += info.st_size
+        state["selected_evidence"].append(root_document_evidence(relative, info))
+    return metadata
+
+
+def _filter_discovery_to_tracked(state, tracked_paths):
+    """Remove local-only routes from shared discovery candidates and evidence."""
+    if tracked_paths is None:
+        return
+    identities = {_path_identity(path) for path in tracked_paths}
+    state["root_documents"] = [
+        evidence
+        for evidence in state["root_documents"]
+        if _path_identity(evidence["path"]) in identities
+    ]
+
+    def has_tracked_descendant(candidate):
+        prefix = candidate["path"] + "/"
+        return any(path.startswith(prefix) for path in tracked_paths)
+
+    state["candidates"] = [
+        candidate
+        for candidate in state["candidates"]
+        if has_tracked_descendant(candidate)
+    ]
+    state["candidate_keys"] = {
+        _path_identity(candidate["path"]) for candidate in state["candidates"]
+    }
+    state["observed_candidate_roots"] = len(state["candidates"])
+
+
+def _discover_tracked_candidates(state, tracked_paths):
+    """Derive Git-backed candidate roots without walking local-only trees."""
+    candidate_sources = {}
+    for relative in tracked_paths:
+        parts = relative.split("/")
+        if len(parts) == 1:
+            if is_maintained_root_document(relative):
+                info = os.lstat(state["root"] / relative)
+                state["root_documents"].append(
+                    root_document_evidence(relative, info)
+                )
+            if relative.casefold() == "agents.md":
+                state["has_root_instructions"] = True
+            continue
+        if parts[0].casefold() in _DOC_ROOT_KEYS:
+            candidate_sources.setdefault(parts[0], "root")
+        if len(parts) >= 3 and parts[1].casefold() in _DOC_ROOT_KEYS:
+            candidate_sources.setdefault(
+                "/".join(parts[:2]),
+                "direct-child",
+            )
+        if (
+            len(parts) >= 4
+            and parts[0].casefold() in _PACKAGE_CONTAINER_KEYS
+            and parts[2].casefold() in _DOC_ROOT_KEYS
+        ):
+            candidate_sources.setdefault(
+                "/".join(parts[:3]),
+                f"container:{parts[0]}",
+            )
+    for relative in sorted(candidate_sources, key=_sort_key):
+        _add_candidate(state, relative, candidate_sources[relative])
+
+
+def scan_selected_document_corpus(
+    root,
+    selected_scope,
+    coverage_mode,
+    *,
+    additional_shared_paths=(),
+):
     """Rederive one bounded metadata-only Markdown corpus for Init closeout."""
     if coverage_mode not in _CORPUS_COVERAGE_MODES:
         raise ValueError("corpus coverage mode is invalid")
@@ -610,6 +744,16 @@ def scan_selected_document_corpus(root, selected_scope, coverage_mode):
     state = _initial_state(root)
     try:
         validate_root(state)
+        tracked_paths = tracked_markdown_scope(root, ".")
+        if tracked_paths is not None:
+            additions = [
+                normalize_repo_relative(path, "additional shared path")
+                for path in additional_shared_paths
+            ]
+            tracked_paths = sorted(
+                set(tracked_paths).union(additions),
+                key=_sort_key,
+            )
         _, normalized_scope, root_only_overrides = _validated_explicit_scope(
             state,
             raw_selected_scope,
@@ -618,7 +762,14 @@ def scan_selected_document_corpus(root, selected_scope, coverage_mode):
             return _corpus_scan_failure(
                 "incomplete-corpus" if state["io_errors"] else "corpus-scope-limited"
             )
-        if normalized_scope == ".":
+        metadata = _tracked_scope_metadata(
+            state,
+            normalized_scope,
+            tracked_paths,
+        )
+        if metadata is not None:
+            pass
+        elif normalized_scope == ".":
             inspect_root_entries(
                 state,
                 is_root_document=is_maintained_root_document,
@@ -811,6 +962,7 @@ def discover_init_scope(
     requested_scope = (
         None if explicit_scope is None else os.fspath(explicit_scope)
     )
+    tracked_paths = tracked_markdown_scope(root, ".")
     normalized_scope = None
     jurisdiction_scope = "."
     root_only_overrides = []
@@ -833,10 +985,14 @@ def discover_init_scope(
         selection_reason = "explicit-scope"
         metadata_phases = 1
     else:
-        _discover_automatic_candidates(
-            state,
-            include_local=True,
-        )
+        if tracked_paths is None:
+            _discover_automatic_candidates(
+                state,
+                include_local=True,
+            )
+        else:
+            _discover_tracked_candidates(state, tracked_paths)
+        _filter_discovery_to_tracked(state, tracked_paths)
         candidates = state["candidates"]
         metadata_phases = 1
         if state["candidate_truncated"]:
@@ -863,8 +1019,15 @@ def discover_init_scope(
     scope_metadata = _empty_scope_metadata()
     inspected_scope = None
     if selected_scope is not None and not state["halted"]:
+        tracked_metadata = _tracked_scope_metadata(
+            state,
+            selected_scope,
+            tracked_paths,
+        )
         scope_metadata = (
-            scan_root_document_scope(state)
+            tracked_metadata
+            if tracked_metadata is not None
+            else scan_root_document_scope(state)
             if selected_scope == "."
             else _scan_selected_scope(
                 state,

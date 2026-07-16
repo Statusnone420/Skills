@@ -4,6 +4,7 @@ import fnmatch
 import os
 import re
 import stat
+import subprocess
 from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qsl, unquote, urlsplit
 
@@ -48,6 +49,7 @@ _ANYWHERE_PRUNE_KEYS = frozenset(name.casefold() for name in ANYWHERE_PRUNE_DIRS
 _ROOT_ONLY_PRUNE_KEYS = frozenset(
     name.casefold() for name in REPOSITORY_ROOT_ONLY_PRUNE_DIRS
 )
+_MAX_GIT_PATH_BYTES = 8 * 1024 * 1024
 _PRIVATE_SHARED_ROUTE = re.compile(
     r"(?i)(?<![A-Za-z0-9_.-])\.local(?:[\\/]|$)"
 )
@@ -248,6 +250,87 @@ def _raise_walk_error(error):
     raise error
 
 
+def tracked_markdown_scope(root: Path, scope: str) -> list[str] | None:
+    """Return physically present Git-tracked Markdown, or None outside Git.
+
+    Tracked membership is the shared/private boundary. Ignore appearance never
+    excludes a tracked file, while ignored and ordinary untracked files are
+    both local-only. A requested root merely nested inside another Git
+    worktree uses no-Git filesystem behavior instead of inheriting the
+    parent's visibility rules.
+    """
+    root = Path(root).absolute()
+    scope_norm = normalize_repo_relative(scope, "scope")
+    try:
+        top = subprocess.run(
+            ["git", "-C", os.fspath(root), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        if os.path.lexists(root / ".git"):
+            raise OSError("Git visibility is unavailable") from exc
+        return None
+    if top.returncode != 0:
+        if os.path.lexists(root / ".git"):
+            raise OSError("Git visibility is unavailable")
+        return None
+    try:
+        top_path = Path(top.stdout.decode("utf-8", "strict").strip()).absolute()
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValueError("Git worktree root is invalid") from exc
+    if os.path.normcase(os.path.realpath(root)) != os.path.normcase(
+        os.path.realpath(top_path)
+    ):
+        if os.path.lexists(root / ".git"):
+            raise ValueError("repository root does not match Git worktree root")
+        return None
+    try:
+        listed = subprocess.run(
+            [
+                "git",
+                "-C",
+                os.fspath(root),
+                "ls-files",
+                "-z",
+                "--cached",
+                "--",
+                scope_norm,
+            ],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise OSError("Git tracked-path inventory is unavailable") from exc
+    if listed.returncode != 0:
+        raise OSError("Git tracked-path inventory failed")
+    if len(listed.stdout) > _MAX_GIT_PATH_BYTES:
+        raise ValueError("Git tracked-path inventory exceeds capacity")
+
+    routes = []
+    prefix = "" if scope_norm == "." else scope_norm + "/"
+    for raw in listed.stdout.split(b"\0"):
+        if not raw:
+            continue
+        try:
+            relative = normalize_repo_relative(
+                raw.decode("utf-8", "strict"),
+                "tracked path",
+            )
+        except UnicodeDecodeError as exc:
+            raise ValueError("Git tracked path is not UTF-8") from exc
+        if scope_norm != "." and relative != scope_norm and not relative.startswith(prefix):
+            continue
+        if Path(relative).suffix.lower() != ".md" or _is_pruned_relative(relative):
+            continue
+        path = safe_path(root / relative, root)
+        if os.path.lexists(path) and (path.is_file() or _is_reparse(path)):
+            routes.append(relative)
+    return sorted(set(routes), key=lambda item: (item.casefold(), item))
+
+
 def iter_markdown_scope(root: Path, scope: str, applied_prunes=None) -> tuple[list[Path], list[dict]]:
     """Return in-scope Markdown files and in-scope reparse findings only."""
     root = Path(root).absolute()
@@ -259,6 +342,18 @@ def iter_markdown_scope(root: Path, scope: str, applied_prunes=None) -> tuple[li
         raise ValueError("scope must be a directory")
     if not scope_path.exists():
         return [], []
+
+    tracked = tracked_markdown_scope(root, scope_norm)
+    if tracked is not None:
+        files = []
+        findings = []
+        for relative in tracked:
+            path = safe_path(root / relative, root)
+            if _is_reparse(path):
+                findings.append({"kind": "symlink", "path": relative})
+            elif path.is_file():
+                files.append(path)
+        return files, findings
 
     files = []
     findings = []
@@ -360,5 +455,6 @@ __all__ = (
     "route_matches_patterns",
     "safe_path",
     "shared_text_exposes_route",
+    "tracked_markdown_scope",
     "unique_relative_paths",
 )

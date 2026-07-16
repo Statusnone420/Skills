@@ -123,6 +123,7 @@ class AdapterBuilderTests(unittest.TestCase):
                 "lifecycle.py",
                 "lifecycle_io.py",
                 "init_closeout.py",
+                "init_adoption.py",
                 "health.py",
             },
         )
@@ -216,13 +217,15 @@ class AdapterBuilderTests(unittest.TestCase):
 
         init = builder.web_prompt("init")
         for phrase in (
-            "content opened",
-            "candidate ranking",
-            "anywhere_names",
-            "physical limit",
-            "protected intent",
+            "adopt-preview --receipt-file",
+            "engine owns scope selection",
+            "scope-choice-required",
+            "shared corpus",
+            "current bytes",
+            "repository identity",
+            "transaction boundary",
             "local-only",
-            "continuation",
+            "no model-owned continuation",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase.lower(), init.lower())
@@ -243,18 +246,15 @@ class AdapterBuilderTests(unittest.TestCase):
         self.assertIn("## verified lifecycle closeout", write)
         for promise in (
             "scripts/init_closeout.py",
-            ".diataxis/local-map.json",
-            "exact path is untracked",
-            "normal git ignore evaluation proves it ignored",
-            "never private local filenames, topics, aliases, or bodies",
-            "missing source or anchor",
-            "exact intent authorization",
-            "failed protected-surface verification rolls back",
-            "i/o or staged-verification failure rolls back",
-            "process interruption leaves",
-            "torn or orphan recovery evidence is p0",
-            "successful event is the final mutation",
-            "post-event work is recovery cleanup only",
+            "ignored and untracked local material must not enter shared health",
+            "never inspect private bodies or invent private filenames",
+            "receipt, exact approval, selected scope, shared corpus, current bytes",
+            "transaction stages and verifies operational state",
+            "records the successful event last",
+            "truthful recovery evidence if interruption prevents clean completion",
+            "torn or orphaned recovery evidence is a p0 state conflict",
+            "after the successful event, only recovery cleanup may run",
+            "failed verification records no successful initialization event",
         ):
             with self.subTest(promise=promise):
                 self.assertIn(promise, init)

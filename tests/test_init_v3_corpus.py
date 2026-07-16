@@ -223,7 +223,7 @@ class InitV3CorpusTests(unittest.TestCase):
             write_markdown(root, "README.md")
             write_markdown(root, "PLAN.md")
             write_markdown(root, "docs/nested.md")
-            write_markdown(root, ".git/ignored.md")
+            write_markdown(root, ".cache/ignored.md")
 
             result = docs_discovery.scan_selected_document_corpus(
                 root,

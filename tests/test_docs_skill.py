@@ -29,42 +29,89 @@ class DocsSkillContractTests(unittest.TestCase):
         return " ".join(cls._init_text().lower().split())
 
     def test_init_reference_defines_one_automatic_zero_write_protocol(self):
-        init = self._init_text()
-        init_rules = " ".join(init.lower().split())
-        for step in (
-            "DISCOVER",
-            "SELECT_SHARED_ROOT",
-            "CARRY_PRIVATE_ROUTES",
-            "INSPECT_BATCHES",
-            "ACCOUNT_FOR_EVIDENCE",
-            "BUILD_ZERO_WRITE_PREVIEW",
-            "WAIT_FOR_EXACT_APPROVAL",
-        ):
-            self.assertIn(step, init)
+        init_rules = self._init_rules()
         for requirement in (
-            "accept an obvious recommended shared root automatically",
-            "private local routes",
-            "opaque continuation token",
-            "every disclosed shared file body",
-            "evidence cards",
-            "complete evidence coverage",
-            "zero writes",
-            "one exact approval",
-            "pause",
-            "untouched",
+            "one-time repository adoption",
+            "deterministic init adoption entrypoint",
+            "complete adoption preview",
+            "zero repository writes",
+            "later, separate, exact approval",
+            "engine-owned",
+            "fail closed without a model fallback",
         ):
             self.assertIn(requirement, init_rules)
-        for disposition in (
-            "RETAIN",
-            "MIGRATE",
-            "DEDUPLICATE",
-            "ARCHIVE",
-            "DISCARD",
-            "UNRESOLVED",
+        self.assertNotIn("the llm owns", init_rules)
+        self.assertNotIn("read every disclosed shared file body", init_rules)
+
+    def test_public_init_routes_only_through_the_deterministic_adoption_entrypoint(self):
+        init_rules = self._init_rules()
+
+        for requirement in (
+            "invoke the deterministic init adoption entrypoint",
+            "present its verified response",
+            "never construct a preview, approval, or disposition manifest yourself",
+            "the entrypoint constructs the canonical schema-3 request",
+            "fail closed without a model fallback",
         ):
-            self.assertIn(disposition, init)
-        self.assertNotRegex(init_rules, r"(?:ask|prompt).{0,80}(?:batch|cursor|scope|disposition)")
-        self.assertNotIn("select none until an explicit user choice", init_rules)
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, init_rules)
+
+    def test_public_init_forbids_model_owned_corpus_orchestration(self):
+        init_rules = self._init_rules()
+
+        for requirement in (
+            "the engine owns scope selection, continuation, corpus accounting, request construction, and preview construction",
+            "init never launches subagents",
+            "init performs no model-owned continuation",
+            "init performs no semantic body analysis",
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, init_rules)
+        for forbidden in (
+            "the llm owns scope selection",
+            "the llm owns batch continuity",
+            "read every disclosed shared file body",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, init_rules)
+
+    def test_init_retain_means_left_unchanged_without_quality_endorsement(self):
+        init_rules = self._init_rules()
+
+        self.assertRegex(
+            init_rules,
+            r"`?retain`?.{0,40}left unchanged.{0,160}"
+            r"(?:not|isn't|does not).{0,60}(?:quality|good|finished)",
+        )
+        for unchanged_action in ("move", "rename", "rewrite", "archive", "delete"):
+            with self.subTest(action=unchanged_action):
+                self.assertRegex(
+                    init_rules,
+                    rf"`?retain`?.{{0,260}}(?:not|won't|will not).{{0,80}}{unchanged_action}",
+                )
+
+    def test_init_progress_uses_named_nonnumeric_milestones(self):
+        init = self._init_text().lower()
+        start = init.index("## progress contract")
+        end = init.index("## evidence cards", start)
+        progress = " ".join(init[start:end].split())
+
+        for milestone in (
+            "discovery",
+            "batch x/y",
+            "evidence complete",
+            "preview ready",
+            "waiting for exact approval",
+            "approval revalidation",
+            "apply/staging",
+            "verification",
+            "completed",
+        ):
+            with self.subTest(milestone=milestone):
+                self.assertIn(milestone, progress)
+        for numeric_presentation in ("%", "percentage", "<20 cells>"):
+            with self.subTest(numeric_presentation=numeric_presentation):
+                self.assertNotIn(numeric_presentation, progress)
 
     def test_canonical_public_alpha_version_and_help_identity(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
@@ -105,323 +152,146 @@ class DocsSkillContractTests(unittest.TestCase):
         init_rules = self._init_rules()
 
         self.assertRegex(init_rules, r"one-time\s+repository\s+adoption")
-        self.assertRegex(
-            init_rules,
-            r"(?:size|structure).{0,80}(?:follows|match(?:es)?).{0,80}diagnosed\s+(?:repository\s+)?condition",
-        )
         self.assertRegex(init_rules, r"complete\s+(?:adoption\s+)?preview")
-        self.assertNotRegex(init_rules, r"smallest\s+useful\s+structure")
+        self.assertIn("without reorganizing the library", init_rules)
+        self.assertIn("zero repository writes", init_rules)
 
     def test_init_explicit_scope_precedes_and_confines_discovery(self):
         init_rules = self._init_rules()
 
         self.assertIn("$docs init --scope <repository-relative-directory>", init_rules)
-        explicit = init_rules.index("explicit scope")
-        fallback = init_rules.index("otherwise")
-        self.assertLess(explicit, fallback)
         for concept in (
-            "takes precedence",
-            "normalize",
+            "only when the user supplied it",
+            "never infer an explicit scope from a model guess",
+            "normalizes and confines the scope",
             "absolute",
             "drive-qualified",
-            "..",
+            "traversal",
             "symlink",
             "junction",
             "reparse",
-            "requested scope",
-            "normalized scope",
-            "selected scope",
-            "inspected scope",
+            "automatic discovery",
+            "scope-choice-required",
         ):
             self.assertIn(concept, init_rules)
-        self.assertIn(
-            "jurisdiction boundary rather than permission to ingest every file",
-            init_rules,
-        )
-        self.assertIn(
-            "metadata before selected documentation content is opened",
-            init_rules,
-        )
-        self.assertRegex(
-            init_rules,
-            r"(?:normalized\s+)?`?\.`?.{0,100}(?:automatic|fallback)\s+discovery",
-        )
-        for phrase in (
-            "anywhere-pruned",
-            "root-only prune override",
-            "nested `docs/build`",
-            "`docs/vendor`",
-        ):
-            self.assertIn(phrase, init_rules)
 
     def test_init_metadata_discovery_covers_nonstandard_and_package_local_routes(self):
         init_rules = self._init_rules()
 
-        for candidate in (
-            "`docs/`",
-            "`documentation/`",
-            "`wiki/`",
-            "`<package>/{docs,documentation,wiki}`",
-            "`{packages,apps,services,modules,components}/*/{docs,documentation,wiki}`",
-        ):
-            with self.subTest(candidate=candidate):
-                self.assertIn(candidate, init_rules)
-
-        metadata = init_rules.find("name/path metadata")
-        selection = init_rules.find("select", max(metadata, 0))
-        content = init_rules.find("open content", max(selection, 0))
-        self.assertGreaterEqual(metadata, 0)
-        self.assertGreaterEqual(selection, 0)
-        self.assertGreaterEqual(content, 0)
-        self.assertLess(metadata, selection)
-        self.assertLess(selection, content)
-        self.assertIn("do not recurse beyond these candidate shapes", init_rules)
+        self.assertIn("the engine owns scope selection", init_rules)
+        self.assertIn("otherwise performs automatic discovery", init_rules)
+        self.assertNotIn("probe only", init_rules)
+        self.assertNotIn("do not recurse beyond these candidate shapes", init_rules)
 
     def test_init_discovery_applies_bounded_exclusions_and_reports_scope_limits(self):
         init_rules = self._init_rules()
 
-        for stable_prune_field in (
-            "anywhere_names",
-            "repository_root_only_names",
-            "applied_paths",
-        ):
-            self.assertIn(f"`{stable_prune_field}`", init_rules)
-        for excluded_example in (".git", "node_modules", ".venv", "build", "vendor"):
-            self.assertIn(f"`{excluded_example}`", init_rules)
-        for reported_evidence in (
-            "candidate routes",
-            "selected scope",
-            "actually inspected scope",
-            "exclusions",
-            "content opened",
-            "unopened candidates",
-            "evidence limits",
-            "scope-limited",
-        ):
-            self.assertIn(reported_evidence, init_rules)
-        self.assertRegex(
+        self.assertIn("the engine's eligible corpus is authoritative", init_rules)
+        self.assertIn(
+            "ignored and untracked local material must not enter shared health, findings, manifests, or treatments",
             init_rules,
-            r"never\s+claim.{0,100}(?:repository-exhaustive|exhaustive\s+repository)",
         )
+        self.assertIn("report intentionally excluded material only at the level returned by the engine", init_rules)
+        self.assertIn("never inspect private bodies or invent private filenames", init_rules)
 
     def test_init_discovery_publishes_direct_mode_caps_ranking_and_stop_boundary(self):
         init_rules = self._init_rules()
 
-        self.assertIn(
-            "<python> <checker-path> <repository-root> --json --agent --init-discovery",
-            init_rules,
-        )
-        for limit in (
-            "at most 2 metadata phases",
-            "128 child entries per enumerated container",
-            "256 containers/scandir calls",
-            "4,096 raw directory entries physically examined",
-            "8,192 total metadata operations",
-            "selected-scope traversal depth of 16",
-            "64 candidate roots",
-            "256 markdown paths",
-            "2 mib",
-            "12 files",
-            "256 kib",
-        ):
-            self.assertIn(limit, init_rules)
-        for evidence in (
-            "configured limits",
-            "observed counts",
-            "truncation",
-            "next boundary",
-            "applied exclusions",
-            "complete containers rank before incomplete containers",
-            "lower-bound status and observation",
-            "globally sorted next entry",
-            "pause honestly",
-            "valid opaque continuation",
-        ):
-            self.assertIn(evidence, init_rules)
-        self.assertRegex(
-            init_rules,
-            r"(?:v1\s+)?operational\s+heuristic.{0,220}not.{0,180}(?:health|scientific|deletion\s+pressure)",
-        )
-        self.assertRegex(
-            init_rules,
-            r"genuinely\s+tied\s+or\s+ambiguous\s+roots",
-        )
-        self.assertRegex(
-            init_rules,
-            r"obvious.{0,120}(?:shared|sole).{0,120}automatically",
-        )
-        self.assertIn("obvious sole shared candidate from complete evidence", init_rules)
-        for ranking in (
-            "root `docs/`, `documentation/`, `wiki/`",
-            "direct children in sorted order",
-            "fixed container order `packages`, `apps`, `services`, `modules`, `components`",
-        ):
-            self.assertIn(ranking, init_rules)
-        self.assertRegex(
-            init_rules,
-            r"(?:cap|limit).{0,100}prevents\s+safe\s+coverage.{0,120}pause",
-        )
+        self.assertIn("adopt-preview --receipt-file", init_rules)
+        self.assertIn("do not fall back to the old checker continuation interface", init_rules)
+        self.assertIn("init performs no model-owned continuation", init_rules)
+        self.assertIn("init never launches subagents", init_rules)
+        self.assertNotIn("--init-discovery", init_rules)
 
     def test_init_initial_response_is_a_complete_zero_write_preview(self):
-        init = self._init_text()
-        memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
-        init_rules = " ".join((init + "\n" + memory).lower().split())
+        init_rules = self._init_rules()
 
         for preview_evidence in (
-            "facts",
-            "inference",
-            "complete target tree",
-            "creates",
-            "edits",
-            "moves",
-            "archives",
-            "removals",
-            "protected intent",
-            "before/after hot-path bytes",
-            "projected structural score",
-            "semantic coverage limits",
-            "operational-state files",
-            "risks",
-            "verification",
-            "scope evidence",
+            "what shared scope and document count the engine inspected",
+            "what local-only material it intentionally excluded",
+            "how many documents will be left unchanged",
+            "which operational files the approved adoption will create or edit",
+            "why the structural score has its value",
+            "real preview id",
+            "complete manifest digest",
+            "exact approval line",
         ):
             self.assertIn(preview_evidence, init_rules)
-        self.assertRegex(init_rules, r"initial\s+response.{0,100}zero\s+writes")
-        self.assertRegex(init_rules, r"same-message.{0,100}(?:apply|write).{0,100}(?:ignore|zero\s+writes)")
-        self.assertIn("telemetry", init_rules)
-        self.assertIn("telemetry rather than a limit", init_rules)
+        self.assertRegex(init_rules, r"initial\s+response.{0,100}zero\s+repository\s+writes")
+        self.assertRegex(init_rules, r"same-message.{0,100}(?:apply|write).{0,120}repository\s+untouched")
 
     def test_init_disposition_manifest_is_complete_unique_and_overridable(self):
         init_rules = self._init_text()
         lowered = " ".join(init_rules.lower().split())
 
-        public_dispositions = ("MIGRATED", "DEDUPLICATED", "ARCHIVED", "DISCARDED")
-        for disposition in public_dispositions:
-            self.assertIn(disposition, init_rules)
-        self.assertIn(
-            "every shared file and every unique removed heading/section represented once",
-            lowered,
-        )
-        self.assertIn("each removed file uses `<whole-file>` once", lowered)
-        self.assertIn("each unique section uses its heading or stable identity once", lowered)
-        self.assertLess(lowered.index("disposition counts"), lowered.index("complete exact manifest"))
-        self.assertIn("disposition override", lowered)
-        self.assertIn("`<whole-file>`", lowered)
-        self.assertIn("counts by disposition and item kind", lowered)
+        self.assertIn("one whole-file `retain` entry", lowered)
+        self.assertIn("complete all-unchanged manifest", lowered)
+        self.assertIn("never construct a preview, approval, or disposition manifest yourself", lowered)
+        for destructive in ("MIGRATED", "DEDUPLICATED", "ARCHIVED", "DISCARDED"):
+            self.assertNotIn(destructive, init_rules)
 
     def test_init_later_approval_revalidates_and_closes_only_after_verification(self):
-        init = self._init_text()
-        memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
-        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
-        combined = (init + "\n" + memory + "\n" + isolation).lower()
+        combined = self._init_rules()
 
         self.assertIn(
             "approve $docs init preview <preview-id> with manifest <manifest-sha256>",
             combined,
         )
         for revalidated in (
-            "preview",
-            "selected root",
+            "receipt",
+            "exact approval",
+            "selected scope",
+            "shared corpus",
+            "current bytes",
+            "repository identity",
             "worktree",
-            "disposition",
-            "normalized verified-source hashes",
-            ".diataxis/state.json",
-            ".diataxis/findings.json",
-            ".diataxis/events.jsonl",
+            "transaction boundary",
         ):
             self.assertIn(revalidated, combined)
-        self.assertRegex(
-            combined,
-            r"failed\s+verification.{0,120}(?:no|never).{0,80}(?:successful\s+baseline|successful\s+initialization\s+event)",
-        )
-        init_rules = " ".join(init.lower().split())
-        self.assertRegex(
-            init_rules,
-            r"report.{0,80}before/after\s+structural\s+score.{0,80}trust\s+coverage",
-        )
+        self.assertIn("failed verification records no successful initialization event", combined)
+        self.assertIn("records the successful event last", combined)
 
     def test_init_and_doctor_route_deterministic_closeout_and_recovery_entrypoints(self):
         init = self._init_text().lower()
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
 
         self.assertIn("scripts/init_closeout.py", init)
-        self.assertIn("preview < request.json", init)
-        self.assertIn("apply < request.json", init)
-        self.assertIn("do not manually reconstruct", init)
+        self.assertIn("adopt-preview --receipt-file", init)
+        self.assertIn("adopt-apply --receipt-file", init)
+        self.assertIn("do not manually reconstruct the request", init)
         self.assertIn("--doctor-recovery-preview", doctor)
         self.assertIn("--doctor-recovery-apply", doctor)
         self.assertIn("execute only the freshly recomputed action", doctor)
 
     def test_init_deletion_safety_distinguishes_git_and_no_git_recovery(self):
-        init = self._init_text()
-        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
-        combined = " ".join((init + "\n" + isolation).lower().split())
+        init_rules = self._init_rules()
 
-        self.assertRegex(
-            combined,
-            r"git\s+repositories.{0,180}exact\s+approved\s+disposition.{0,180}verified\s+rollback",
-        )
-        self.assertRegex(
-            combined,
-            r"no-git\s+repositories.{0,180}`?discarded`?.{0,80}(?:converted|becomes).{0,80}`?archived`?.{0,80}default",
-        )
-        self.assertIn(
-            "approve hard deletion of discard set <discard-set-id>; i accept that no repository recovery is available.",
-            combined,
-        )
+        self.assertIn("`retain` will not move", init_rules)
+        self.assertIn("will not rename", init_rules)
+        self.assertIn("will not rewrite", init_rules)
+        self.assertIn("will not archive", init_rules)
+        self.assertIn("will not delete", init_rules)
+        self.assertNotIn("approve hard deletion", init_rules)
 
     def test_init_no_git_archive_transition_precedes_every_approval_hash(self):
-        init_rules = " ".join(self._init_text().lower().split())
+        init_rules = self._init_rules()
 
-        for phrase in (
-            "before calculating the canonical manifest",
-            "would-be discard set",
-            "separate informational set",
-            "new complete preview and canonical manifest",
-            "disposition change requires another later exact preview approval and revalidation",
-            "never convert a disposition after approval",
-        ):
-            self.assertIn(phrase, init_rules)
-        transition = init_rules.index("before calculating the canonical manifest")
-        first_approval = init_rules.index(
-            "approve $docs init preview <preview-id> with manifest <manifest-sha256>"
-        )
-        self.assertLess(transition, first_approval)
-        hard_acceptance = init_rules.index(
-            "approve hard deletion of discard set <discard-set-id>"
-        )
-        new_preview = init_rules.index("new complete preview and canonical manifest")
-        self.assertLess(hard_acceptance, new_preview)
+        self.assertIn("existing eligible shared markdown documents default to one whole-file `retain` entry", init_rules)
+        self.assertIn("this is an adoption decision, not a filing judgment", init_rules)
+        self.assertNotIn("would-be discard set", init_rules)
+        self.assertNotIn("hard deletion", init_rules)
 
     def test_init_destructive_items_require_per_item_rollback_and_failed_run_recovery(self):
-        init = self._init_text()
-        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
-        memory = (SKILL / "references" / "memory.md").read_text(encoding="utf-8")
-        combined = " ".join((init + "\n" + isolation + "\n" + memory).lower().split())
+        init_rules = self._init_rules()
 
-        for proof in (
-            "each destructive item",
-            "current-byte sha-256 digest",
-            "matching committed blob id and commit id",
-            "archive path and sha-256 digest",
-            "git presence alone is not recovery proof",
-            "dirty, untracked, ignored, or current-only",
+        for contract in (
+            "transaction stages and verifies operational state",
+            "records the successful event last",
+            "truthful recovery evidence",
+            "failed verification records no successful initialization event",
+            "route to `$docs doctor` when the engine requests diagnosis",
         ):
-            self.assertIn(proof, combined)
-        for failure_action in (
-            "roll back every destructive item",
-            "re-run the previewed verification",
-            "report the remaining partial state",
-        ):
-            self.assertIn(failure_action, combined)
-        self.assertRegex(
-            combined,
-            r"failed\s+verification.{0,240}roll\s+back.{0,180}re-run.{0,180}partial\s+state",
-        )
-        self.assertRegex(
-            combined,
-            r"failed\s+verification.{0,320}(?:no|never).{0,100}successful\s+baseline.{0,160}(?:no|never).{0,100}successful\s+initialization\s+event",
-        )
+            self.assertIn(contract, init_rules)
 
     def test_init_valid_initialized_state_is_idempotent(self):
         init = self._init_text()
@@ -431,8 +301,7 @@ class DocsSkillContractTests(unittest.TestCase):
         sentence = init[init.index(expected) : init.index(expected) + len(expected)]
         self.assertEqual(sentence, expected)
         init_rules = " ".join(init.lower().split())
-        self.assertRegex(init_rules, r"already\s+initialized\s+state\s+is\s+valid.{0,100}zero\s+writes")
-        self.assertRegex(init_rules, r"already\s+initialized.{0,100}zero\s+writes")
+        self.assertRegex(init_rules, r"valid\s+initialized\s+state.{0,100}zero\s+repository\s+writes")
         self.assertRegex(init_rules, r"do\s+not\s+propose.{0,80}(?:second|another)\s+adoption")
 
     def test_init_evals_describe_repository_adoption_and_preserve_approval_boundary(self):
@@ -2128,7 +1997,6 @@ class DocsSkillContractTests(unittest.TestCase):
             encoding="utf-8",
         )
         pruned_directories = (
-            ".git",
             "node_modules",
             ".venv",
             "venv",
@@ -2193,6 +2061,13 @@ class DocsSkillContractTests(unittest.TestCase):
             {"kind": "missing-link", "path": "docs/STATE.md", "target": "missing.md"},
             payload["findings"],
         )
+
+    def test_broken_git_marker_fails_closed_instead_of_acting_like_a_pruned_tree(self):
+        root, _ = self._scope_fixture()
+        (root / ".git").mkdir()
+
+        with self.assertRaisesRegex(OSError, "Git visibility is unavailable"):
+            docs_discovery.discover_init_scope(root, explicit_scope="docs")
 
     def test_checker_ignores_out_of_scope_reparse_files(self):
         root, outside = self._scope_fixture()

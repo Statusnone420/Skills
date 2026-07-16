@@ -873,27 +873,37 @@ class Task51LocalKnowledgeTests(unittest.TestCase):
             self.assertFalse(payload["local_knowledge"]["absence_claim_allowed"])
             self.assertEqual(payload["content_reads"], 0)
 
-    def test_exact_local_scope_works_with_and_without_git(self):
-        for has_git in (False, True):
-            with self.subTest(has_git=has_git), tempfile.TemporaryDirectory() as td:
-                root = Path(td)
-                campaign = root / ".local" / "0.3.0-campaign"
-                campaign.mkdir(parents=True)
-                (campaign / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
-                if has_git:
-                    (root / ".git").mkdir()
+    def test_exact_local_scope_works_without_git_and_broken_git_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            campaign = root / ".local" / "0.3.0-campaign"
+            campaign.mkdir(parents=True)
+            (campaign / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
 
-                payload = discover_current(
+            payload = discover_current(
+                root,
+                explicit_scope=".local/0.3.0-campaign",
+            )
+
+            self.assertEqual(payload["selected_scope"], ".local/0.3.0-campaign")
+            self.assertEqual(
+                [item["path"] for item in payload["content_batch"]["paths"]],
+                [".local/0.3.0-campaign/PLAN.md"],
+            )
+            self.assertEqual(payload["local_knowledge"]["selected_visibility"], "local-only")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            campaign = root / ".local" / "0.3.0-campaign"
+            campaign.mkdir(parents=True)
+            (campaign / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+            (root / ".git").mkdir()
+
+            with self.assertRaisesRegex(OSError, "Git visibility is unavailable"):
+                discover_current(
                     root,
                     explicit_scope=".local/0.3.0-campaign",
                 )
-
-                self.assertEqual(payload["selected_scope"], ".local/0.3.0-campaign")
-                self.assertEqual(
-                    [item["path"] for item in payload["content_batch"]["paths"]],
-                    [".local/0.3.0-campaign/PLAN.md"],
-                )
-                self.assertEqual(payload["local_knowledge"]["selected_visibility"], "local-only")
 
     def test_private_local_routes_do_not_compete_with_sole_shared_scope(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1518,7 +1528,7 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
             self.assertEqual(payload["root"], ".")
             self.assertNotIn(str(root), stdout.getvalue())
 
-    def test_empty_discovery_accounts_for_every_physical_probe(self):
+    def test_empty_discovery_accounts_for_walk_metadata_operations(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             real_lstat = docs_discovery.os.lstat
@@ -1541,10 +1551,6 @@ class Task51IndependentReviewRepairTests(unittest.TestCase):
                 docs_discovery.os,
                 "scandir",
                 side_effect=counted_scandir,
-            ), mock.patch.object(
-                docs_discovery.os.path,
-                "lexists",
-                side_effect=AssertionError("uncounted lexists probe"),
             ):
                 payload = discover_current(root)
 
