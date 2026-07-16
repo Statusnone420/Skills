@@ -22,10 +22,16 @@ from .identity import (
     finding_id,
     slug,
 )
-from .paths import _assert_no_reparse_components, normalize_repo_relative, safe_path
+from .paths import (
+    _assert_no_reparse_components,
+    normalize_repo_relative,
+    safe_path,
+    shared_text_exposes_route,
+)
 
 
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 3
+FINDINGS_SCHEMA_VERSION = 1
 STATE_DIRECTORY = ".diataxis"
 STATE_FILE = "state.json"
 FINDINGS_FILE = "findings.json"
@@ -33,7 +39,7 @@ EVENTS_FILE = "events.jsonl"
 MAX_STATE_BYTES = 32 * 1024
 MAX_FINDINGS_BYTES = 256 * 1024
 MAX_EVENTS_BYTES = 256 * 1024
-MAX_MANIFEST_BYTES = 256 * 1024
+MAX_MANIFEST_BYTES = 1024 * 1024
 MAX_PROTECTED_INTENT_BYTES = 256 * 1024
 MAX_PROTECTED_INTENT_TOTAL_BYTES = 1024 * 1024
 MAX_PROTECTED_INTENTS = 64
@@ -48,7 +54,19 @@ _MANIFEST_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SEMVER = re.compile(r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$")
 _TRANSACTION_ID = re.compile(r"^TXN-[0-9A-F]{16}$")
 _TRANSACTION_DIGEST = re.compile(r"^sha256:(?:[0-9a-f]{64}|ABSENT)$")
+_MANIFEST_IDENTITY = re.compile(r"^[0-9a-f]{64}$")
+_INIT_MANIFEST_SCHEMA_VERSION = 3
 _LOCAL_MAP_PATH = ".diataxis/local-map.json"
+_TRUST_SOURCES = frozenset(
+    {
+        "configured:hot-path",
+        "map:authoritative",
+        "map:current",
+        "state:initialized-hot-path",
+        "state:verified-document",
+        "state:verified-source",
+    }
+)
 
 
 class _OperationalMemoryIssue(ValueError):
@@ -69,6 +87,28 @@ def _require_exact_keys(value, keys, name):
     expected = set(keys)
     if actual != expected:
         raise ValueError(f"{name} has invalid fields")
+
+
+def _require_shared_text_safe(value, name):
+    """Reject private or unsafe route text from shared persisted free-form data."""
+    pending = [(value, name)]
+    while pending:
+        current, current_name = pending.pop()
+        if isinstance(current, str):
+            if shared_text_exposes_route(current):
+                raise ValueError(f"{current_name} exposes a private or unsafe route")
+        elif isinstance(current, Mapping):
+            for key, item in current.items():
+                if isinstance(key, str) and shared_text_exposes_route(key):
+                    raise ValueError(
+                        f"{current_name} key exposes a private or unsafe route"
+                    )
+                pending.append((item, f"{current_name}.{key}"))
+        elif isinstance(current, list):
+            pending.extend(
+                (item, f"{current_name}[{index}]")
+                for index, item in enumerate(current)
+            )
 
 
 def _require_int(value, name, *, minimum=None, maximum=None):
@@ -238,24 +278,9 @@ def _validate_json_nesting(value, name):
             stack.extend((True, item, depth + 1) for item in current)
 
 
-def validate_operational_state(state: Mapping, root: Path) -> dict:
-    """Validate and normalize committed operational state without writing it."""
+def _normalize_operational_state_common(state: Mapping, root: Path) -> dict:
+    """Validate and normalize the state fields shared by the v3 contract."""
     state = _require_mapping(state, "operational state")
-    _require_exact_keys(
-        state,
-        {
-            "schema_version",
-            "initialized",
-            "rubric",
-            "cold_paths",
-            "verified_documents",
-            "protected_intent",
-            "last_completed_event",
-        },
-        "operational state",
-    )
-    if _require_int(state["schema_version"], "schema_version") != STATE_SCHEMA_VERSION:
-        raise ValueError("unsupported operational state schema version")
 
     initialized = _require_mapping(state["initialized"], "initialized")
     _require_exact_keys(
@@ -354,18 +379,23 @@ def validate_operational_state(state: Mapping, root: Path) -> dict:
         normalized_source = _normalize_checked_path(source_path, f"{name}.source", root)
         if record["preserve"] is not True:
             raise ValueError(f"{name}.preserve must be true")
+        intent_key = _require_string(record["intent_key"], f"{name}.intent_key")
+        source = f"{normalized_source}#{anchor}"
+        status = _require_string(record["status"], f"{name}.status")
+        _require_shared_text_safe(intent_key, f"{name}.intent_key")
+        _require_shared_text_safe(source, f"{name}.source")
+        _require_shared_text_safe(status, f"{name}.status")
         protected_intent.append(
             {
                 "id": intent_id,
-                "intent_key": _require_string(record["intent_key"], f"{name}.intent_key"),
-                "source": f"{normalized_source}#{anchor}",
+                "intent_key": intent_key,
+                "source": source,
                 "preserve": True,
-                "status": _require_string(record["status"], f"{name}.status"),
+                "status": status,
             }
         )
 
     return {
-        "schema_version": STATE_SCHEMA_VERSION,
         "initialized": {
             "completed": True,
             "skill_version": skill_version,
@@ -384,6 +414,740 @@ def validate_operational_state(state: Mapping, root: Path) -> dict:
             state["last_completed_event"], "last_completed_event"
         ),
     }
+
+
+def _require_plain_json(value, name):
+    pending = [(value, name)]
+    while pending:
+        current, current_name = pending.pop()
+        if type(current) is dict:
+            for key, item in current.items():
+                if type(key) is not str:
+                    raise ValueError(f"{current_name} keys must be strings")
+                pending.append((item, f"{current_name}.{key}"))
+        elif type(current) is list:
+            pending.extend(
+                (item, f"{current_name}[{index}]")
+                for index, item in enumerate(current)
+            )
+        elif current is None or type(current) in {str, int, bool}:
+            continue
+        else:
+            raise ValueError(f"{current_name} must use exact JSON value types")
+
+
+def _normalize_shared_path(value, name, root):
+    normalized = _normalize_checked_path(value, name, root)
+    if normalized.split("/", 1)[0].casefold() == ".local":
+        raise ValueError(f"{name} must not expose local-only routes")
+    return normalized
+
+
+def _normalize_shared_route(value, name, root):
+    normalized = _normalize_checked_route(value, name, root)
+    path = normalized.partition("#")[0]
+    if path.split("/", 1)[0].casefold() == ".local":
+        raise ValueError(f"{name} must not expose local-only routes")
+    return normalized
+
+
+def _route_is_within_scope(route, scope):
+    route_key = "/".join(os.path.normcase(route).split(os.sep))
+    scope_key = "/".join(os.path.normcase(scope).split(os.sep))
+    return scope_key == "." or route_key == scope_key or route_key.startswith(scope_key + "/")
+
+
+def _normalize_scope(value, root):
+    value = _require_mapping(value, "scope")
+    _require_exact_keys(value, {"selected", "inspected"}, "scope")
+    selected = _normalize_shared_path(value["selected"], "scope.selected", root)
+    inspected = _normalize_shared_path(value["inspected"], "scope.inspected", root)
+    if os.path.normcase(selected) != os.path.normcase(inspected):
+        raise ValueError("scope.inspected must equal the complete selected scope")
+    return {"selected": selected, "inspected": inspected}
+
+
+def _normalize_structural_scores(value):
+    value = _require_mapping(value, "structural_scores")
+    _require_exact_keys(value, {"before", "after"}, "structural_scores")
+    return {
+        "before": _require_int(
+            value["before"], "structural_scores.before", minimum=0, maximum=100
+        ),
+        "after": _require_int(
+            value["after"], "structural_scores.after", minimum=0, maximum=100
+        ),
+    }
+
+
+def _normalize_byte_observation(value, name, root):
+    value = _require_mapping(value, name)
+    _require_exact_keys(value, {"value", "unit", "provenance"}, name)
+    measured = _require_int(value["value"], f"{name}.value", minimum=0)
+    if type(value["unit"]) is not str or value["unit"] != "bytes":
+        raise ValueError(f"{name}.unit must be bytes")
+    provenance = []
+    identities = set()
+    for index, raw in enumerate(_require_sequence(value["provenance"], f"{name}.provenance")):
+        item_name = f"{name}.provenance[{index}]"
+        raw = _require_mapping(raw, item_name)
+        _require_exact_keys(raw, {"route", "bytes", "source"}, item_name)
+        route = _normalize_shared_path(raw["route"], f"{item_name}.route", root)
+        identity = os.path.normcase(route)
+        if identity in identities:
+            raise ValueError(f"{name}.provenance routes must be unique")
+        identities.add(identity)
+        byte_count = _require_int(raw["bytes"], f"{item_name}.bytes", minimum=0)
+        if type(raw["source"]) is not str or raw["source"] != "filesystem-stat":
+            raise ValueError(f"{item_name}.source must be filesystem-stat")
+        provenance.append(
+            {"route": route, "bytes": byte_count, "source": "filesystem-stat"}
+        )
+    if sum(item["bytes"] for item in provenance) != measured:
+        raise ValueError(f"{name}.value must equal its route byte provenance")
+    provenance.sort(key=lambda item: (item["route"].casefold(), item["route"]))
+    return {"value": measured, "unit": "bytes", "provenance": provenance}
+
+
+def _normalize_hot_path_bytes(value, root):
+    value = _require_mapping(value, "hot_path_bytes")
+    _require_exact_keys(value, {"before", "after"}, "hot_path_bytes")
+    return {
+        "before": _normalize_byte_observation(value["before"], "hot_path_bytes.before", root),
+        "after": _normalize_byte_observation(value["after"], "hot_path_bytes.after", root),
+    }
+
+
+def _normalize_trust_coverage(value, root):
+    value = _require_mapping(value, "trust_coverage")
+    _require_exact_keys(
+        value,
+        {"status", "numerator", "denominator", "routes"},
+        "trust_coverage",
+    )
+    routes = []
+    identities = set()
+    for index, raw in enumerate(_require_sequence(value["routes"], "trust_coverage.routes")):
+        name = f"trust_coverage.routes[{index}]"
+        raw = _require_mapping(raw, name)
+        _require_exact_keys(raw, {"route", "verified", "freshness", "sources"}, name)
+        route = _normalize_shared_path(raw["route"], f"{name}.route", root)
+        identity = os.path.normcase(route)
+        if identity in identities:
+            raise ValueError("trust_coverage routes must be unique")
+        identities.add(identity)
+        if type(raw["verified"]) is not bool:
+            raise ValueError(f"{name}.verified must be a boolean")
+        freshness = raw["freshness"]
+        if type(freshness) is not str or freshness not in {"fresh", "stale", "unverified"}:
+            raise ValueError(f"{name}.freshness is invalid")
+        if raw["verified"] is not (freshness == "fresh"):
+            raise ValueError(f"{name}.verified must match freshness")
+        sources = list(_require_sequence(raw["sources"], f"{name}.sources"))
+        if (
+            not sources
+            or any(type(source) is not str or source not in _TRUST_SOURCES for source in sources)
+            or len(sources) != len(set(sources))
+        ):
+            raise ValueError(f"{name}.sources are invalid")
+        routes.append(
+            {
+                "route": route,
+                "verified": raw["verified"],
+                "freshness": freshness,
+                "sources": sorted(sources),
+            }
+        )
+    routes.sort(key=lambda item: (item["route"].casefold(), item["route"]))
+    numerator = _require_int(value["numerator"], "trust_coverage.numerator", minimum=0)
+    denominator = _require_int(
+        value["denominator"], "trust_coverage.denominator", minimum=0
+    )
+    if denominator != len(routes) or numerator != sum(item["verified"] for item in routes):
+        raise ValueError("trust_coverage counts do not match routes")
+    expected_status = (
+        "unverified"
+        if denominator == 0
+        else "verified"
+        if numerator == denominator
+        else "partial"
+    )
+    if type(value["status"]) is not str or value["status"] != expected_status:
+        raise ValueError("trust_coverage.status does not match its counts")
+    return {
+        "status": expected_status,
+        "numerator": numerator,
+        "denominator": denominator,
+        "routes": routes,
+    }
+
+
+def _normalize_manifest_identity(value):
+    if type(value) is not str or not _MANIFEST_IDENTITY.fullmatch(value):
+        raise ValueError("manifest_identity must be lowercase 64-hex")
+    return value
+
+
+def _validate_route_bindings(state):
+    def identity(route):
+        return os.path.normcase(os.path.normpath(route))
+
+    current_routes = {
+        identity(state["initialized"]["map"]),
+        *(identity(route) for route in state["initialized"]["hot_paths"]),
+    }
+    after_routes = {
+        identity(item["route"])
+        for item in state["hot_path_bytes"]["after"]["provenance"]
+    }
+    if after_routes != current_routes:
+        raise ValueError(
+            "hot_path_bytes.after provenance must equal map and current routes"
+        )
+
+    required_sources = {}
+
+    def declare(route, source):
+        required_sources.setdefault(identity(route), set()).add(source)
+
+    for route in state["initialized"]["hot_paths"]:
+        declare(route, "state:initialized-hot-path")
+    for record in state["verified_documents"]:
+        declare(record["document"], "state:verified-document")
+        for source in record["sources"]:
+            declare(source["path"], "state:verified-source")
+
+    trust_routes = {
+        identity(item["route"]): item for item in state["trust_coverage"]["routes"]
+    }
+    if not set(required_sources).issubset(trust_routes):
+        raise ValueError("trust_coverage omits state-derived routes")
+    for route_identity, item in trust_routes.items():
+        claimed_state_sources = {
+            source for source in item["sources"] if source.startswith("state:")
+        }
+        expected_state_sources = required_sources.get(route_identity, set())
+        if (
+            not expected_state_sources.issubset(item["sources"])
+            or not claimed_state_sources.issubset(expected_state_sources)
+        ):
+            raise ValueError("trust_coverage state provenance does not match its route")
+
+
+def _normalize_shared_contract_path(value, name, root):
+    if root is None:
+        normalized = normalize_repo_relative(value, name)
+        if normalized.split("/", 1)[0].casefold() == ".local":
+            raise ValueError(f"{name} must not expose local-only routes")
+        return normalized
+    return _normalize_shared_path(value, name, root)
+
+
+def normalize_corpus_v3(value, root=None, name="result corpus"):
+    value = _require_mapping(value, name)
+    _require_exact_keys(
+        value,
+        {
+            "coverage_version",
+            "coverage_mode",
+            "ordering_version",
+            "selected_scope",
+            "write_boundary",
+            "path_count",
+            "paths_digest",
+        },
+        name,
+    )
+    if value["coverage_version"] != "init-corpus-v1":
+        raise ValueError(f"{name}.coverage_version is invalid")
+    if value["ordering_version"] != "repo-relative-casefold-v1":
+        raise ValueError(f"{name}.ordering_version is invalid")
+    mode = _require_string(value["coverage_mode"], f"{name}.coverage_mode")
+    if mode not in {"selected-scope-exact", "empty-adoption"}:
+        raise ValueError(f"{name}.coverage_mode is invalid")
+    selected = _normalize_shared_contract_path(
+        value["selected_scope"], f"{name}.selected_scope", root
+    )
+    boundary = _normalize_shared_contract_path(
+        value["write_boundary"], f"{name}.write_boundary", root
+    )
+    expected_boundary = "." if mode == "empty-adoption" else selected
+    if boundary != expected_boundary or (mode == "empty-adoption" and selected != "."):
+        raise ValueError(f"{name}.write_boundary is invalid")
+    path_count = _require_int(
+        value["path_count"], f"{name}.path_count", minimum=0, maximum=256
+    )
+    digest = _require_string(value["paths_digest"], f"{name}.paths_digest").lower()
+    if not _MANIFEST_DIGEST.fullmatch(digest):
+        raise ValueError(f"{name}.paths_digest is invalid")
+    return {
+        "coverage_version": "init-corpus-v1",
+        "coverage_mode": mode,
+        "ordering_version": "repo-relative-casefold-v1",
+        "selected_scope": selected,
+        "write_boundary": boundary,
+        "path_count": path_count,
+        "paths_digest": digest,
+    }
+
+
+def normalize_document_results_v3(value, root=None):
+    results = []
+    identities = set()
+    for index, raw in enumerate(_require_sequence(value, "document results")):
+        name = f"document results[{index}]"
+        raw = _require_mapping(raw, name)
+        _require_exact_keys(
+            raw,
+            {
+                "path",
+                "operation",
+                "role",
+                "starting_digest",
+                "result_digest",
+                "bytes",
+                "source_item_ids",
+            },
+            name,
+        )
+        path = _normalize_shared_contract_path(raw["path"], f"{name}.path", root)
+        identity = os.path.normcase(path)
+        if identity in identities:
+            raise ValueError("document result paths must be unique")
+        identities.add(identity)
+        operation = _require_string(raw["operation"], f"{name}.operation")
+        role = _require_string(raw["role"], f"{name}.role")
+        if operation not in {"CREATE", "REPLACE", "DELETE"}:
+            raise ValueError(f"{name}.operation is invalid")
+        if role not in {"document-result", "recovery-archive", "document-source"}:
+            raise ValueError(f"{name}.role is invalid")
+        starting = _require_string(
+            raw["starting_digest"], f"{name}.starting_digest"
+        )
+        result = _require_string(raw["result_digest"], f"{name}.result_digest")
+        starting = starting if starting == "sha256:ABSENT" else starting.lower()
+        result = result if result == "sha256:ABSENT" else result.lower()
+        if not _TRANSACTION_DIGEST.fullmatch(starting) or not _TRANSACTION_DIGEST.fullmatch(result):
+            raise ValueError(f"{name} digests are invalid")
+        byte_count = _require_int(raw["bytes"], f"{name}.bytes", minimum=0)
+        source_item_ids = [
+            _require_string(item, f"{name}.source_item_ids")
+            for item in _require_sequence(
+                raw["source_item_ids"], f"{name}.source_item_ids"
+            )
+        ]
+        if (
+            len(source_item_ids) > 16
+            or len(source_item_ids) != len(set(source_item_ids))
+            or source_item_ids != sorted(source_item_ids)
+        ):
+            raise ValueError(f"{name}.source_item_ids are invalid")
+        if operation == "CREATE" and (
+            starting != "sha256:ABSENT" or result == "sha256:ABSENT"
+        ):
+            raise ValueError(f"{name} CREATE digests are invalid")
+        if operation == "REPLACE" and "sha256:ABSENT" in {starting, result}:
+            raise ValueError(f"{name} REPLACE digests are invalid")
+        if operation == "DELETE" and (
+            starting == "sha256:ABSENT"
+            or result != "sha256:ABSENT"
+            or byte_count != 0
+        ):
+            raise ValueError(f"{name} DELETE result is invalid")
+        results.append(
+            {
+                "path": path,
+                "operation": operation,
+                "role": role,
+                "starting_digest": starting,
+                "result_digest": result,
+                "bytes": byte_count,
+                "source_item_ids": source_item_ids,
+            }
+        )
+    ordered = sorted(results, key=lambda item: (item["path"].casefold(), item["path"]))
+    if results != ordered:
+        raise ValueError("document results must be path-ordered")
+    return results
+
+
+def normalize_dispositions_v3(value, root=None):
+    normalized = []
+    identities = set()
+    records = _require_sequence(value, "dispositions")
+    if len(records) > 256:
+        raise ValueError("dispositions exceed capacity")
+    common = {
+        "item_id",
+        "path",
+        "section",
+        "disposition",
+        "reason",
+        "source_digest",
+    }
+    for index, raw in enumerate(records):
+        name = f"dispositions[{index}]"
+        raw = _require_mapping(raw, name)
+        section = _require_mapping(raw.get("section"), f"{name}.section")
+        whole_file = dict(section) == {"kind": "whole-file"}
+        variants = (
+            {
+                "RETAIN": set(),
+                "MIGRATED": {"target", "recovery"},
+                "DEDUPLICATED": {"target", "target_digest", "recovery"},
+                "ARCHIVED": {"target", "recovery"},
+                "DISCARDED": {"recovery"},
+            }
+            if whole_file
+            else {
+                "MIGRATED": {"target", "recovery"},
+                "DEDUPLICATED": {"target", "target_digest", "recovery"},
+                "ARCHIVED": {"target", "recovery"},
+                "DISCARDED": {"recovery"},
+            }
+        )
+        outcome = _require_string(raw.get("disposition"), f"{name}.disposition")
+        if outcome not in variants:
+            raise ValueError(f"{name}.disposition is invalid")
+        _require_exact_keys(raw, common | variants[outcome], name)
+        path = _normalize_shared_contract_path(raw["path"], f"{name}.path", root)
+        if not path.casefold().endswith(".md"):
+            raise ValueError(f"{name}.path must be Markdown")
+        item_id = _require_string(raw["item_id"], f"{name}.item_id")
+        if whole_file:
+            if item_id != f"{path}#<whole-file>":
+                raise ValueError(f"{name}.item_id is invalid")
+            persisted_section = {"kind": "whole-file"}
+        else:
+            section_fields = {
+                "kind",
+                "level",
+                "heading_path",
+                "occurrence",
+                "start_byte",
+                "end_byte",
+                "raw_span_digest",
+            }
+            _require_exact_keys(section, section_fields, f"{name}.section")
+            heading_path = section["heading_path"]
+            if (
+                section["kind"] != "atx-section-v1"
+                or type(section["level"]) is not int
+                or not 1 <= section["level"] <= 6
+                or not isinstance(heading_path, list)
+                or not heading_path
+                or len(heading_path) > section["level"]
+                or type(section["occurrence"]) is not int
+                or section["occurrence"] < 1
+                or type(section["start_byte"]) is not int
+                or section["start_byte"] < 0
+                or type(section["end_byte"]) is not int
+                or section["end_byte"] <= section["start_byte"]
+                or not isinstance(section["raw_span_digest"], str)
+                or not _MANIFEST_DIGEST.fullmatch(section["raw_span_digest"])
+            ):
+                raise ValueError(f"{name}.section is invalid")
+            for heading in heading_path:
+                if not isinstance(heading, str):
+                    raise ValueError(f"{name}.section heading is invalid")
+                normalized_heading = " ".join(
+                    unicodedata.normalize("NFC", heading).split()
+                ).casefold()
+                if not normalized_heading or normalized_heading != heading:
+                    raise ValueError(f"{name}.section heading is invalid")
+            persisted_section = dict(section)
+            expected_id = "SEC-" + hashlib.sha256(
+                _canonical_operational_bytes(
+                    {"path": path, "section": persisted_section}
+                )
+            ).hexdigest()[:24].upper()
+            if item_id != expected_id:
+                raise ValueError(f"{name}.item_id is invalid")
+        if item_id in identities:
+            raise ValueError(f"{name}.item_id is invalid")
+        identities.add(item_id)
+        reason = _require_string(raw["reason"], f"{name}.reason")
+        if len(reason.encode("utf-8")) > 512:
+            raise ValueError(f"{name}.reason exceeds capacity")
+        _require_shared_text_safe(reason, f"{name}.reason")
+        source_digest = _require_string(
+            raw["source_digest"], f"{name}.source_digest"
+        ).lower()
+        if not _MANIFEST_DIGEST.fullmatch(source_digest):
+            raise ValueError(f"{name}.source_digest is invalid")
+        item = {
+            "item_id": item_id,
+            "path": path,
+            "section": persisted_section,
+            "disposition": outcome,
+            "reason": reason,
+            "source_digest": source_digest,
+        }
+        if "target" in raw:
+            target = _normalize_shared_contract_path(
+                raw["target"], f"{name}.target", root
+            )
+            if not target.casefold().endswith(".md"):
+                raise ValueError(f"{name}.target must be Markdown")
+            item["target"] = target
+        if "target_digest" in raw:
+            target_digest = _require_string(
+                raw["target_digest"], f"{name}.target_digest"
+            ).lower()
+            if not _MANIFEST_DIGEST.fullmatch(target_digest):
+                raise ValueError(f"{name}.target_digest is invalid")
+            item["target_digest"] = target_digest
+        if "recovery" in raw:
+            recovery = _require_mapping(raw["recovery"], f"{name}.recovery")
+            kind = _require_string(recovery.get("kind"), f"{name}.recovery.kind")
+            if kind == "git":
+                _require_exact_keys(
+                    recovery, {"kind", "commit", "blob", "digest"}, f"{name}.recovery"
+                )
+                object_id = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+                if not object_id.fullmatch(recovery["commit"]) or not object_id.fullmatch(
+                    recovery["blob"]
+                ):
+                    raise ValueError(f"{name}.recovery Git identity is invalid")
+                persisted_recovery = dict(recovery)
+            elif kind == "archive":
+                _require_exact_keys(
+                    recovery, {"kind", "mode", "path", "digest"}, f"{name}.recovery"
+                )
+                if recovery["mode"] not in {"existing", "planned"}:
+                    raise ValueError(f"{name}.recovery.mode is invalid")
+                persisted_recovery = {
+                    **dict(recovery),
+                    "path": _normalize_shared_contract_path(
+                        recovery["path"], f"{name}.recovery.path", root
+                    ),
+                }
+            elif kind == "accepted-hard-delete":
+                if not whole_file:
+                    raise ValueError(f"{name}.recovery.kind is invalid")
+                _require_exact_keys(
+                    recovery,
+                    {"kind", "discard_set_id", "acceptance_digest"},
+                    f"{name}.recovery",
+                )
+                if not re.fullmatch(r"DISCARD-[0-9A-F]{16}", recovery["discard_set_id"]):
+                    raise ValueError(f"{name}.recovery.discard_set_id is invalid")
+                persisted_recovery = dict(recovery)
+            else:
+                raise ValueError(f"{name}.recovery.kind is invalid")
+            digest = persisted_recovery.get("digest") or persisted_recovery.get(
+                "acceptance_digest"
+            )
+            if not isinstance(digest, str) or not _MANIFEST_DIGEST.fullmatch(digest):
+                raise ValueError(f"{name}.recovery digest is invalid")
+            item["recovery"] = persisted_recovery
+        normalized.append(item)
+    ordered = sorted(normalized, key=lambda item: item["item_id"])
+    if normalized != ordered:
+        raise ValueError("dispositions must be item-ordered")
+    return normalized
+
+
+def _validate_operational_state_v3(state: Mapping, root: Path) -> dict:
+    _require_plain_json(state, "operational state")
+    common_keys = {
+        "schema_version",
+        "initialized",
+        "rubric",
+        "cold_paths",
+        "verified_documents",
+        "protected_intent",
+        "last_completed_event",
+    }
+    v3_keys = {
+        "scope",
+        "structural_scores",
+        "hot_path_bytes",
+        "trust_coverage",
+        "initialization",
+    }
+    _require_exact_keys(state, common_keys | v3_keys, "operational state")
+    if _require_int(state["schema_version"], "schema_version") != STATE_SCHEMA_VERSION:
+        raise ValueError("unsupported operational state schema version")
+    normalized = _normalize_operational_state_common(state, root)
+    normalized["schema_version"] = STATE_SCHEMA_VERSION
+
+    scope = _normalize_scope(state["scope"], root)
+    initialized = normalized["initialized"]
+    initialized["map"] = _normalize_shared_path(
+        initialized["map"], "initialized.map", root
+    )
+    if not _route_is_within_scope(initialized["map"], scope["inspected"]):
+        raise ValueError("initialized.map must remain within inspected scope")
+    hot_paths = []
+    hot_identities = set()
+    for index, route in enumerate(initialized["hot_paths"]):
+        route = _normalize_shared_path(route, f"initialized.hot_paths[{index}]", root)
+        identity = os.path.normcase(route)
+        if identity in hot_identities:
+            raise ValueError("initialized.hot_paths must be unique")
+        if not _route_is_within_scope(route, scope["inspected"]):
+            raise ValueError("initialized.hot_paths must remain within inspected scope")
+        hot_identities.add(identity)
+        hot_paths.append(route)
+    initialized["hot_paths"] = sorted(
+        hot_paths, key=lambda route: (route.casefold(), route)
+    )
+
+    normalized["cold_paths"] = sorted(normalized["cold_paths"])
+    for pattern in normalized["cold_paths"]:
+        prefix = pattern.split("*", 1)[0].rstrip("/")
+        if prefix:
+            _normalize_shared_path(prefix, "cold_paths", root)
+    document_identities = set()
+    for record in normalized["verified_documents"]:
+        record["document"] = _normalize_shared_path(
+            record["document"], "verified_documents.document", root
+        )
+        document_identity = os.path.normcase(record["document"])
+        if document_identity in document_identities:
+            raise ValueError("verified_documents routes must be unique")
+        if not _route_is_within_scope(record["document"], scope["inspected"]):
+            raise ValueError("verified documents must remain within inspected scope")
+        document_identities.add(document_identity)
+        record["sources"].sort(key=lambda source: (source["path"].casefold(), source["path"]))
+        source_identities = set()
+        for source in record["sources"]:
+            source["path"] = _normalize_shared_path(
+                source["path"], "verified_documents.sources.path", root
+            )
+            source_identity = os.path.normcase(source["path"])
+            if source_identity in source_identities:
+                raise ValueError("verified document source routes must be unique")
+            source_identities.add(source_identity)
+        record["sources"].sort(
+            key=lambda source: (source["path"].casefold(), source["path"])
+        )
+    normalized["verified_documents"].sort(
+        key=lambda record: (record["document"].casefold(), record["document"])
+    )
+    protected_ids = set()
+    for record in normalized["protected_intent"]:
+        if record["id"] in protected_ids:
+            raise ValueError("protected_intent IDs must be unique")
+        protected_ids.add(record["id"])
+        record["source"] = _normalize_shared_route(
+            record["source"], "protected_intent.source", root
+        )
+    normalized["protected_intent"].sort(key=lambda record: record["id"])
+
+    normalized.update(
+        {
+            "scope": scope,
+            "structural_scores": _normalize_structural_scores(
+                state["structural_scores"]
+            ),
+            "hot_path_bytes": _normalize_hot_path_bytes(
+                state["hot_path_bytes"], root
+            ),
+            "trust_coverage": _normalize_trust_coverage(
+                state["trust_coverage"], root
+            ),
+        }
+    )
+    initialization = _require_mapping(state["initialization"], "initialization")
+    _require_exact_keys(
+        initialization,
+        {"manifest_identity", "result_corpus", "document_results_digest"},
+        "initialization",
+    )
+    document_results_digest = _require_string(
+        initialization["document_results_digest"],
+        "initialization.document_results_digest",
+    ).lower()
+    if not _MANIFEST_DIGEST.fullmatch(document_results_digest):
+        raise ValueError("initialization.document_results_digest is invalid")
+    normalized["initialization"] = {
+        "manifest_identity": _normalize_manifest_identity(
+            initialization["manifest_identity"]
+        ),
+        "result_corpus": normalize_corpus_v3(
+            initialization["result_corpus"], root
+        ),
+        "document_results_digest": document_results_digest,
+    }
+    if (
+        normalized["initialization"]["result_corpus"]["selected_scope"]
+        != scope["selected"]
+    ):
+        raise ValueError("initialization result corpus must match selected scope")
+    _validate_route_bindings(normalized)
+    if normalized["rubric"]["last_verified_status"] not in {
+        "healthy",
+        "needs-attention",
+    }:
+        raise ValueError("rubric.last_verified_status is invalid for state v3")
+    return normalized
+
+
+def validate_operational_state(state: Mapping, root: Path) -> dict:
+    """Validate the exact schema-3 operational state without writing it."""
+    state = _require_mapping(state, "operational state")
+    version = _require_int(state.get("schema_version"), "schema_version")
+    if version == STATE_SCHEMA_VERSION:
+        return _validate_operational_state_v3(state, root)
+    raise ValueError("unsupported operational state schema version")
+
+
+def build_initialization_state(
+    root,
+    *,
+    skill_version,
+    selected_scope,
+    inspected_scope,
+    map_path,
+    current_truth_routes,
+    rubric_version,
+    score_before,
+    score_after,
+    rubric_status,
+    cold_paths,
+    verified_documents,
+    protected_intent,
+    hot_path_bytes,
+    trust_coverage,
+    manifest_identity,
+    result_corpus,
+    document_results_digest,
+    last_completed_event,
+):
+    """Build deterministic schema-3 state from verified initialization evidence."""
+    state = {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "initialized": {
+            "completed": True,
+            "skill_version": skill_version,
+            "map": map_path,
+            "hot_paths": current_truth_routes,
+        },
+        "rubric": {
+            "version": rubric_version,
+            "last_verified_score": score_after,
+            "last_verified_status": rubric_status,
+        },
+        "cold_paths": cold_paths,
+        "verified_documents": verified_documents,
+        "protected_intent": protected_intent,
+        "last_completed_event": last_completed_event,
+        "scope": {"selected": selected_scope, "inspected": inspected_scope},
+        "structural_scores": {"before": score_before, "after": score_after},
+        "hot_path_bytes": hot_path_bytes,
+        "trust_coverage": trust_coverage,
+        "initialization": {
+            "manifest_identity": manifest_identity,
+            "result_corpus": result_corpus,
+            "document_results_digest": document_results_digest,
+        },
+    }
+    normalized = validate_operational_state(state, Path(root).absolute())
+    if len(_canonical_operational_bytes(normalized)) > MAX_STATE_BYTES:
+        raise ValueError("operational state exceeds capacity")
+    return normalized
 
 
 def load_operational_state(root: Path) -> dict | None:
@@ -420,7 +1184,7 @@ def validate_operational_findings(payload, root: Path) -> dict:
     """Validate and normalize a findings payload without filesystem mutation."""
     payload = _require_mapping(payload, "operational findings")
     _require_exact_keys(payload, {"schema_version", "findings"}, "operational findings")
-    if _require_int(payload["schema_version"], "findings schema_version") != STATE_SCHEMA_VERSION:
+    if _require_int(payload["schema_version"], "findings schema_version") != FINDINGS_SCHEMA_VERSION:
         raise ValueError("unsupported operational findings schema version")
 
     normalized = []
@@ -457,6 +1221,10 @@ def validate_operational_findings(payload, root: Path) -> dict:
             raise ValueError(f"{name}.priority is invalid")
         if status not in FINDING_STATUSES:
             raise ValueError(f"{name}.status is invalid")
+        for field, value in record.items():
+            if field not in {"id", "fingerprint", "priority", "status"}:
+                _require_shared_text_safe(field, f"{name}.field")
+                _require_shared_text_safe(value, f"{name}.{field}")
         normalized_record = dict(record)
         normalized_record.update(
             {
@@ -473,13 +1241,13 @@ def validate_operational_findings(payload, root: Path) -> dict:
             }
         )
         normalized.append(normalized_record)
-    return {"schema_version": STATE_SCHEMA_VERSION, "findings": normalized}
+    return {"schema_version": FINDINGS_SCHEMA_VERSION, "findings": normalized}
 
 
 def load_operational_findings(root: Path) -> dict:
     text = _read_operational_file(root, FINDINGS_FILE, MAX_FINDINGS_BYTES)
     if text is None:
-        return {"schema_version": STATE_SCHEMA_VERSION, "findings": []}
+        return {"schema_version": FINDINGS_SCHEMA_VERSION, "findings": []}
     payload = _strict_json_loads(text, "operational findings")
     return validate_operational_findings(payload, Path(root).absolute())
 
@@ -597,6 +1365,15 @@ def _inspect_control_plane_files(control):
             try:
                 if relative == STATE_DIRECTORY and entry.name == "local-map.json":
                     observed["local_map_present"] = entry.is_file(follow_symlinks=False)
+                elif relative == STATE_DIRECTORY and entry.name == "recovery":
+                    findings.append(
+                        _memory_finding(
+                            "state-conflict",
+                            "P0",
+                            f"{STATE_DIRECTORY}/recovery",
+                            "incomplete initialization recovery requires Doctor reconciliation",
+                        )
+                    )
                 elif relative == STATE_DIRECTORY and entry.name == "manifests":
                     if entry.is_dir(follow_symlinks=False) and not entry.is_symlink():
                         pending.append(
@@ -715,6 +1492,116 @@ def _inspect_protected_intent_sources(root, state):
     return findings
 
 
+_INIT_CONTROL_ROLES = {
+    f"{STATE_DIRECTORY}/{STATE_FILE}": "state",
+    f"{STATE_DIRECTORY}/{FINDINGS_FILE}": "findings",
+    f"{STATE_DIRECTORY}/{EVENTS_FILE}": "event",
+    "manifest": "manifest",
+    ".gitignore": "gitignore",
+    "AGENTS.md": "agents",
+    _LOCAL_MAP_PATH: "local-map",
+}
+_INIT_REQUIRED_CONTROLS = frozenset(
+    {
+        f"{STATE_DIRECTORY}/{STATE_FILE}",
+        f"{STATE_DIRECTORY}/{FINDINGS_FILE}",
+        f"{STATE_DIRECTORY}/{EVENTS_FILE}",
+        "manifest",
+    }
+)
+
+
+def _validate_init_transaction_bindings(event, document_results):
+    """Cross-bind Init's logical transaction plane to its body-free manifest."""
+    targets = list(
+        _require_sequence(event.get("transaction_targets"), "transaction targets")
+    )
+    starting = _require_mapping(event.get("starting_digests"), "starting digests")
+    roles = _require_mapping(event.get("target_roles"), "target roles")
+    order = list(_require_sequence(event.get("replacement_order"), "replacement order"))
+    if any(type(target) is not str for target in targets):
+        raise ValueError("transaction target paths are invalid")
+    target_identities = [os.path.normcase(os.path.normpath(target)) for target in targets]
+    if len(target_identities) != len(set(target_identities)):
+        raise ValueError("transaction target paths must be unique")
+
+    documents = {result["path"]: result for result in document_results}
+    control_targets = [target for target in targets if target not in documents]
+    if (
+        not _INIT_REQUIRED_CONTROLS.issubset(control_targets)
+        or any(target not in _INIT_CONTROL_ROLES for target in control_targets)
+    ):
+        raise ValueError("initialization control targets are invalid")
+    expected_targets = sorted([*control_targets, *documents])
+    expected_roles = {
+        **{target: _INIT_CONTROL_ROLES[target] for target in control_targets},
+        **{path: result["role"] for path, result in documents.items()},
+    }
+    if targets != expected_targets or dict(roles) != dict(sorted(expected_roles.items())):
+        raise ValueError("initialization transaction targets do not match the manifest")
+    if set(starting) != set(expected_targets):
+        raise ValueError("initialization starting digests do not match transaction targets")
+    for target, digest in starting.items():
+        if type(digest) is not str or not _TRANSACTION_DIGEST.fullmatch(digest):
+            raise ValueError("initialization starting digest is invalid")
+        if target in documents and digest != documents[target]["starting_digest"]:
+            raise ValueError("document starting digest does not match the manifest")
+
+    for result in documents.values():
+        operation = result["operation"]
+        role = result["role"]
+        if (
+            (role == "recovery-archive" and operation != "CREATE")
+            or (role == "document-source" and operation not in {"REPLACE", "DELETE"})
+            or (role == "document-result" and operation not in {"CREATE", "REPLACE"})
+        ):
+            raise ValueError("document operation role does not match its operation")
+
+    event_path = f"{STATE_DIRECTORY}/{EVENTS_FILE}"
+    manifest_controls = [target for target in control_targets if target == "manifest"]
+    protected = [
+        target for target in (".gitignore", "AGENTS.md") if target in control_targets
+    ]
+    fixed_middle = [
+        f"{STATE_DIRECTORY}/{STATE_FILE}",
+        f"{STATE_DIRECTORY}/{FINDINGS_FILE}",
+        *protected,
+    ]
+    other_middle = sorted(
+        set(control_targets)
+        - set(manifest_controls)
+        - set(fixed_middle)
+        - {event_path}
+    )
+    recovery_creates = [
+        result["path"]
+        for result in document_results
+        if result["operation"] == "CREATE" and result["role"] == "recovery-archive"
+    ]
+    document_upserts = [
+        result["path"]
+        for result in document_results
+        if result["operation"] in {"CREATE", "REPLACE"}
+        and result["role"] != "recovery-archive"
+    ]
+    document_deletes = [
+        result["path"]
+        for result in document_results
+        if result["operation"] == "DELETE"
+    ]
+    expected_order = [
+        *manifest_controls,
+        *recovery_creates,
+        *document_upserts,
+        *fixed_middle,
+        *other_middle,
+        *document_deletes,
+        event_path,
+    ]
+    if order != expected_order:
+        raise ValueError("initialization replacement order does not match the manifest")
+
+
 def _transaction_integrity_findings(root, state, findings_payload, events):
     if not events:
         return []
@@ -744,6 +1631,12 @@ def _transaction_integrity_findings(root, state, findings_payload, events):
             for digest in starting.values():
                 if not isinstance(digest, str) or not _TRANSACTION_DIGEST.fullmatch(digest):
                     valid = False
+        is_init = latest.get("kind") == "init"
+        if is_init and (
+            latest.get("transaction_schema_version") != 3
+            or latest.get("transaction_policy_version") != "init-closeout-v3"
+        ):
+            valid = False
         fixed = {
             f"{STATE_DIRECTORY}/{STATE_FILE}",
             f"{STATE_DIRECTORY}/{FINDINGS_FILE}",
@@ -751,6 +1644,24 @@ def _transaction_integrity_findings(root, state, findings_payload, events):
         }
         if not fixed.issubset(set(targets)):
             valid = False
+        if is_init:
+            roles = latest.get("target_roles")
+            if (
+                not isinstance(roles, Mapping)
+                or set(roles) != set(targets)
+                or any(
+                    roles[target] != _INIT_CONTROL_ROLES[target]
+                    for target in targets
+                    if target in _INIT_CONTROL_ROLES
+                )
+                or any(
+                    target not in _INIT_CONTROL_ROLES
+                    and roles[target]
+                    not in {"document-result", "recovery-archive", "document-source"}
+                    for target in targets
+                )
+            ):
+                valid = False
         if latest["state_semantic_digest"] != operational_state_digest(state):
             valid = False
         if latest["findings_digest"] != operational_findings_digest(findings_payload):
@@ -787,10 +1698,125 @@ def _transaction_integrity_findings(root, state, findings_payload, events):
     ]
 
 
+def _initialization_binding_findings(root, state, events):
+    if state.get("schema_version") != STATE_SCHEMA_VERSION:
+        return []
+    initialization = state.get("initialization", {})
+    identity = initialization.get("manifest_identity")
+    candidates = [
+        event
+        for event in events
+        if event.get("kind") == "init"
+        and event.get("manifest_identity") == identity
+    ]
+    valid = len(candidates) == 1
+    try:
+        event = candidates[0]
+        manifest = _require_mapping(event.get("manifest"), "event manifest")
+        expected_path = f"{STATE_DIRECTORY}/manifests/{event['event_id']}.json"
+        _require_exact_keys(manifest, {"path", "digest"}, "event manifest")
+        if (
+            manifest.get("path") != expected_path
+            or manifest.get("digest") != f"sha256:{identity}"
+            or event.get("manifest_digest") != f"sha256:{identity}"
+            or event.get("manifest_schema_version") != _INIT_MANIFEST_SCHEMA_VERSION
+            or "manifest" not in event.get("transaction_targets", [])
+        ):
+            valid = False
+        data = _read_bounded_bytes(
+            safe_path(Path(root) / expected_path, root),
+            MAX_MANIFEST_BYTES,
+            expected_path,
+        )
+        payload = _strict_json_loads(
+            _decode_operational_bytes(data, expected_path),
+            "initialization manifest",
+        )
+        if (
+            not isinstance(payload, Mapping)
+            or set(payload)
+            != {
+                "schema_version",
+                "approval_identity",
+                "corpus_transition",
+                "dispositions",
+                "document_results",
+            }
+            or payload.get("schema_version") != _INIT_MANIFEST_SCHEMA_VERSION
+            or _canonical_operational_bytes(payload) != data
+            or hashlib.sha256(data).hexdigest() != identity
+        ):
+            valid = False
+        approvals = event.get("approval_bindings", [])
+        approval_identity = hashlib.sha256(
+            _canonical_operational_bytes(approvals)
+        ).hexdigest()
+        transition = payload["corpus_transition"]
+        if not isinstance(transition, Mapping) or set(transition) != {"starting", "result"}:
+            valid = False
+        normalized_transition = {
+            "starting": normalize_corpus_v3(
+                transition["starting"], name="manifest starting corpus"
+            ),
+            "result": normalize_corpus_v3(
+                transition["result"], name="manifest result corpus"
+            ),
+        }
+        normalized_dispositions = normalize_dispositions_v3(payload["dispositions"])
+        normalized_results = normalize_document_results_v3(
+            payload["document_results"], root=root
+        )
+        _validate_init_transaction_bindings(event, normalized_results)
+        hard_delete_digests = {
+            item["recovery"]["acceptance_digest"]
+            for item in normalized_dispositions
+            if item.get("recovery", {}).get("kind") == "accepted-hard-delete"
+        }
+        expected_hard_delete_digest = (
+            next(iter(hard_delete_digests))
+            if len(hard_delete_digests) == 1
+            else None
+        )
+        document_results_digest = "sha256:" + hashlib.sha256(
+            _canonical_operational_bytes(normalized_results)
+        ).hexdigest()
+        transition_digest = "sha256:" + hashlib.sha256(
+            _canonical_operational_bytes(normalized_transition)
+        ).hexdigest()
+        if (
+            payload["approval_identity"] != approval_identity
+            or event.get("approval_identity") != approval_identity
+            or transition != normalized_transition
+            or payload["dispositions"] != normalized_dispositions
+            or payload["document_results"] != normalized_results
+            or event.get("corpus_transition") != normalized_transition
+            or event.get("corpus_transition_digest") != transition_digest
+            or initialization.get("result_corpus") != normalized_transition["result"]
+            or event.get("document_results_digest") != document_results_digest
+            or initialization.get("document_results_digest")
+            != document_results_digest
+            or len(hard_delete_digests) > 1
+            or event.get("hard_delete_acceptance_digest")
+            != expected_hard_delete_digest
+        ):
+            valid = False
+    except (IndexError, KeyError, TypeError, ValueError, OSError):
+        valid = False
+    if valid:
+        return []
+    return [
+        _memory_finding(
+            "state-conflict",
+            "P0",
+            STATE_DIRECTORY,
+            "initialization manifest binding does not match verified state",
+        )
+    ]
+
+
 def _normalize_manifest(manifest, root, name):
     manifest = _require_mapping(manifest, name)
-    if "path" not in manifest or "digest" not in manifest:
-        raise ValueError(f"{name} must include path and digest")
+    _require_exact_keys(manifest, {"path", "digest"}, name)
     manifest_prefix = f"{STATE_DIRECTORY}/manifests/"
     try:
         normalized_path = _normalize_checked_path(manifest["path"], f"{name}.path", root)
@@ -829,6 +1855,168 @@ def _normalize_manifest(manifest, root, name):
     return normalized
 
 
+_INIT_EVENT_FIELDS = frozenset(
+    {
+        "event_id",
+        "kind",
+        "completed_at",
+        "skill_version",
+        "approved_ids",
+        "score_before",
+        "score_after",
+        "reason",
+        "summary",
+        "worktree_kind",
+        "repository_identity",
+        "worktree_identity",
+        "worktree_state_identity",
+        "changed_paths",
+        "transaction_id",
+        "transaction_schema_version",
+        "transaction_policy_version",
+        "starting_digests",
+        "state_semantic_digest",
+        "findings_digest",
+        "transaction_targets",
+        "target_roles",
+        "replacement_order",
+        "approval_bindings",
+        "selected_boundary",
+        "visibility",
+        "manifest",
+        "manifest_digest",
+        "manifest_schema_version",
+        "manifest_identity",
+        "approval_identity",
+        "corpus_transition",
+        "corpus_transition_digest",
+        "document_results_digest",
+    }
+)
+_INIT_EVENT_CONDITIONAL_FIELDS = frozenset(
+    {
+        "local_map_digest",
+        "local_map_schema_version",
+        "protected_preview_digest",
+        "hard_delete_acceptance_digest",
+    }
+)
+
+
+def _init_event_fingerprint_v3(event):
+    semantic = json.loads(_canonical_operational_bytes(event))
+    semantic.pop("event_id", None)
+    manifest = semantic.get("manifest")
+    if isinstance(manifest, Mapping):
+        semantic["manifest"] = {"digest": manifest.get("digest")}
+    return hashlib.sha256(_canonical_operational_bytes(semantic)).hexdigest()
+
+
+def _validate_init_event_v3(event, name):
+    actual = set(event)
+    if not _INIT_EVENT_FIELDS.issubset(actual) or actual - (
+        _INIT_EVENT_FIELDS | _INIT_EVENT_CONDITIONAL_FIELDS
+    ):
+        raise ValueError(f"{name} has invalid fields")
+    has_local_digest = "local_map_digest" in event
+    has_local_schema = "local_map_schema_version" in event
+    if has_local_digest is not has_local_schema:
+        raise ValueError(f"{name} local map binding is incomplete")
+    if event.get("kind") != "init":
+        raise ValueError(f"{name}.kind is invalid")
+    if event.get("transaction_schema_version") != 3:
+        raise ValueError(f"{name}.transaction_schema_version is invalid")
+    if event.get("transaction_policy_version") != "init-closeout-v3":
+        raise ValueError(f"{name}.transaction_policy_version is invalid")
+    if event.get("manifest_schema_version") != 3:
+        raise ValueError(f"{name}.manifest_schema_version is invalid")
+    if event.get("worktree_kind") not in {"git", "filesystem"}:
+        raise ValueError(f"{name}.worktree_kind is invalid")
+    for field in (
+        "repository_identity",
+        "worktree_identity",
+        "worktree_state_identity",
+        "manifest_identity",
+        "approval_identity",
+    ):
+        if not isinstance(event.get(field), str) or not _MANIFEST_IDENTITY.fullmatch(
+            event[field]
+        ):
+            raise ValueError(f"{name}.{field} is invalid")
+    for field in (
+        "manifest_digest",
+        "corpus_transition_digest",
+        "document_results_digest",
+        "state_semantic_digest",
+        "findings_digest",
+        "protected_preview_digest",
+        "hard_delete_acceptance_digest",
+        "local_map_digest",
+    ):
+        if field in event and (
+            not isinstance(event[field], str)
+            or not _MANIFEST_DIGEST.fullmatch(event[field])
+        ):
+            raise ValueError(f"{name}.{field} is invalid")
+    if event["manifest_digest"] != f"sha256:{event['manifest_identity']}":
+        raise ValueError(f"{name} manifest identity is inconsistent")
+    manifest = _require_mapping(event["manifest"], f"{name}.manifest")
+    _require_exact_keys(manifest, {"path", "digest"}, f"{name}.manifest")
+    expected_manifest_path = (
+        f"{STATE_DIRECTORY}/manifests/{event['event_id']}.json"
+    )
+    if (
+        manifest.get("path") != expected_manifest_path
+        or manifest.get("digest") != event["manifest_digest"]
+    ):
+        raise ValueError(f"{name}.manifest is invalid")
+    transition = _require_mapping(event["corpus_transition"], f"{name}.corpus_transition")
+    _require_exact_keys(transition, {"starting", "result"}, f"{name}.corpus_transition")
+    normalized_transition = {
+        "starting": normalize_corpus_v3(
+            transition["starting"], name=f"{name}.corpus_transition.starting"
+        ),
+        "result": normalize_corpus_v3(
+            transition["result"], name=f"{name}.corpus_transition.result"
+        ),
+    }
+    if transition != normalized_transition or event["corpus_transition_digest"] != (
+        "sha256:"
+        + hashlib.sha256(_canonical_operational_bytes(normalized_transition)).hexdigest()
+    ):
+        raise ValueError(f"{name}.corpus_transition is invalid")
+    approvals = _require_sequence(event["approval_bindings"], f"{name}.approval_bindings")
+    normalized_approvals = []
+    for index, item in enumerate(approvals):
+        item = _require_mapping(item, f"{name}.approval_bindings[{index}]")
+        _require_exact_keys(item, {"id", "fingerprint"}, f"{name}.approval_bindings[{index}]")
+        normalized_approvals.append(dict(item))
+    if normalized_approvals != sorted(normalized_approvals, key=lambda item: item["id"]):
+        raise ValueError(f"{name}.approval_bindings are invalid")
+    approval_identity = hashlib.sha256(
+        _canonical_operational_bytes(normalized_approvals)
+    ).hexdigest()
+    if event["approval_identity"] != approval_identity:
+        raise ValueError(f"{name}.approval_identity is invalid")
+    targets = list(_require_sequence(event["transaction_targets"], f"{name}.transaction_targets"))
+    roles = _require_mapping(event["target_roles"], f"{name}.target_roles")
+    order = list(_require_sequence(event["replacement_order"], f"{name}.replacement_order"))
+    if (
+        targets != sorted(targets)
+        or len(targets) != len(set(targets))
+        or set(roles) != set(targets)
+        or len(order) != len(targets)
+        or set(order) != set(targets)
+    ):
+        raise ValueError(f"{name} transaction targets are invalid")
+    if has_local_schema and event["local_map_schema_version"] != 2:
+        raise ValueError(f"{name}.local_map_schema_version is invalid")
+    fingerprint = _init_event_fingerprint_v3(event)
+    if event["event_id"] != "EVT-" + fingerprint[:8].upper():
+        raise ValueError("event_id does not match semantic content")
+    return fingerprint
+
+
 def validate_operational_events(events: Sequence[Mapping]) -> list[dict]:
     findings = []
     try:
@@ -858,7 +2046,16 @@ def validate_operational_events(events: Sequence[Mapping]) -> list[dict]:
             event_id = _normalize_event_id(event.get("event_id"), f"events[{index}].event_id")
             _require_string(event.get("kind"), f"events[{index}].kind")
             _validate_json_nesting(event, f"events[{index}]")
-            canonical = event_fingerprint(event)
+            for field in ("reason", "summary"):
+                if field in event:
+                    _require_shared_text_safe(
+                        event[field], f"events[{index}].{field}"
+                    )
+            canonical = (
+                _validate_init_event_v3(event, f"events[{index}]")
+                if event.get("kind") == "init"
+                else event_fingerprint(event)
+            )
             if not canonical.startswith(event_id.removeprefix("EVT-").lower()):
                 findings.append(
                     _memory_finding(
@@ -924,7 +2121,7 @@ def load_operational_events(root: Path) -> list[dict]:
     return events
 
 
-def inspect_operational_memory(root):
+def inspect_operational_memory(root, *, inspect_protected_intent=True):
     """Inspect committed operational memory without modifying it."""
     try:
         control = _operational_control(root)
@@ -974,7 +2171,7 @@ def inspect_operational_memory(root):
         findings.extend(
             _orphan_control_artifact_findings(root, events, observed_control)
         )
-    if state is not None:
+    if state is not None and inspect_protected_intent:
         findings.extend(_inspect_protected_intent_sources(root, state))
     if state is not None and events is not None:
         event_ids = {event["event_id"] for event in events}
@@ -993,6 +2190,7 @@ def inspect_operational_memory(root):
                 )
             )
     if state is not None and findings_payload is not None and events is not None:
+        findings.extend(_initialization_binding_findings(root, state, events))
         findings.extend(
             _transaction_integrity_findings(root, state, findings_payload, events)
         )
@@ -1005,6 +2203,7 @@ _operational_memory_findings = inspect_operational_memory
 __all__ = (
     "EVENTS_FILE",
     "FINDINGS_FILE",
+    "FINDINGS_SCHEMA_VERSION",
     "FINDING_STATUSES",
     "MAX_EVENTS_BYTES",
     "MAX_FINDINGS_BYTES",
@@ -1015,6 +2214,7 @@ __all__ = (
     "STATE_DIRECTORY",
     "STATE_FILE",
     "STATE_SCHEMA_VERSION",
+    "build_initialization_state",
     "inspect_operational_memory",
     "load_operational_events",
     "load_operational_findings",

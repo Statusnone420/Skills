@@ -16,5 +16,6 @@ __all__ = (
     "memory",
     "lifecycle",
     "lifecycle_io",
+    "init_closeout",
     "health",
 )

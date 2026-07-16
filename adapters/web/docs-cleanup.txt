@@ -22,6 +22,8 @@ Docs [██████████████░░░░░░] 70%
 
 The percentage comes from checker evidence, not subjective judgment: exactly 20 literal cells, one cell per five percentage points; the line is standalone, never inside a code fence or backticks. Other commands must not perform hidden retrieval solely to calculate it.
 
+For `init`, use the single Init progress channel defined in `init.md`; report the structural score as prose (for example, `Structural score: 83%`) and never render the generic `Docs` health meter.
+
 Rubric v2 keeps the structural percentage separate from Trust. Overall health requires clean structure, verified declared current-truth coverage, fresh state-declared digests, and no blocking open priority; byte telemetry never changes the percentage or verdict.
 
 For `check`, report the deterministic structural score only. No advice and no edits.
@@ -41,6 +43,20 @@ Every approved mutating command uses one closeout transaction for state, finding
 Closeout runs the approved result verification before touching operational memory. It then writes every control-plane result to a same-directory reserved transaction temporary, verifies the staged bytes and schema, flushes and closes every file, replaces targets in deterministic order, and records the success event last. A successful event binds the transaction ID, starting digests, state and findings digests, target set, and external-manifest digest. Its informational timestamp does not determine its `EVT-*` identity. An external manifest path is derived only after the semantic event ID; swapping a manifest under the same event is a P0 state conflict.
 
 An I/O, staged-verification, cross-device replacement, or Windows sharing violation rolls the complete control set back to its exact starting bytes and records no successful event. Named boundaries cover each state, findings, manifest, local-map, and event-last stage. An interruption follows the same rollback rule before it propagates. On restart, bounded read-only inspection covers every lifecycle-controlled directory; a nested orphan reserved temporary, unreferenced external manifest or local map, missing event, or any torn transaction binding is a P0 state conflict. Recovery is a separate deterministic, zero-write preview that preserves non-conflicting protected intent and verified sources; only exact approval may apply it through the same transaction protocol.
+
+For Init, transaction schema 3 and policy `init-closeout-v3` use the durable recovery journal
+under `.diataxis/recovery/<transaction-id>/`. Its exact transaction-local `.gitignore` guard
+`*\n` is flushed and verified before the prepared journal, bounded backups, or staged results.
+The guard is revalidated immediately before every journal, install, and Doctor recovery mutation;
+missing or changed guard bytes permit no further target mutation and no success event. The journal persists
+the identities of transaction-created parents before dependent writes; per-operation and
+rollback compares reject an identity swap. Pre-event verification proves the complete installed
+result and writes one canonical, body-free `terminal.json`; neither journal nor terminal is
+rewritten after the successful event is installed last as the commit point. Cleanup renames the
+recovery root to its exact action suffix, pins the recovery tree, deletes bodies and journal,
+revalidates the live action, deletes `terminal.json`, and deletes the ignore guard last. Doctor may offer exactly cleanup,
+rollback, or finalize after bounded reconciliation. A journal, terminal, or suffix alone never
+authorizes a write; an empty post-terminal tombstone requires canonical live-state validation.
 
 The local-only routing map is `.diataxis/local-map.json`. A Git closeout may create or update it only when that exact path is untracked and normal Git ignore evaluation proves it ignored in the exact selected repository. A tracked path remains unsafe even if a later `.gitignore` rule names it. A no-Git workspace, tracked path, or unignored path requires user action and makes zero writes. Shared state and events contain only the generic local-map route and its transaction digest; they never contain private local filenames, topics, aliases, or bodies.
 

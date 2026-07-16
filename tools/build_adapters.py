@@ -7,10 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("doctor", "init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
-REFERENCE_FILES = ("commands.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
+REFERENCE_FILES = ("commands.md", "init.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 CHECKER_FILES = (
     "scripts/check.py",
+    "scripts/init_closeout.py",
     "scripts/_docs_checker/__init__.py",
     "scripts/_docs_checker/paths.py",
     "scripts/_docs_checker/metadata_io.py",
@@ -27,6 +28,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/memory.py",
     "scripts/_docs_checker/lifecycle.py",
     "scripts/_docs_checker/lifecycle_io.py",
+    "scripts/_docs_checker/init_closeout.py",
     "scripts/_docs_checker/health.py",
 )
 CANONICAL_RESOURCE_FILES = (
@@ -43,7 +45,7 @@ SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 # after measuring the command-specific compositions (see ``prompt_measurements``) and leaves
 # substantial room for ordinary contract growth.  The retired 16,000-byte concatenation ceiling
 # is intentionally not used here.
-PROMPT_REGRESSION_GUARD_BYTES = 32_000
+PROMPT_REGRESSION_GUARD_BYTES = 40_000
 CLAUDE_PLUGIN_MANIFEST_BASE = {
     "name": "diataxis-docs",
     "description": "Bounded repository memory. Evidence-backed documentation.",
@@ -227,8 +229,8 @@ def _supporting_rules(command: str) -> list[str]:
         rules.append(principles.strip())
         rules.append(_markdown_section(memory, "Operational continuity"))
     elif command == "init":
+        rules.append((SOURCE / "references" / "init.md").read_text(encoding="utf-8").strip())
         rules.append(_markdown_section(memory, "Initialization closeout"))
-        rules.append(_markdown_section(memory, "Verified lifecycle closeout"))
         rules.append((SOURCE / "references" / "isolation.md").read_text(encoding="utf-8").strip())
     elif command in {"write", "update", "fix", "migrate", "cleanup"}:
         rules.append(_markdown_section(memory, "Verified lifecycle closeout"))
@@ -343,8 +345,15 @@ def validate(output: Path) -> list[str]:
     for link in links:
         target = SOURCE / link
         if not target.is_file(): errors.append(f"missing reference {link}")
-        elif re.search(r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")):
-            errors.append(f"reference exceeds one hop {link}")
+        else:
+            nested_links = re.findall(
+                r"\[[^]]+\]\(([^)#]+)", target.read_text(encoding="utf-8")
+            )
+            # The command router is intentionally allowed to point to the focused Init
+            # contract; every other canonical route remains one-hop.
+            allowed_router = link == "references/commands.md" and set(nested_links) <= {"init.md"}
+            if nested_links and not allowed_router:
+                errors.append(f"reference exceeds one hop {link}")
     expected_slash_skill = slash_skill(canonical)
     for v in ("claude","copilot","grok","cursor"):
         p=adapter_skill_root(output, v)/"SKILL.md"

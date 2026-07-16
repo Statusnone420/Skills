@@ -103,6 +103,10 @@ _DOCTOR_FINDING_ID = re.compile(
 _DOCTOR_FINGERPRINT = re.compile(r"^(?P<digest>[0-9a-f]{64})$")
 
 
+def _is_public_continuation_token(path):
+    return path[-2:] == ("continuation", "token")
+
+
 def _walk(value, path=()):
     if isinstance(value, Mapping):
         for key, child in value.items():
@@ -118,7 +122,7 @@ def _walk(value, path=()):
 def _validate_public(receipt: Mapping) -> None:
     for kind, text, path in _walk(receipt):
         location = "/".join(path)
-        if kind == "key" and (
+        if kind == "key" and not _is_public_continuation_token(path) and (
             _SECRET_KEY.search(text) or _PRIVATE_KEY.search(text) or _PRIVATE_KEY_BLOCK.search(text)
         ):
             raise ValueError(f"public trajectory receipt contains a private key at {location}")

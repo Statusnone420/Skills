@@ -92,7 +92,7 @@ Task 9 replaced the legacy all-command concatenation with command-specific progr
 | cleanup | 10,511 |
 | help | 4,081 |
 
-The 32,000-byte value is a measured packaging regression guard with 10,160 bytes of headroom over the observed maximum. It is not a product limit, health input, or evidence-backed industry standard. The separate 16,384-byte repository hot-path figure remains provisional, provenance-tagged optimization telemetry only.
+The 32,000-byte value was the Task 9 packaging regression guard with 10,160 bytes of headroom over that run's observed maximum. It was not a product limit, health input, or evidence-backed industry standard. The separate 16,384-byte repository hot-path figure remains provisional, provenance-tagged optimization telemetry only.
 
 No hidden reasoning, credentials, private paths, or private repository material are part of the public record. Raw task identifiers and unsanitized traces remain private; only final outputs, diffs, concise tool events, and measured counters may be exported.
 
@@ -102,4 +102,4 @@ On 2026-07-14, a local-only checker harness exercised 13 disposable repository c
 
 The no-doc case returned an adoption preview with `content_reads: 0`; the large-slop case returned a bounded batch-limited preview without opening the unique fact; stale and merged state returned blocked Trust outcomes; the local-only case returned choice-required with present-uninspected candidates and absence claims disallowed; and protected-surface previews reported 9 synthetic surfaces. The authorized Cline local-authority run found a choice boundary with two local candidates, then an explicit local scope planned 12 files/94,889 bytes with zero content reads; selected read-only retrieval verified nine staged plan entries, including Chat Calm and performance work. No local body, private route, or map was copied into shared state or public output.
 
-A safe local checkout with a configured remote supplied the public-repository evidence: 10 protected surfaces were inventoried conservatively, the evidence was incomplete and scope-limited, and no relocation or mutation was attempted. No network clone was run. The 16,384-byte hot-path value and 21,840-byte prompt maximum remain measured telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.
+A safe local checkout with a configured remote supplied the public-repository evidence: 10 protected surfaces were inventoried conservatively, the evidence was incomplete and scope-limited, and no relocation or mutation was attempted. No network clone was run. The 16,384-byte hot-path value and 26,596-byte prompt maximum remain measured telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.

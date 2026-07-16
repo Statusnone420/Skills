@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 _REPOSITORY_ROOT = str(Path(__file__).resolve().parents[1])
 _ADDED_REPOSITORY_ROOT = _REPOSITORY_ROOT not in sys.path
@@ -19,13 +19,12 @@ try:
         _prune_reason,
     )
     from skills.docs.scripts._docs_checker.receipt import (
-        DISCOVERY_CONTRACT_V1,
-        DISCOVERY_CONTRACT_V2,
-        DISCOVERY_V1_FIELDS,
-        DISCOVERY_V2_FIELDS,
+        DISCOVERY_CONTRACT_VERSION,
+        DISCOVERY_FIELDS,
         discovery_fields,
-        validate_v2_extensions,
+        validate_discovery_receipt,
     )
+    from skills.docs.scripts._docs_checker.knowledge import local_prune_reason
     from skills.docs.scripts._docs_checker.paths import (
         ANYWHERE_PRUNE_DIRS,
         REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
@@ -37,11 +36,10 @@ finally:
 
 DOCTOR_DISCOVERY_KIND = "init-discovery"
 DISCOVERY_RECEIPT_CHECKSUM_VERSION = 1
-DOCTOR_DISCOVERY_RECEIPT_FIELDS = DISCOVERY_V1_FIELDS - {"root"}
-DOCTOR_DISCOVERY_RECEIPT_FIELDS_V2 = DISCOVERY_V2_FIELDS - {"root"}
+DOCTOR_DISCOVERY_RECEIPT_FIELDS = DISCOVERY_FIELDS - {"root"}
 
 
-def doctor_discovery_receipt_fields(version):
+def doctor_discovery_receipt_fields(version=DISCOVERY_CONTRACT_VERSION):
     return discovery_fields(version) - {"root"}
 
 
@@ -72,7 +70,7 @@ def _copy_exact_json(value):
 
 
 def _canonical_receipt_checksum(payload):
-    """Return the raw v1 checksum for an exact sanitized Task 5 receipt."""
+    """Return the checksum for an exact sanitized schema-3 receipt."""
     if type(payload) is not dict:
         return None
     version = payload.get("schema_version")
@@ -85,11 +83,7 @@ def _canonical_receipt_checksum(payload):
     if not _is_exact_json(payload):
         return None
     envelope = {
-        "contract": (
-            "task5-init-discovery-receipt-checksum"
-            if version == DISCOVERY_CONTRACT_V1
-            else "task5.1-init-discovery-receipt-checksum"
-        ),
+        "contract": "task5-init-discovery-receipt-checksum",
         "payload": payload,
         "version": version,
     }
@@ -101,17 +95,6 @@ def _canonical_receipt_checksum(payload):
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
-
-
-def _is_absolute_root(value):
-    return bool(
-        type(value) is str
-        and value
-        and (
-            PurePosixPath(value).is_absolute()
-            or PureWindowsPath(value).is_absolute()
-        )
-    )
 
 
 def build_doctor_discovery_action(discovery_result):
@@ -129,20 +112,14 @@ def build_doctor_discovery_action(discovery_result):
     except ValueError as error:
         raise ValueError("discovery result has an unsupported contract version") from error
     root = discovery_result.get("root")
-    valid_root = (
-        _is_absolute_root(root)
-        if version == DISCOVERY_CONTRACT_V1
-        else type(root) is str and root == "."
-    )
     if (
         set(discovery_result) != capture_fields
         or not _is_exact_json(discovery_result)
-        or not valid_root
+        or type(root) is not str
+        or root != "."
+        or not validate_discovery_receipt(discovery_result)
     ):
-        raise ValueError(
-            "discovery result must be exact Task 5 JSON or exact Task 5.1 JSON "
-            "with a sanitized root"
-        )
+        raise ValueError("discovery result must be exact schema-3 Task 5 JSON")
     payload = {
         key: _copy_exact_json(value)
         for key, value in discovery_result.items()
@@ -150,7 +127,7 @@ def build_doctor_discovery_action(discovery_result):
     }
     checksum = _canonical_receipt_checksum(payload)
     if checksum is None:
-        raise ValueError("discovery result does not match the v1 receipt contract")
+        raise ValueError("discovery result does not match the schema-3 receipt contract")
     return dict(
         owner="docs",
         kind=DOCTOR_DISCOVERY_KIND,
@@ -162,15 +139,16 @@ def build_doctor_discovery_action(discovery_result):
 __all__ = (
     "ANYWHERE_PRUNE_DIRS",
     "DISCOVERY_RECEIPT_CHECKSUM_VERSION",
+    "DISCOVERY_CONTRACT_VERSION",
     "DOCUMENTATION_ROOT_NAMES",
     "DOCTOR_DISCOVERY_KIND",
     "DOCTOR_DISCOVERY_RECEIPT_FIELDS",
-    "DOCTOR_DISCOVERY_RECEIPT_FIELDS_V2",
     "INIT_DISCOVERY_LIMITS",
     "PACKAGE_CONTAINER_NAMES",
     "REPOSITORY_ROOT_ONLY_PRUNE_DIRS",
     "_prune_reason",
     "build_doctor_discovery_action",
     "doctor_discovery_receipt_fields",
-    "validate_v2_extensions",
+    "local_prune_reason",
+    "validate_discovery_receipt",
 )

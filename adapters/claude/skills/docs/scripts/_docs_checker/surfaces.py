@@ -92,8 +92,6 @@ def _base_policy(path, host):
         return "documentation-site-config", "automation/tooling-consumed", True
     if lowered.startswith(("docs/site/", "website/docs/", "site/docs/", "public/docs/")):
         return "documentation-site-route", "externally-linked/stable-public-path", True
-    if host == "unknown" and (lowered.startswith("docs/") or "/" not in path):
-        return "established-public-path", "externally-linked/stable-public-path", True
     return "internal-documentation", "ordinary-internal-documentation", False
 
 
@@ -183,7 +181,11 @@ def classify_protected_surfaces(
                 "protected": protected,
                 "placement": _placement(path),
                 "surfaced": path == surfaced_readme,
-                "default_disposition": "retain" if protected else "eligible-with-disposition",
+                "default_disposition": (
+                    "retain"
+                    if protected or (host == "unknown" and not complete)
+                    else "eligible-with-disposition"
+                ),
                 "compatibility_evidence": sources,
             }
         )

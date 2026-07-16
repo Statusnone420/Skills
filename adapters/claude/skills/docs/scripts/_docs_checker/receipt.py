@@ -1,50 +1,31 @@
-"""Canonical data-only Init discovery receipt versions."""
+"""Canonical data-only Init discovery receipt."""
 
-from .continuation import validate_continuation_cursor
+from .continuation import (
+    _total_batches,
+    decode_continuation_token,
+    validate_continuation_cursor,
+)
 from .knowledge import validate_local_knowledge_receipt
 from .paths import normalize_repo_relative
 from .surfaces import validate_protected_surfaces
 
 
-DISCOVERY_CONTRACT_V1 = 1
-DISCOVERY_CONTRACT_V2 = 2
-DISCOVERY_CONTRACT_VERSIONS = frozenset({DISCOVERY_CONTRACT_V1, DISCOVERY_CONTRACT_V2})
-
-DISCOVERY_V1_FIELDS = frozenset(
+DISCOVERY_CONTRACT_VERSION = 3
+DISCOVERY_FIELDS = frozenset(
     """schema_version mode status root requested_scope normalized_scope
     jurisdiction_scope candidates recommended_scope selected_scope inspected_scope
     selection_reason limits observed scope_metadata content_batch physical_limit
     prunes applied_exclusions explicit_root_only_overrides truncated next_boundary
     requires_user_action user_action scope_limited repository_exhaustive
-    content_reads""".split()
+    content_reads continuation completeness adoption_preview root_documents
+    local_knowledge evidence_reads protected_surfaces""".split()
 )
-DISCOVERY_V2_EXTENSION_FIELDS = frozenset(
-    {
-        "continuation",
-        "completeness",
-        "adoption_preview",
-        "root_documents",
-        "local_knowledge",
-        "evidence_reads",
-        "protected_surfaces",
-    }
-)
-DISCOVERY_V2_FIELDS = DISCOVERY_V1_FIELDS | DISCOVERY_V2_EXTENSION_FIELDS
 
 
-def discovery_fields(version):
-    if type(version) is not int or version not in DISCOVERY_CONTRACT_VERSIONS:
+def discovery_fields(version=DISCOVERY_CONTRACT_VERSION):
+    if type(version) is not int or version != DISCOVERY_CONTRACT_VERSION:
         raise ValueError("unsupported discovery contract version")
-    return DISCOVERY_V1_FIELDS if version == DISCOVERY_CONTRACT_V1 else DISCOVERY_V2_FIELDS
-
-
-def project_discovery_result(result, version, *, absolute_root):
-    """Project internal orchestration data onto one exact public contract."""
-    fields = discovery_fields(version)
-    projected = {key: result[key] for key in sorted(fields)}
-    projected["schema_version"] = version
-    projected["root"] = str(absolute_root) if version == DISCOVERY_CONTRACT_V1 else "."
-    return projected
+    return DISCOVERY_FIELDS
 
 
 def _exact_nonnegative_int(value):
@@ -67,25 +48,58 @@ def _valid_continuation(value):
         "status",
         "batch",
         "cursor",
+        "token",
+        "total_batches",
         "rejection",
         "fresh_preview_required",
     }:
         return False
     if (
         type(value["schema_version"]) is not int
-        or value["schema_version"] != 1
+        or value["schema_version"] != 3
         or value["status"] not in {"available", "blocked", "complete", "rejected"}
         or not (value["batch"] is None or _exact_nonnegative_int(value["batch"]))
+        or not (
+            value["total_batches"] is None
+            or (
+                _exact_nonnegative_int(value["total_batches"])
+                and value["total_batches"] > 0
+            )
+        )
         or not (value["rejection"] is None or type(value["rejection"]) is str)
         or type(value["fresh_preview_required"]) is not bool
     ):
         return False
     cursor = value["cursor"]
-    if cursor is None:
-        return value["status"] != "available"
+    token = value["token"]
+    if value["status"] == "available":
+        if (
+            not validate_continuation_cursor(cursor)
+            or type(token) is not str
+            or not token
+            or value["batch"] is None
+            or value["batch"] <= 0
+            or value["total_batches"] is None
+            or value["total_batches"] <= 0
+        ):
+            return False
+        try:
+            return decode_continuation_token(token) == cursor
+        except ValueError:
+            return False
+    if value["status"] == "complete":
+        return bool(
+            cursor is None
+            and token is None
+            and value["batch"] is not None
+            and value["batch"] > 0
+            and value["total_batches"] is not None
+            and value["total_batches"] > 0
+        )
     return bool(
-        value["status"] == "available"
-        and validate_continuation_cursor(cursor)
+        cursor is None
+        and token is None
+        and value["batch"] is None
     )
 
 
@@ -152,6 +166,37 @@ def _valid_root_documents(value):
     )
 
 
+def _valid_candidates(value, selected_scope, normalized_scope, selection_reason):
+    if type(value) is not list:
+        return False
+    seen = set()
+    for rank, item in enumerate(value, 1):
+        if type(item) is not dict or set(item) != {"path", "source", "rank"}:
+            return False
+        path = item["path"]
+        source = item["source"]
+        if (
+            not _safe_relative(path)
+            or type(source) is not str
+            or not (
+                source in {"root", "direct-child", "explicit"}
+                or source.startswith("container:")
+            )
+            or item["rank"] != rank
+            or path.casefold() in seen
+        ):
+            return False
+        seen.add(path.casefold())
+        if path.casefold() == ".local" or path.casefold().startswith(".local/"):
+            if not (
+                source == "explicit"
+                and selection_reason == "explicit-scope"
+                and path == selected_scope == normalized_scope
+            ):
+                return False
+    return True
+
+
 def _valid_content_batch(value):
     if type(value) is not dict or set(value) != {
         "paths",
@@ -207,6 +252,14 @@ def _valid_continuation_relation(value):
     if type(scope_paths) is not list:
         return False
     status = continuation["status"]
+    try:
+        total_batches = _total_batches(
+            scope_paths,
+            value["limits"]["content_files"],
+            value["limits"]["content_bytes"],
+        )
+    except (KeyError, TypeError, ValueError):
+        total_batches = None
     if status == "available":
         cursor = continuation["cursor"]
         segment = _contiguous_slice(batch["paths"], scope_paths)
@@ -223,9 +276,9 @@ def _valid_continuation_relation(value):
             and next_index < len(scope_paths)
             and cursor["after_path"] == scope_paths[next_index - 1].get("path")
             and batch["next_boundary"] == scope_paths[next_index].get("path")
-            and value["requires_user_action"] is True
-            and value["user_action"]
-            == "after-content-batch-choose-continuation-or-narrow-scope"
+            and continuation["total_batches"] == total_batches
+            and value["requires_user_action"] is False
+            and value["user_action"] == "continue-init-inspection"
         )
     if status == "complete":
         segment = _contiguous_slice(batch["paths"], scope_paths)
@@ -235,6 +288,7 @@ def _valid_continuation_relation(value):
             and continuation["batch"] > 0
             and continuation["rejection"] is None
             and continuation["fresh_preview_required"] is False
+            and continuation["total_batches"] == total_batches
             and batch["complete"] is True
             and batch["truncated"] is False
             and batch["blocked_by_metadata"] is False
@@ -273,16 +327,46 @@ def _valid_continuation_relation(value):
     )
 
 
-def validate_v2_extensions(value):
-    """Validate the additive v2 envelope without filesystem access."""
-    if type(value) is not dict or not DISCOVERY_V2_EXTENSION_FIELDS <= set(value):
+def validate_discovery_receipt(value):
+    """Validate the exact schema-3 discovery envelope without filesystem access."""
+    if (
+        type(value) is not dict
+        or set(value) != DISCOVERY_FIELDS
+        or value.get("schema_version") != DISCOVERY_CONTRACT_VERSION
+        or value.get("root") != "."
+    ):
         return False
     adoption = value["adoption_preview"]
     local = value["local_knowledge"]
     evidence = value["evidence_reads"]
     protected = value["protected_surfaces"]
+    selected_scope = value["selected_scope"]
+    normalized_scope = value["normalized_scope"]
+    selection_reason = value["selection_reason"]
+    expected_visibility = (
+        None
+        if selected_scope is None
+        else "local-only"
+        if selected_scope.casefold() == ".local"
+        or selected_scope.casefold().startswith(".local/")
+        else "shared"
+    )
+    explicit_selection_is_coherent = not (
+        value["requested_scope"] is not None
+        and normalized_scope not in {None, "."}
+        and selected_scope == normalized_scope
+        and selection_reason != "explicit-scope"
+    )
     return bool(
-        _valid_continuation(value["continuation"])
+        _exact_nonnegative_int(value["content_reads"])
+        and _valid_candidates(
+            value["candidates"],
+            selected_scope,
+            normalized_scope,
+            selection_reason,
+        )
+        and explicit_selection_is_coherent
+        and _valid_continuation(value["continuation"])
         and _valid_continuation_relation(value)
         and _valid_completeness(value["completeness"])
         and _valid_root_documents(value["root_documents"])
@@ -295,20 +379,16 @@ def validate_v2_extensions(value):
         and adoption["includes_local_details"] is False
         and adoption["writes"] == 0
         and validate_local_knowledge_receipt(local, evidence)
+        and local.get("selected_visibility") == expected_visibility
         and validate_protected_surfaces(protected)
     )
 
 
 __all__ = (
-    "DISCOVERY_CONTRACT_V1",
-    "DISCOVERY_CONTRACT_V2",
-    "DISCOVERY_CONTRACT_VERSIONS",
-    "DISCOVERY_V1_FIELDS",
-    "DISCOVERY_V2_EXTENSION_FIELDS",
-    "DISCOVERY_V2_FIELDS",
+    "DISCOVERY_CONTRACT_VERSION",
+    "DISCOVERY_FIELDS",
     "discovery_fields",
-    "project_discovery_result",
     "validate_local_knowledge_receipt",
     "validate_protected_surfaces",
-    "validate_v2_extensions",
+    "validate_discovery_receipt",
 )

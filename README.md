@@ -96,7 +96,7 @@ Compatibility is evidence-tiered—not universal. Static adapter validation is n
 
 Every finding has a content-derived `DOC-*` identity and full fingerprint. Line movement and timestamps do not retarget it; changed semantic identity does. Approved structural transformations carry exact ID/fingerprint pairs, protected-surface evidence, recovery boundaries, and a complete disposition manifest. Failed verification is a state conflict, never a successful closeout.
 
-The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,214 to 21,840 bytes; the 32,000-byte packaging guard is a documented regression check with 10,160 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
+The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,412 to 26,596 bytes; the 40,000-byte packaging guard is a documented regression check with 13,404 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
 
 ## Benchmark status
 

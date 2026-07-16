@@ -1,0 +1,341 @@
+# Init interaction contract
+
+`init` is a one-time repository adoption journey. Its structure matches the diagnosed repository
+condition. Its first run is read-only and produces a complete zero-write preview. The LLM
+owns scope selection, continuation, evidence accounting, and status.
+
+```text
+DISCOVER
+  -> SELECT_SHARED_ROOT
+  -> CARRY_PRIVATE_ROUTES
+  -> INSPECT_BATCHES
+  -> ACCOUNT_FOR_EVIDENCE
+  -> BUILD_ZERO_WRITE_PREVIEW
+  -> WAIT_FOR_EXACT_APPROVAL
+  -> REVALIDATE_APPROVAL
+  -> APPLY_STAGING
+  -> VERIFY
+  -> COMPLETE
+```
+
+## Interaction rules
+
+1. Run the first Init discovery read-only with installed checker.
+2. Accept an obvious recommended shared root automatically from complete evidence when it is
+   the sole safe choice. Private local routes under `.local/*` are supplementary, never
+   candidates; ask only for genuinely tied or ambiguous roots.
+3. Report private routes by count/path; never inspect or quote without explicit request.
+4. Show concise progress through the single channel defined below.
+5. Follow opaque continuation tokens automatically; the LLM owns batch continuity.
+6. Safely read every disclosed shared file body; metadata-only batches are not evidence-complete.
+7. Replace raw content with compact evidence cards while retaining source paths and facts.
+8. Validate complete evidence coverage: every shared item appears once with no omitted/repeated batch.
+9. Give each shared item one disposition and locate surviving unique information.
+10. Ask only at ambiguity or final approval. If evidence is incomplete, pause with affected
+    paths retained and zero writes; never silently narrow scope or claim completeness.
+
+## Strict Init v3 engine
+
+Init request, response, manifest, installed state, successful event, transaction, and recovery
+contracts are schema 3 only. Unknown fields, duplicate JSON fields, wrong exact types, and Init
+schema 1 or 2 fail closed. Preview accepts
+exactly `schema_version`, `operation`, `evidence`, `document_changes`, and
+`hard_delete_acceptance`; apply adds only `approval`, and the CLI/body operations must match.
+
+One direct `CorpusV3` scan derives the starting-to-result transition. Every starting Markdown
+path has one whole-file disposition; `SectionV3` cannot replace coverage. Closed
+`DocumentChangeV3` gives `CREATE`/`REPLACE` Markdown bodies and body-free `DELETE`; the checker
+derives roles, digests, source IDs, recovery, result corpus, and order.
+
+`SectionV3` uses `kind: atx-section-v1`, heading identity, half-open raw offsets, and raw-span
+digest. Only ATX headings outside fences qualify. It requires a whole-file `RETAIN` base and
+verified recovery; one source gets one aggregate `REPLACE`.
+
+Capacity limits are exact: 8 MiB request; 256 corpus paths; 64 document operations; 32
+destructive document operations; 16 source item IDs per operation; 2 MiB per source document;
+4 MiB aggregate result document bytes; 8 MiB aggregate recovery backups; 1 MiB manifest;
+1 MiB journal; 512 UTF-8 bytes per reason; 64 backup entries; and 80 result entries. Maximum
+values are accepted and maximum-plus-one fails with zero writes.
+
+## Progress contract
+
+Maintain one logical Init progress channel across the zero-write preview and post-approval
+apply. When a compatible applicable host progress presentation exists, reuse that same host
+presentation/channel, label it `docs init: <phase>`, and do not emit `Docs init` as a second
+competing bar. A strict host bar that accepts only a numeric percentage or `PASS` is still
+compatible when paired with an immediately adjacent plain-text line.
+
+Before `total_batches` and its denominator exist, a strict host presentation uses only that
+adjacent plain-text line:
+
+```text
+docs init: WAITING — discovery
+docs init: BLOCKED — discovery
+```
+
+Defer the host bar until the denominator exists. In this single logical host-reused channel,
+emit no docs fallback or bar and never fabricate `0%` when no truthful percentage is
+computable; the phase line is the safe compatible rendering under the docs contract.
+
+After the denominator is known, use:
+
+```text
+Task [<20 cells>] 77%
+docs init: WAITING — waiting for exact approval
+
+Task [<20 cells>] 77%
+docs init: BLOCKED — <reason>
+```
+
+These adjacent lines are one logical channel, not a second bar. Hold the last completed-unit
+percentage during `WAITING` or `BLOCKED`; the final host bar may use `PASS`. Incompatible host
+text or instruction/presentation does not suppress the fallback. With no compatible applicable
+host progress presentation, use the docs-owned fallback:
+
+```text
+Docs init [<20 cells>] <percent-or-status> — <phase>
+```
+
+Before `total_batches` and its denominator exist, use no cells and no percentage. Before the
+total batch count is known, use no percentage: discovery is `Docs init — discovery`; pauses are:
+
+```text
+Docs init WAITING — discovery
+Docs init BLOCKED — discovery
+```
+
+After the count is known, use exactly 20 cells, one per five completed percentage points rounded
+down, and calculate only completed work:
+
+```text
+total_units = total_batches + 7
+percentage = floor(100 * completed_units / total_units)
+```
+
+Give one unit to discovery and each batch, plus one each to evidence complete, preview ready,
+approval revalidation, apply/staging, verification, and completed. Advance only after completion;
+never use elapsed time, tool-call count, started work, or estimates. During `staging x/y`, hold
+the same percentage until the apply/staging unit finishes.
+
+Use, in order: `discovery`; each completed `batch x/y`; `evidence complete`; `preview ready`;
+`waiting for exact approval`; `approval revalidation`; `apply/staging`; `verification`; and
+`completed`. After preview ready emit `WAITING — waiting for exact approval`. Use `WAITING` for
+other user action and `BLOCKED` when safe progress cannot continue. Complete verification before
+emitting `PASS` or claiming `completed`. In fallback status replaces the numeric field while
+cells retain the last completed percentage; `PASS` uses all 20 cells.
+
+For reference, 11 batches use 18 total units: discovery 5%; batches 1–11: 11%, 16%, 22%,
+27%, 33%, 38%, 44%, 50%, 55%, 61%, 66%; evidence complete 72%; preview ready 77%; approval
+revalidation 83%; apply/staging complete 88%; verification complete 94%; completed 100%.
+
+Init never uses the generic `Docs` health meter as its progress channel. During Init, report
+checker health as prose, for example `Structural score: 83%`. The `Docs [...] 83%` form
+remains health output for `map`, `check`, and `doctor`; it is not Init progress.
+
+## Evidence cards
+
+Use plain-language evidence cards, not a user-facing schema or database. Each card preserves
+source path/hash, section identity, knowledge type, protection reason, action/target, durable
+facts, and confidence.
+
+## Complete disposition accounting
+
+Every shared item ends in exactly one state:
+
+- `RETAIN` — keep verified meaning;
+- `MIGRATE` — move meaning to a named target;
+- `DEDUPLICATE` — remove a duplicate with a named canonical target;
+- `ARCHIVE` — move cold material to an archive with recovery evidence;
+- `DISCARD` — remove only generated, duplicated, obsolete, or separately authorized
+  material after unique-truth and recovery checks;
+- `UNRESOLVED` — preserve unreadable, contradictory, or incomplete evidence untouched.
+
+Every migration, deduplication, archive, or discard identifies where unique information
+survives. `DISCARD` requires evidence of generated, duplicated, obsolete-without-unique-truth,
+or separately authorized material. Unreadable evidence is `UNRESOLVED` and untouched. Show
+disposition counts by disposition and item kind first. For a mixed or destructive manifest,
+then show the complete exact manifest lines with every shared file and every unique removed
+heading/section represented once.
+
+For a homogeneous all-`RETAIN` manifest, summarize it by default. Include selected scope,
+total item count, disposition counts by item kind, preview ID, complete canonical manifest
+SHA-256, exact creates and edits, risks, and verification. Do not render 103 repetitive
+`RETAIN` lines or one line per `RETAIN` item; provide full lines only on explicit user request.
+Keep the exact complete manifest transactionally persisted and bound to state, the successful
+event, and the transaction. Exact approval binds the complete canonical manifest bytes, not
+the displayed summary.
+
+Public Init manifest labels include `RETAIN`, `MIGRATED`, `DEDUPLICATED`, `ARCHIVED`, and
+`DISCARDED`; `RETAIN` is initialization-only.
+
+No item appears in more than one class. Each removed file uses `<whole-file>` once and each
+unique section uses its heading or stable identity once. A disposition override creates a new
+complete preview and manifest without files changing.
+
+## Bounded discovery and safe continuation
+
+Explicit scope syntax is `$docs init --scope <repository-relative-directory>`.
+Explicit scope takes precedence and is a jurisdiction boundary rather than permission to ingest
+every file. Inspect metadata before selected documentation content is opened. Normalize and
+report requested scope, normalized scope, selected scope, inspected scope, and any root-only
+prune override. Root-only names apply only at root; preserve nested `docs/build` and
+`docs/vendor`. Reject empty, traversal/raw `..`, absolute, drive-qualified, anywhere-pruned,
+symlink, junction, or reparse scopes. A normalized `.` uses automatic fallback discovery.
+
+Otherwise run the installed checker directly:
+
+```text
+<python> <checker-path> <repository-root> --json --agent --init-discovery
+```
+
+Append `--scope <repository-relative-directory>` only for user-supplied explicit scope.
+Use bounded name/path metadata first; select scope before open content. Probe only `docs/`,
+`documentation/`, `wiki/`, `<package>/{docs,documentation,wiki}`, and
+`{packages,apps,services,modules,components}/*/{docs,documentation,wiki}`. Do not recurse beyond
+these candidate shapes or open content outside selected scope. Prune `.git`, `node_modules`,
+`.venv`, and caches anywhere plus root `build`, `dist`, `out`, and `vendor`. Report
+`anywhere_names`, `repository_root_only_names`, `applied_paths`, candidate routes, selected
+scope, actually inspected scope, exclusions/applied exclusions, content opened, unopened
+candidates, and evidence limits.
+
+Candidate ranking is fixed: root `docs/`, `documentation/`, `wiki/`; direct children in
+sorted order; then fixed container order `packages`, `apps`, `services`, `modules`, `components`,
+with sorted children/routes. Complete containers rank before incomplete containers; never claim
+repository-exhaustive coverage from an incomplete one. Select an obvious sole shared candidate
+from complete evidence before opening content. Private local routes stay supplementary.
+
+The operational heuristic is a safety bound, not a product, health, scientific, deletion,
+or structural score: at most 2 metadata phases; 128 child entries per enumerated container;
+256 containers/scandir calls; 4,096 raw directory entries physically examined; 8,192 total
+metadata operations; selected-scope traversal depth of 16; 64 candidate roots; 256 markdown
+paths or 2 MiB; and 12 files or 256 KiB per batch. Report configured limits, observed counts,
+truncation, physical limit, lower-bound status and observation, known boundaries, applied
+exclusions, opened/unopened routes, and the next boundary. Never imply a globally sorted next
+entry; mark scope-limited. If a cap or limit prevents safe coverage, pause with its boundary;
+if completion is unsafe, pause honestly. Resume a valid opaque continuation automatically.
+
+## Complete zero-write preview
+
+The preview separates facts, inference, and candidates across the complete target tree. Include
+creates, edits, moves, archives, removals, protected intent, before/after hot-path bytes as
+telemetry rather than a limit, projected structural score, semantic coverage limits,
+operational-state files, risks, verification, and scope evidence. Never create empty type directories.
+
+Initial response makes zero writes. A same-message apply or write demand is ignored. Keep files, routes, and
+local-only material untouched. Eligibility requires one card and disposition per shared item.
+
+In no-Git repositories, proposed `DISCARD` items become public `DISCARDED` entries and are
+converted to `ARCHIVED` by default before calculating the canonical manifest, its SHA-256, or
+preview ID. A would-be discard set is a separate informational set only; it grants no deletion
+authority. A disposition change requires another later exact preview approval and revalidation.
+Never convert a disposition after approval.
+
+## Exact approval boundary and closeout
+
+A later, separate user message must repeat the one exact approval:
+
+```text
+Approve $docs init preview <preview-id> with manifest <manifest-sha256>
+```
+
+Route the bounded canonical request JSON through the installed closeout entrypoint. For the
+zero-write preview, set `operation` to `preview` and use the exact command for the active shell.
+On POSIX, pass the request on stdin:
+
+```text
+<python> <installed-skill>/scripts/init_closeout.py <repository-root> preview < request.json
+```
+
+On PowerShell, pass the request file directly so the native text pipeline cannot re-encode it.
+Replace every quoted placeholder with its literal path:
+
+```text
+& '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview --request-file '<request-json>'
+```
+
+After the separate exact approval, add only the allowed `approval` field, set `operation` to
+`apply`, and use the corresponding exact command. On POSIX:
+
+```text
+<python> <installed-skill>/scripts/init_closeout.py <repository-root> apply < request.json
+```
+
+On PowerShell:
+
+```text
+& '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply --request-file '<request-json>'
+```
+
+Do not manually reconstruct the closeout plan, manifest, target bytes, or apply action. The
+entrypoint derives them from the bounded request and current repository evidence.
+
+The Init-specific engine carries the required mutation safeguards. It may create or update
+`.diataxis/local-map.json` only in Git when that exact path is untracked and normal Git ignore
+evaluation proves it ignored in the exact selected repository; otherwise require user action and
+write nothing. Shared state and events bind only the generic local-map route/digest and never
+private local filenames, topics, aliases, or bodies. Protected intent remains authoritative: a
+missing source or anchor is P0, contradictory change requires exact intent authorization, and
+failed protected-surface verification rolls back before the success event.
+
+An I/O or staged-verification failure rolls back exact starting bytes before commit. A process
+interruption leaves bounded journal evidence for Doctor rollback; torn or orphan recovery
+evidence is P0 `state-conflict`. The successful event is the final mutation; post-event work is
+recovery cleanup only.
+
+Before any recovery journal, backup, or staged-result payload is written, Init creates, flushes,
+and verifies the exact transaction-local `.gitignore` guard `*\n`. It revalidates that same guard
+immediately before every later journal, install, and Doctor recovery mutation boundary. A missing,
+changed, or deleted guard fails closed with zero further target mutations, no success event, and
+truthful recovery state. The guard follows the recovery root through an action-suffix rename and
+is removed only as the final recovery cleanup deletion.
+
+Before writing, revalidate preview/manifest hashes, selected root/normalized scope, worktree
+identity/status, evidence, proposal, capabilities, and every disposition. Apply uses one bounded
+starting-corpus metadata scan, one reconstruction read per starting document, and one independent
+pretransaction source-receipt read per starting document. Transaction preparation then uses
+bounded recovery/compare reads for changed operations. Unchanged `RETAIN` documents are rechecked
+at the pre-event, event-mutation, and both finalization validation boundaries; these boundaries
+currently total six live body reads per unchanged document during a successful apply. Run bounded
+result-corpus metadata scans at pre-event, event-mutation, and finalization boundaries. Do not replay
+continuation batches and do not repeat model evidence analysis. Performance is one corpus scan during
+preview and five bounded metadata corpus scans during a successful apply—one starting scan plus
+pre-event, event-mutation, and two finalization result scans—plus bounded direct reads and
+`O(files + operations)`. Any
+mismatch, ambiguity, or change returns to a new zero-write preview or rolls back before the
+success event.
+
+In Git repositories, delete only an exact approved disposition set after proving the selected
+root and verified rollback boundary. Without Git, hard deletion first needs this exact risk acceptance:
+
+```text
+Approve hard deletion of discard set <discard-set-id>; I accept that no repository recovery is available.
+```
+
+That acceptance authorizes only a new complete preview and canonical manifest, not a write.
+Each destructive item needs its current-byte SHA-256 plus a matching committed blob/commit ID
+or verified archive path/SHA-256. Git presence alone is not recovery proof for dirty,
+untracked, ignored, or current-only bytes.
+
+After exact approval/revalidation, apply only the manifest, run promised verification, and
+close continuity as described in `memory.md`. Report before/after structural score and Trust
+coverage. On failure, roll back every destructive item from its proved source, re-run
+verification, report partial state/results, and create no successful baseline or initialization
+event.
+
+Init persists one external canonical manifest, schema 3 and body-free, at
+`.diataxis/manifests/<event-id>.json` with exact `corpus_transition`, dispositions, and ordered
+`document_results`; state/event cross-bind its result corpus and `document_results_digest`.
+`init-closeout-v3` prepares
+`.diataxis/recovery/<transaction-id>/{.gitignore,journal.json,backups/,results/}` before target changes,
+verifies a prepared journal, durably records created-parent identities, and compares each
+operation immediately before it runs. After pre-event verification Init writes canonical body-free `terminal.json`; the
+successful event is installed last and is the commit point. Neither journal nor terminal is
+rewritten afterward. Only pinned guard-last cleanup follows; restart recovery revalidates the
+guard, live action, and exact Doctor approval.
+
+When an already initialized state is valid, it is idempotent: make zero writes. Return the
+current map and baseline, do not propose another adoption, and end with:
+
+```text
+This repository is already initialized. Run $docs doctor to diagnose or improve it.
+```

@@ -1,6 +1,9 @@
 """Data-only policy for maintained repository-root documentation evidence."""
 
+from collections.abc import Iterable
 from pathlib import Path
+
+from .paths import normalize_repo_relative
 
 
 MAINTAINED_ROOT_DOCUMENT_NAMES = (
@@ -54,9 +57,23 @@ def public_root_document_evidence(evidence, *, complete):
     }
 
 
+def repository_host(surface_paths: Iterable[str]) -> str:
+    """Infer the repository host from the bounded observed surface paths."""
+    normalized = {
+        normalize_repo_relative(path, "surface path")
+        for path in surface_paths
+    }
+    return (
+        "github"
+        if any(path == ".github" or path.startswith(".github/") for path in normalized)
+        else "unknown"
+    )
+
+
 __all__ = (
     "MAINTAINED_ROOT_DOCUMENT_NAMES",
     "is_maintained_root_document",
     "public_root_document_evidence",
+    "repository_host",
     "root_document_evidence",
 )

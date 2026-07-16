@@ -14,6 +14,52 @@ Consult the exact `map`/`check` entry in `commands.md`; after scope selection, r
 
 Separate facts, inference, and candidates. Report actual loaded and unloaded material, every loaded path, and failed/preflight attempts. Exhaustive compact detection is separate from bounded semantic evidence loading. Post-check content opens remain bounded to at most four files and are used only for root-cause verification, priority, duplicate merging, and treatment design. A finding needing no content open consumes no opening. There is no compact-finding or treatment-count cap. Report every compact checker finding in the declared scan scope and group or merge duplicates into one or more correct evidence-backed treatments without suppressing individual finding coverage. Show which treatment covers each finding. Unverified semantic suspicions remain unresolved rather than becoming facts. Without explicit scope, keep untracked/unrelated material cold. Direct commands remain independently usable.
 
+## Consume Init v3 continuity
+
+Valid Init continuity is schema 3 only. Doctor cross-checks canonical manifest bytes and
+`manifest_identity`, state `result_corpus`, the event/manifest `corpus_transition`, and the
+shared `document_results_digest`. It also rederives the successful event identity, approval
+identity, transaction targets, roles, order, starting/control digests, and conditional local-map,
+protected-intent, and hard-delete bindings. Exactly one Init event must bind the manifest; later
+successful lifecycle events may follow it. Any hidden or incomplete recovery journal, body in a
+persisted payload, or mismatch is P0 `state-conflict`.
+
+Recovery diagnosis is bounded and read-only. Reconcile every journal/terminal binding, recorded
+parent identity, and live target, then offer exactly cleanup, rollback, or finalize when safe.
+Produce the deterministic zero-write JSON preview with exactly:
+
+```text
+<python> <installed-skill>/scripts/check.py <repository-root> --doctor-recovery-preview
+```
+
+A later apply must repeat exactly:
+
+```text
+Approve $docs doctor recovery <transaction-id> with journal <64-hex-or-ABSENT> state <64-hex> action <cleanup|rollback|finalize>
+```
+
+Pass that complete approval as one argument to exactly:
+
+```text
+<python> <installed-skill>/scripts/check.py <repository-root> --doctor-recovery-apply '<exact-approval-string>'
+```
+
+The apply entrypoint must recompute the preview from current recovery evidence and
+execute only the freshly recomputed action. It accepts no caller-supplied preview or action. Both modes emit
+JSON; approval-required and recovered results return success, while conflicts and failures
+return a normalized nonzero status.
+
+Revalidate the journal or terminal evidence, recorded parent identities, and reconciled state
+before writing. The successful event is the commit point: an absent event permits approved
+rollback, while an exact committed event permits only approved finalization of recovery
+artifacts. A cleanup/finalize suffix is never proof. Cleanup is confined through pinned recovery
+directories. Doctor requires the exact transaction-local `.gitignore` guard before every recovery
+mutation while any recovery artifact remains; a missing, changed, or deleted guard produces zero
+target mutations and no success event. Cleanup deletes the body-free terminal only after its final
+validation and deletes the guard last. An empty markerless tombstone still requires canonical live
+event/state/findings/manifest/corpus validation. Third-state bytes or an identity swap produce zero
+recovery writes.
+
 ## Treatment manifest
 
 Return a plain-English diagnosis with one or more correct evidence-backed treatments. Healthy repository: report health only when structure is clean and Trust is verified; no-memory: `init` preview with exact proposed tree; no empty Diátaxis folders. The user chooses whether to authorize the recommended architecture. There is no artificial treatment-size ceiling.

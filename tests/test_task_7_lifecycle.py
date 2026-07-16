@@ -22,6 +22,8 @@ sys.path.insert(0, str(SCRIPTS))
 import check as docs_checker
 
 from tests.test_repository_memory import (
+    BASE_DOCUMENTS,
+    complete_init_state,
     create_repository,
     file_snapshot,
     valid_event,
@@ -68,10 +70,10 @@ def semantic_finding(key="release-state", **overrides):
 
 
 def semantic_event(kind="update", approved_ids=()):
-    return {
+    event = {
         "kind": kind,
         "completed_at": "2026-07-13T12:00:00Z",
-        "skill_version": "0.1.0",
+        "skill_version": "0.3.0" if kind == "init" else "0.1.0",
         "approved_ids": list(approved_ids),
         "score_before": 84,
         "score_after": 90,
@@ -79,6 +81,16 @@ def semantic_event(kind="update", approved_ids=()):
         "reason": "Applied one exact approved documentation treatment.",
         "summary": "Verified the result and closed operational continuity.",
     }
+    if kind == "init":
+        event.update(
+            {
+                "worktree_kind": "filesystem",
+                "repository_identity": "1" * 64,
+                "worktree_identity": "2" * 64,
+                "worktree_state_identity": "3" * 64,
+            }
+        )
+    return event
 
 
 def disposition(
@@ -106,6 +118,96 @@ def disposition(
     return result
 
 
+def retained_disposition(identity="docs/README.md#<whole-file>"):
+    path, _section = identity.split("#", 1)
+    return {
+        "item_id": identity,
+        "path": path,
+        "section": {"kind": "whole-file"},
+        "disposition": "RETAIN",
+        "reason": "The item remains part of the exact verified adoption.",
+        "source_digest": "sha256:" + hashlib.sha256(identity.encode()).hexdigest(),
+    }
+
+
+def init_disposition(
+    identity="docs/legacy.md#<whole-file>",
+    *,
+    outcome="ARCHIVED",
+    target="docs/archive/legacy.md",
+    recovery_path=None,
+):
+    path, _section = identity.split("#", 1)
+    recovery_path = recovery_path or target
+    result = {
+        "item_id": identity,
+        "path": path,
+        "section": {"kind": "whole-file"},
+        "disposition": outcome,
+        "reason": "The exact approved whole document is superseded.",
+        "source_digest": "sha256:" + hashlib.sha256(identity.encode()).hexdigest(),
+        "recovery": {
+            "kind": "archive",
+            "mode": "planned",
+            "path": recovery_path,
+            "digest": "sha256:"
+            + hashlib.sha256(recovery_path.encode()).hexdigest(),
+        },
+    }
+    if outcome in {"MIGRATED", "DEDUPLICATED", "ARCHIVED"}:
+        result["target"] = target
+    if outcome == "DEDUPLICATED":
+        result["target_digest"] = (
+            "sha256:" + hashlib.sha256(target.encode()).hexdigest()
+        )
+    return result
+
+
+def canonical_bytes(value):
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        + "\n"
+    ).encode("utf-8")
+
+
+def init_corpus(paths, *, selected_scope="docs"):
+    ordered = sorted(set(paths), key=lambda path: (path.casefold(), path))
+    return {
+        "coverage_version": "init-corpus-v1",
+        "coverage_mode": "selected-scope-exact",
+        "ordering_version": "repo-relative-casefold-v1",
+        "selected_scope": selected_scope,
+        "write_boundary": selected_scope,
+        "path_count": len(ordered),
+        "paths_digest": "sha256:"
+        + hashlib.sha256(
+            canonical_bytes(
+                {
+                    "ordering_version": "repo-relative-casefold-v1",
+                    "paths": ordered,
+                }
+            )
+        ).hexdigest(),
+    }
+
+
+def init_manifest_evidence(dispositions, *, selected_scope="docs"):
+    starting_paths = [item["path"] for item in dispositions]
+    result_paths = []
+    for item in dispositions:
+        if item["disposition"] == "RETAIN":
+            result_paths.append(item["path"])
+        elif item["disposition"] in {"MIGRATED", "DEDUPLICATED", "ARCHIVED"}:
+            result_paths.append(item["target"])
+    return {
+        "corpus_transition": {
+            "starting": init_corpus(starting_paths, selected_scope=selected_scope),
+            "result": init_corpus(result_paths, selected_scope=selected_scope),
+        },
+        "document_results": [],
+    }
+
+
 def local_route(path=".local/0.3.0-campaign/KICKOFF-PROMPT.md"):
     return {
         "route": path,
@@ -119,6 +221,16 @@ def local_route(path=".local/0.3.0-campaign/KICKOFF-PROMPT.md"):
         "last_verified_system": "0.1.0",
         "last_verified_rubric": "2",
     }
+
+
+def create_uninitialized_repository(root):
+    for relative, data in BASE_DOCUMENTS.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    src = root / "src"
+    src.mkdir()
+    (src / "config.py").write_text("VALUE = 1\n", encoding="utf-8")
 
 
 class Task7ContractCase(unittest.TestCase):
@@ -140,6 +252,35 @@ class Task7ContractCase(unittest.TestCase):
     def approval(self, record):
         return {"id": record["id"], "fingerprint": record["fingerprint"]}
 
+    def init_manifest(
+        self,
+        dispositions,
+        *,
+        approvals=(),
+        selected_scope="docs",
+        transaction_id=None,
+        git_available=True,
+    ):
+        evidence = init_manifest_evidence(
+            dispositions,
+            selected_scope=selected_scope,
+        )
+        prepared = self.api("prepare_dispositions")(
+            None,
+            dispositions,
+            removed_items=[
+                item["item_id"]
+                for item in dispositions
+                if item["disposition"] != "RETAIN"
+            ],
+            git_available=git_available,
+            command="init",
+            approval_bindings=approvals,
+            transaction_id=transaction_id,
+            **evidence,
+        )
+        return prepared, evidence
+
     def prepare(
         self,
         root,
@@ -152,15 +293,45 @@ class Task7ContractCase(unittest.TestCase):
     ):
         prepare = self.api("prepare_verified_closeout")
         finding = semantic_finding()
+        approvals = [self.approval(finding)]
+        state = valid_state()
+        dispositions = list(dispositions)
+        removed_items = list(removed_items)
+        if command == "init":
+            if not dispositions:
+                dispositions = []
+                for path in BASE_DOCUMENTS:
+                    item = retained_disposition(f"{path}#<whole-file>")
+                    item["source_digest"] = "sha256:" + hashlib.sha256(
+                        (Path(root) / path).read_bytes()
+                    ).hexdigest()
+                    dispositions.append(item)
+            preview_manifest, init_evidence = self.init_manifest(
+                dispositions,
+                approvals=approvals,
+            )
+            state = complete_init_state(
+                root,
+                manifest_identity=preview_manifest["manifest_identity"],
+                result_corpus=init_evidence["corpus_transition"]["result"],
+                document_results_digest=preview_manifest[
+                    "document_results_digest"
+                ],
+                score_before=84,
+                score_after=90,
+            )
+            extra.setdefault("selected_boundary", state["scope"]["selected"])
+            extra.setdefault("corpus_transition", init_evidence["corpus_transition"])
+            extra.setdefault("document_results", init_evidence["document_results"])
         return prepare(
             root,
             command=command,
-            state=valid_state(),
+            state=state,
             findings={"schema_version": 1, "findings": []},
             event=semantic_event(command, [finding["id"]]),
-            approvals=[self.approval(finding)],
-            dispositions=list(dispositions),
-            removed_items=list(removed_items),
+            approvals=approvals,
+            dispositions=dispositions,
+            removed_items=removed_items,
             local_map=local_map,
             **extra,
         )
@@ -300,7 +471,15 @@ class Task7ArchitectureTests(Task7ContractCase):
         )
         self.assertLessEqual(
             graph["lifecycle_io"],
-            {"identity", "knowledge", "lifecycle", "memory", "paths", "surfaces"},
+            {
+                "discovery",
+                "identity",
+                "knowledge",
+                "lifecycle",
+                "memory",
+                "paths",
+                "surfaces",
+            },
         )
 
         visiting = set()
@@ -520,6 +699,397 @@ class Task7PolicyTests(Task7ContractCase):
             event["manifest"]["path"],
             f".diataxis/manifests/{event['event_id']}.json",
         )
+
+    def test_init_retain_manifest_is_complete_external_and_transactionally_bound(self):
+        prepare_manifest = self.api("prepare_dispositions")
+        prepare_closeout = self.api("prepare_verified_closeout")
+        apply_closeout = self.api("apply_verified_closeout")
+        finding = semantic_finding()
+        approvals = [self.approval(finding)]
+        retained = [
+            retained_disposition(f"{path}#<whole-file>")
+            for path in BASE_DOCUMENTS
+        ] + [
+            retained_disposition(f"docs/adopted-{index:03d}.md#<whole-file>")
+            for index in range(100)
+        ]
+        preview_manifest, init_evidence = self.init_manifest(
+            retained,
+            approvals=approvals,
+        )
+        rebound_manifest, _ = self.init_manifest(
+            retained,
+            approvals=approvals,
+            transaction_id="TXN-AAAAAAAAAAAAAAAA",
+        )
+
+        self.assertEqual(preview_manifest["storage"], "external")
+        self.assertEqual(preview_manifest["digest"], rebound_manifest["digest"])
+        self.assertEqual(preview_manifest["bytes"], rebound_manifest["bytes"])
+        payload = json.loads(preview_manifest["bytes"])
+        self.assertEqual(len(payload["dispositions"]), 103)
+        self.assertEqual({item["disposition"] for item in payload["dispositions"]}, {"RETAIN"})
+        self.assertTrue(all("recovery" not in item for item in payload["dispositions"]))
+        self.assertNotIn("transaction_id", payload)
+
+        with self.assertRaises(ValueError):
+            prepare_manifest(
+                None,
+                retained,
+                removed_items=[],
+                git_available=True,
+                command="update",
+                approval_bindings=approvals,
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_uninitialized_repository(root)
+            for item in retained:
+                target = root / item["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(item["item_id"].encode("utf-8"))
+            state = complete_init_state(
+                root,
+                manifest_identity=preview_manifest["manifest_identity"],
+                result_corpus=init_evidence["corpus_transition"]["result"],
+                document_results_digest=preview_manifest[
+                    "document_results_digest"
+                ],
+                score_before=84,
+                score_after=90,
+            )
+            state["protected_intent"] = []
+            before = tree_bytes(root)
+            plan = prepare_closeout(
+                root,
+                command="init",
+                state=state,
+                findings={"schema_version": 1, "findings": []},
+                event=semantic_event("init", [finding["id"]]),
+                approvals=approvals,
+                dispositions=retained,
+                removed_items=[],
+                selected_boundary="docs",
+                corpus_transition=init_evidence["corpus_transition"],
+                document_results=init_evidence["document_results"],
+            )
+            self.assertEqual(tree_bytes(root), before)
+
+            event = plan["event"]
+            manifest_path = event["manifest"]["path"]
+            manifest_bytes = preview_manifest["bytes"].encode("utf-8")
+            self.assertEqual(plan["targets"][manifest_path], manifest_bytes)
+            self.assertEqual(event["manifest_digest"], preview_manifest["digest"])
+            self.assertEqual(event["manifest_identity"], preview_manifest["manifest_identity"])
+            self.assertEqual(event["approval_bindings"], approvals)
+            self.assertIn("manifest", event["transaction_targets"])
+            planned_state = json.loads(plan["targets"][".diataxis/state.json"])
+            self.assertEqual(
+                planned_state["initialization"]["manifest_identity"],
+                preview_manifest["manifest_identity"],
+            )
+
+            result = apply_closeout(
+                root,
+                plan,
+                approved_transaction=plan["transaction_id"],
+                verification=lambda: True,
+            )
+            self.assertEqual(result["status"], "applied")
+            self.assertEqual((root / manifest_path).read_bytes(), manifest_bytes)
+            self.assertEqual(docs_checker.inspect_operational_memory(root), [])
+
+    def test_init_preparation_confines_boundary_and_manifest_routes_without_writes(self):
+        prepare_manifest = self.api("prepare_dispositions")
+        prepare_closeout = self.api("prepare_verified_closeout")
+        finding = semantic_finding()
+        approvals = [self.approval(finding)]
+
+        def assert_rejected(
+            *, selected_scope, selected_boundary, dispositions, expected_storage
+        ):
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                create_repository(root)
+                preview_manifest, init_evidence = self.init_manifest(
+                    dispositions,
+                    approvals=approvals,
+                    selected_scope=selected_scope,
+                )
+                self.assertEqual(preview_manifest["storage"], expected_storage)
+                state = complete_init_state(
+                    root,
+                    manifest_identity=preview_manifest["manifest_identity"],
+                    result_corpus=init_evidence["corpus_transition"]["result"],
+                    document_results_digest=preview_manifest[
+                        "document_results_digest"
+                    ],
+                    selected_scope=selected_scope,
+                    inspected_scope=selected_scope,
+                    score_before=84,
+                    score_after=90,
+                )
+                before = tree_bytes(root)
+
+                with self.assertRaises(ValueError):
+                    prepare_closeout(
+                        root,
+                        command="init",
+                        state=state,
+                        findings={"schema_version": 1, "findings": []},
+                        event=semantic_event("init", [finding["id"]]),
+                        approvals=approvals,
+                        dispositions=dispositions,
+                        removed_items=[],
+                        selected_boundary=selected_boundary,
+                        corpus_transition=init_evidence["corpus_transition"],
+                        document_results=init_evidence["document_results"],
+                    )
+
+                self.assertEqual(tree_bytes(root), before)
+
+        inline = [retained_disposition()]
+        assert_rejected(
+            selected_scope="docs",
+            selected_boundary=".",
+            dispositions=inline,
+            expected_storage="external",
+        )
+        assert_rejected(
+            selected_scope="docs",
+            selected_boundary="docs",
+            dispositions=[retained_disposition("other/private.md#<whole-file>")],
+            expected_storage="external",
+        )
+        for private_root in (".local", ".LOCAL"):
+            private = [
+                retained_disposition(
+                    f"{private_root}/private-campaign.md#<whole-file>"
+                )
+            ]
+            private_evidence = init_manifest_evidence(
+                private,
+                selected_scope=".",
+            )
+            with self.assertRaises(ValueError):
+                prepare_manifest(
+                    None,
+                    private,
+                    removed_items=[],
+                    git_available=True,
+                    command="init",
+                    approval_bindings=approvals,
+                    **private_evidence,
+                )
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                create_repository(root)
+                state = complete_init_state(
+                    root,
+                    manifest_identity="a" * 64,
+                    result_corpus=private_evidence["corpus_transition"]["result"],
+                    document_results_digest=(
+                        "sha256:" + hashlib.sha256(canonical_bytes([])).hexdigest()
+                    ),
+                    selected_scope=".",
+                    inspected_scope=".",
+                    score_before=84,
+                    score_after=90,
+                )
+                before = tree_bytes(root)
+                with self.assertRaises(ValueError):
+                    prepare_closeout(
+                        root,
+                        command="init",
+                        state=state,
+                        findings={"schema_version": 1, "findings": []},
+                        event=semantic_event("init", [finding["id"]]),
+                        approvals=approvals,
+                        dispositions=private,
+                        removed_items=[],
+                        selected_boundary=".",
+                        **private_evidence,
+                    )
+                self.assertEqual(tree_bytes(root), before)
+        external = [
+            retained_disposition(f"docs/adopted-{index:03d}.md#<whole-file>")
+            for index in range(102)
+        ]
+        external.append(retained_disposition("other/private.md#<whole-file>"))
+        assert_rejected(
+            selected_scope="docs",
+            selected_boundary="docs",
+            dispositions=external,
+            expected_storage="external",
+        )
+
+    def test_init_manifest_rejects_route_exposure_in_disposition_reason(self):
+        prepare_manifest = self.api("prepare_dispositions")
+        dispositions = [retained_disposition()]
+        dispositions[0]["reason"] = "See route=.local/secret.md"
+        evidence = init_manifest_evidence(dispositions)
+
+        with self.assertRaisesRegex(ValueError, "disposition reason"):
+            prepare_manifest(
+                None,
+                dispositions,
+                removed_items=[],
+                git_available=True,
+                command="init",
+                approval_bindings=[],
+                **evidence,
+            )
+
+    def test_init_confinement_covers_target_and_recovery_routes_without_writes(self):
+        prepare_manifest = self.api("prepare_dispositions")
+        prepare_closeout = self.api("prepare_verified_closeout")
+        finding = semantic_finding()
+        approvals = [self.approval(finding)]
+
+        def routed_disposition(identity, *, target, recovery_path):
+            return init_disposition(
+                identity,
+                outcome="MIGRATED",
+                target=target,
+                recovery_path=recovery_path,
+            )
+
+        for field, private_root in (
+            ("target", ".local"),
+            ("target", ".LOCAL"),
+            ("recovery", ".local"),
+            ("recovery", ".LOCAL"),
+        ):
+            private_route = f"{private_root}/private.md"
+            item = routed_disposition(
+                "docs/legacy.md#<whole-file>",
+                target=private_route if field == "target" else "docs/current.md",
+                recovery_path=(
+                    private_route if field == "recovery" else "docs/archive/legacy.md"
+                ),
+            )
+            init_evidence = init_manifest_evidence([item])
+            with self.subTest(field=field, private_root=private_root), self.assertRaises(
+                ValueError
+            ):
+                prepare_manifest(
+                    None,
+                    [item],
+                    removed_items=[item["item_id"]],
+                    git_available=True,
+                    command="init",
+                    approval_bindings=approvals,
+                    **init_evidence,
+                )
+
+        def assert_closeout_rejected(dispositions, expected_storage):
+            removed_items = [item["item_id"] for item in dispositions]
+            preview_manifest, init_evidence = self.init_manifest(
+                dispositions,
+                approvals=approvals,
+            )
+            self.assertEqual(preview_manifest["storage"], expected_storage)
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                create_repository(root)
+                state = complete_init_state(
+                    root,
+                    manifest_identity=preview_manifest["manifest_identity"],
+                    result_corpus=init_evidence["corpus_transition"]["result"],
+                    document_results_digest=preview_manifest[
+                        "document_results_digest"
+                    ],
+                    score_before=84,
+                    score_after=90,
+                )
+                before = tree_bytes(root)
+                with self.assertRaises(ValueError):
+                    prepare_closeout(
+                        root,
+                        command="init",
+                        state=state,
+                        findings={"schema_version": 1, "findings": []},
+                        event=semantic_event("init", [finding["id"]]),
+                        approvals=approvals,
+                        dispositions=dispositions,
+                        removed_items=removed_items,
+                        selected_boundary="docs",
+                        corpus_transition=init_evidence["corpus_transition"],
+                        document_results=init_evidence["document_results"],
+                    )
+                self.assertEqual(tree_bytes(root), before)
+
+        inline = [
+            routed_disposition(
+                "docs/legacy.md#<whole-file>",
+                target="docs/current.md",
+                recovery_path="outside/recovery.md",
+            )
+        ]
+        with self.subTest(storage="inline"):
+            assert_closeout_rejected(inline, "external")
+
+        external = [
+            routed_disposition(
+                f"docs/legacy-{index:03d}.md#<whole-file>",
+                target=f"docs/current-{index:03d}.md",
+                recovery_path=f"docs/archive/legacy-{index:03d}.md",
+            )
+            for index in range(103)
+        ]
+        external[-1]["target"] = "outside/current-102.md"
+        with self.subTest(storage="external"):
+            assert_closeout_rejected(external, "external")
+
+    def test_init_prepare_rejects_anchored_and_disallowed_private_targets_without_writes(
+        self,
+    ):
+        prepare_manifest = self.api("prepare_dispositions")
+        cases = []
+        for field, private_route in (
+            ("target", ".local#secret"),
+            ("target", ".LOCAL#secret"),
+            ("recovery", ".local#secret"),
+            ("recovery", ".LOCAL#secret"),
+        ):
+            item = init_disposition(
+                "docs/legacy.md#<whole-file>",
+                outcome="MIGRATED",
+                target="docs/current.md",
+            )
+            if field == "target":
+                item["target"] = private_route
+            else:
+                item["recovery"]["path"] = private_route
+                item["recovery"]["digest"] = (
+                    "sha256:" + hashlib.sha256(private_route.encode()).hexdigest()
+                )
+            cases.append((f"anchored-{field}-{private_route}", item))
+
+        discarded = init_disposition(
+            "docs/obsolete.md#<whole-file>", outcome="DISCARDED"
+        )
+        discarded["target"] = ".local/private.md"
+        cases.append(("discarded-extraneous-target", discarded))
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            before = tree_bytes(root)
+            for label, item in cases:
+                init_evidence = init_manifest_evidence([item])
+                with self.subTest(case=label), self.assertRaises(ValueError):
+                    prepare_manifest(
+                        None,
+                        [item],
+                        removed_items=[item["item_id"]],
+                        git_available=True,
+                        command="init",
+                        approval_bindings=[],
+                        **init_evidence,
+                    )
+                self.assertEqual(tree_bytes(root), before)
 
     def test_event_builder_links_recurrence_and_timestamp_is_audit_only(self):
         build = self.api("build_verified_event")
@@ -749,7 +1319,10 @@ class Task7TransactionTests(Task7ContractCase):
         for command in MUTATING_COMMANDS:
             with self.subTest(command=command), tempfile.TemporaryDirectory() as td:
                 root = Path(td)
-                create_repository(root)
+                if command == "init":
+                    create_uninitialized_repository(root)
+                else:
+                    create_repository(root)
                 plan = self.prepare(root, command=command)
                 self.assertEqual(plan["status"], "approval-required")
                 self.assertEqual(plan["writes"], 0)
@@ -1101,7 +1674,7 @@ class Task7TransactionTests(Task7ContractCase):
             }
             order = plan["replacement_order"]
             findings_relative = ".diataxis/findings.json"
-            later_relative = order[2]
+            later_relative = order[order.index(findings_relative) + 1]
             original_replace = io_module.os.replace
             findings_installed = False
 
@@ -1155,7 +1728,18 @@ class Task7TransactionTests(Task7ContractCase):
             self.assertEqual(after_semantics["events"], before_semantics["events"])
             self.assertNotEqual(after_semantics["findings"], before_semantics["findings"])
             self.assertFalse((control / "local-map.json").exists())
-            self.assertFalse((control / "manifests").exists())
+            self.assertEqual(
+                {
+                    path
+                    for path in after_tree
+                    if path.startswith(".diataxis/manifests/")
+                },
+                {
+                    path
+                    for path in before_tree
+                    if path.startswith(".diataxis/manifests/")
+                },
+            )
             conflicts = docs_checker.inspect_operational_memory(root)
             self.assertTrue(
                 any(
@@ -1200,9 +1784,9 @@ class Task7TransactionTests(Task7ContractCase):
                     self.assertTrue(any(item["kind"] == "state-conflict" for item in conflicts))
                     (control / reverted).write_bytes(after[reverted])
 
-    def test_state_conflict_recovery_preview_is_read_only_and_exactly_approved(self):
+    def test_state_conflict_recovery_rejects_caller_supplied_reconstruction(self):
         preview_recovery = self.api("preview_state_conflict_recovery")
-        apply_recovery = self.api("apply_state_conflict_recovery")
+        io_module = self.module("lifecycle_io")
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             control = create_repository(root)
@@ -1211,27 +1795,16 @@ class Task7TransactionTests(Task7ContractCase):
                 encoding="utf-8",
             )
             before = tree_bytes(root)
-            preview = preview_recovery(
-                root,
-                canonical_state=valid_state(),
-                recomputed_findings=valid_findings(),
-                surviving_events=[valid_event()],
-            )
-            self.assertEqual((preview["status"], preview["writes"]), ("approval-required", 0))
-            self.assertEqual(preview["state"]["protected_intent"], valid_state()["protected_intent"])
-            self.assertEqual(preview["state"]["verified_documents"], valid_state()["verified_documents"])
+            with self.assertRaises(TypeError):
+                preview_recovery(
+                    root,
+                    canonical_state=valid_state(),
+                    recomputed_findings=valid_findings(),
+                    surviving_events=[valid_event()],
+                )
             self.assertEqual(tree_bytes(root), before)
-            with self.assertRaises(ValueError):
-                apply_recovery(root, preview, approved_preview="sha256:" + "0" * 64, verification=lambda: True)
-            self.assertEqual(tree_bytes(root), before)
-            result = apply_recovery(
-                root,
-                preview,
-                approved_preview=preview["preview_digest"],
-                verification=lambda: True,
-            )
-            self.assertEqual(result["status"], "applied")
-            self.assertFalse(any(item["kind"] == "state-conflict" for item in docs_checker.inspect_operational_memory(root)))
+        self.assertFalse(hasattr(io_module, "_preview_state_conflict_recovery_legacy"))
+        self.assertFalse(hasattr(io_module, "_apply_state_conflict_recovery_legacy"))
 
 
 class Task7LocalAndProtectedTests(Task7ContractCase):
@@ -1331,7 +1904,7 @@ class Task7LocalAndProtectedTests(Task7ContractCase):
                 (root / ".diataxis" / name).read_bytes()
                 for name in ("state.json", "findings.json", "events.jsonl")
             )
-            for private in (b"private-plan.md", b"0.3.0", b"campaign-plan"):
+            for private in (b"private-plan.md", b".local/", b"campaign-plan"):
                 self.assertNotIn(private, shared)
 
             forbidden = json.loads(json.dumps(local_map))
@@ -1655,7 +2228,7 @@ class Task7RestartIntegrityTests(Task7ContractCase):
             root = Path(td)
             control = create_repository(root)
             manifests = control / "manifests"
-            manifests.mkdir()
+            manifests.mkdir(exist_ok=True)
             nested_temp = manifests / f"{TRANSACTION_PREFIX}ABCDEF0123456789-manifest.tmp"
             nested_temp.write_bytes(b"private unfinished bytes")
             orphan_manifest = manifests / "EVT-DEADBEEF.json"

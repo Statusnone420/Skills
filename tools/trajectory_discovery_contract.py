@@ -6,6 +6,7 @@ import re
 
 from trajectory_discovery_capture import (
     ANYWHERE_PRUNE_DIRS,
+    DISCOVERY_CONTRACT_VERSION,
     DISCOVERY_RECEIPT_CHECKSUM_VERSION,
     DOCUMENTATION_ROOT_NAMES,
     DOCTOR_DISCOVERY_KIND,
@@ -17,8 +18,9 @@ from trajectory_discovery_capture import (
     _is_exact_json,
     _prune_reason,
     build_doctor_discovery_action,
+    local_prune_reason,
+    validate_discovery_receipt,
 )
-from trajectory_discovery_v2_contract import validate_v2_action
 from trajectory_discovery_v1_policy import (
     _DOC_ROOT_INDEX,
     _PACKAGE_CONTAINER_INDEX,
@@ -35,11 +37,12 @@ from trajectory_discovery_v1_policy import (
 )
 
 DOCTOR_DISCOVERY_STATUSES = {
-    "ready", "choice-required", "stopped", "no-candidates", "batch-limited"
+    "ready", "choice-required", "stopped", "no-candidates", "batch-limited",
+    "adoption-preview",
 }
 DOCTOR_DISCOVERY_TERMINAL_STATUSES = (
-    DOCTOR_DISCOVERY_STATUSES - {"ready"}
-) | {"adoption-preview"}
+    DOCTOR_DISCOVERY_STATUSES - {"ready", "batch-limited"}
+)
 DOCTOR_DISCOVERY_PUBLIC_FIELDS = (
     DOCTOR_DISCOVERY_RECEIPT_FIELDS | {"owner", "kind", "receipt_checksum"}
 )
@@ -82,9 +85,10 @@ def _valid_container_observations(value, jurisdiction_scope, root_only_overrides
     for item in value:
         if type(item) is not dict or set(item) != DOCTOR_DISCOVERY_CONTAINER_FIELDS:
             return None
+        raw_path = item["path"]
         path = _normalized_discovery_path(
-            item["path"],
-            jurisdiction_scope,
+            raw_path,
+            "." if raw_path == "." else jurisdiction_scope,
             root_only_overrides,
             allow_dot=True,
         )
@@ -237,7 +241,12 @@ def _valid_prune_evidence(value, exclusions, root_only_overrides):
     expected_exclusions = set()
     for path in applied:
         normalized = normalize_scope(path)
-        reason = _prune_reason(normalized, root_only_overrides) if normalized == path else None
+        reason = (
+            _prune_reason(normalized, root_only_overrides)
+            or local_prune_reason(normalized)
+            if normalized == path
+            else None
+        )
         if reason is None:
             return False
         expected_exclusions.add((path, reason))
@@ -246,7 +255,10 @@ def _valid_prune_evidence(value, exclusions, root_only_overrides):
         key=lambda item: (item.casefold(), item),
     )
     return expected_exclusions == {
-        (path, _prune_reason(path, root_only_overrides))
+        (
+            path,
+            _prune_reason(path, root_only_overrides) or local_prune_reason(path),
+        )
         for path in canonical_applied
     } and applied == canonical_applied
 
@@ -268,7 +280,9 @@ def _valid_exclusions(value, jurisdiction_scope, root_only_overrides):
             path = None
         reason = item["reason"]
         canonical_prune = (
-            _prune_reason(path, root_only_overrides) if path is not None else None
+            _prune_reason(path, root_only_overrides) or local_prune_reason(path)
+            if path is not None
+            else None
         )
         if (
             path is None
@@ -276,6 +290,7 @@ def _valid_exclusions(value, jurisdiction_scope, root_only_overrides):
             or reason not in {
                 "anywhere-prune",
                 "repository-root-only-prune",
+                "local-sensitive-prune",
                 "unsafe-reparse",
                 "not-directory",
             }
@@ -476,7 +491,7 @@ def _empty_discovery_context():
     )
 
 
-def _validate_doctor_discovery_action_v1(action, errors):
+def _validate_doctor_discovery_action_v3(action, errors):
     if (
         type(action) is not dict
         or set(action) != DOCTOR_DISCOVERY_PUBLIC_FIELDS
@@ -485,12 +500,13 @@ def _validate_doctor_discovery_action_v1(action, errors):
         _append(errors, "retrieval.invalid_doctor_init_discovery")
         return _empty_discovery_context()
 
+    payload = {
+        field: action[field]
+        for field in DOCTOR_DISCOVERY_RECEIPT_FIELDS
+    }
     receipt_checksum = action.get("receipt_checksum")
     expected_checksum = _canonical_receipt_checksum(
-        {
-            field: action[field]
-            for field in DOCTOR_DISCOVERY_RECEIPT_FIELDS
-        }
+        payload
     )
     invalid = bool(
         type(action.get("owner")) is not str
@@ -500,6 +516,7 @@ def _validate_doctor_discovery_action_v1(action, errors):
         or type(receipt_checksum) is not str
         or _RECEIPT_CHECKSUM.fullmatch(receipt_checksum) is None
         or receipt_checksum != expected_checksum
+        or not validate_discovery_receipt({"root": ".", **payload})
     )
     status = action.get("status")
     requested_scope = action.get("requested_scope")
@@ -516,7 +533,7 @@ def _validate_doctor_discovery_action_v1(action, errors):
         expected_jurisdiction = expected_normalized
     invalid = invalid or (
         type(action.get("schema_version")) is not int
-        or action.get("schema_version") != 1
+        or action.get("schema_version") != DISCOVERY_CONTRACT_VERSION
         or action.get("mode") != "init-discovery"
         or type(status) is not str
         or status not in DOCTOR_DISCOVERY_STATUSES
@@ -566,6 +583,7 @@ def _validate_doctor_discovery_action_v1(action, errors):
             raw_selected_scope,
             jurisdiction_scope,
             root_only_overrides,
+            allow_dot=raw_selected_scope == ".",
         )
     )
     raw_inspected_scope = action.get("inspected_scope")
@@ -576,6 +594,7 @@ def _validate_doctor_discovery_action_v1(action, errors):
             raw_inspected_scope,
             jurisdiction_scope,
             root_only_overrides,
+            allow_dot=raw_inspected_scope == ".",
         )
     )
     if (
@@ -598,8 +617,20 @@ def _validate_doctor_discovery_action_v1(action, errors):
 
     selection_reason = action.get("selection_reason")
     if selected_scope is not None:
-        expected_reason = "explicit-scope" if explicit_narrow else "sole-candidate"
-        if candidate_paths != [selected_scope] or selection_reason != expected_reason:
+        root_scope = selected_scope == "." and not candidate_paths
+        expected_reason = (
+            "explicit-scope"
+            if explicit_narrow
+            else "no-maintained-documentation"
+            if root_scope and status == "adoption-preview"
+            else "sole-root-document-scope"
+            if root_scope
+            else "sole-candidate"
+        )
+        if (
+            (not root_scope and candidate_paths != [selected_scope])
+            or selection_reason != expected_reason
+        ):
             invalid = True
     elif status == "stopped":
         if selection_reason != "discovery-truncated":
@@ -738,7 +769,7 @@ def _validate_doctor_discovery_action_v1(action, errors):
 
     exclusions = _valid_exclusions(
         action.get("applied_exclusions"),
-        jurisdiction_scope,
+        ".",
         root_only_overrides,
     )
     if exclusions is None:
@@ -867,9 +898,23 @@ def _validate_doctor_discovery_action_v1(action, errors):
                 "unsafe-container": "unsafe-reparse",
                 "invalid-container": "not-directory",
             }.get(boundary.get("kind"))
+            completeness = action.get("completeness")
+            completeness_errors = (
+                completeness.get("errors", ())
+                if type(completeness) is dict
+                else ()
+            )
+            metadata_error = any(
+                type(item) is dict
+                and item.get("path") == boundary_path
+                and item.get("blocks_content_planning") is True
+                for item in completeness_errors
+            )
             if (
-                boundary.get("kind") not in {"missing-container", "unsafe-container", "invalid-container"}
+                boundary.get("kind")
+                not in {"metadata-io", "unsafe-container", "invalid-container"}
                 or not matching_container
+                or (boundary.get("kind") == "metadata-io" and not metadata_error)
                 or (expected_reason is not None and (boundary_path, expected_reason) not in exclusions)
             ):
                 invalid = True
@@ -891,7 +936,13 @@ def _validate_doctor_discovery_action_v1(action, errors):
         else "stopped"
         if expected_boundary is not None
         else "ready"
-        if selected_scope is not None
+        if selected_scope is not None and not (
+            selected_scope == "."
+            and not scope_items
+            and selection_reason == "no-maintained-documentation"
+        )
+        else "adoption-preview"
+        if selected_scope == "."
         else "choice-required"
         if len(candidate_paths) > 1
         else "no-candidates"
@@ -902,9 +953,10 @@ def _validate_doctor_discovery_action_v1(action, errors):
         "no-candidates": (True, "provide-explicit-scope"),
         "stopped": (True, "narrow-scope-or-continuation"),
         "batch-limited": (
-            True,
-            "after-content-batch-choose-continuation-or-narrow-scope",
+            False,
+            "continue-init-inspection",
         ),
+        "adoption-preview": (True, "review-no-doc-adoption-preview"),
     }
     if (
         status != expected_status
@@ -925,18 +977,15 @@ def _validate_doctor_discovery_action_v1(action, errors):
 
 
 def validate_doctor_discovery_action(action, errors):
-    """Dispatch exact v1 and additive v2 receipts through canonical policy."""
-    if type(action) is dict and action.get("schema_version") == 1:
-        return _validate_doctor_discovery_action_v1(action, errors)
-    return validate_v2_action(
-        action, errors, append=_append, empty_context=_empty_discovery_context,
-        candidate_order_key=_candidate_order_key,
-        expected_content_batch=_expected_content_batch,
-        normalize_scope=normalize_scope,
-        normalized_discovery_path=_normalized_discovery_path,
-        sort_key=_sort_key,
-        validate_v1=_validate_doctor_discovery_action_v1,
-    )
+    """Validate only the canonical schema-3 discovery receipt."""
+    if (
+        type(action) is not dict
+        or type(action.get("schema_version")) is not int
+        or action.get("schema_version") != DISCOVERY_CONTRACT_VERSION
+    ):
+        _append(errors, "retrieval.invalid_doctor_init_discovery")
+        return _empty_discovery_context()
+    return _validate_doctor_discovery_action_v3(action, errors)
 
 __all__ = (
     "ANYWHERE_PRUNE_DIRS", "DOCUMENTATION_ROOT_NAMES", "DOCTOR_DISCOVERY_KIND",

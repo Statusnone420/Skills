@@ -13,12 +13,78 @@ ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "skills" / "docs"
 sys.path.insert(0, str(SKILL / "scripts"))
 import check as docs_checker
+from _docs_checker.lifecycle import init_event_fingerprint
+from _docs_checker.memory import (
+    operational_findings_digest,
+    operational_state_digest,
+)
 
 
 EVENT_ID = "EVT-93A10AFF"
 DIGEST_A = "sha256-text:" + hashlib.sha256(b"# State\n").hexdigest()
 DIGEST_B = "sha256-text:" + hashlib.sha256(b"VALUE = 1\n").hexdigest()
-MAX_MANIFEST_BYTES = 256 * 1024
+MAX_MANIFEST_BYTES = 1024 * 1024
+
+BASE_DOCUMENTS = {
+    "docs/DESIGN.md": b"# Design\n\n## Visual language\n",
+    "docs/README.md": (
+        b"# Documentation\n\n[State](STATE.md)\n[Design](DESIGN.md)\n"
+    ),
+    "docs/STATE.md": b"# State\n",
+}
+
+
+def canonical_bytes(value):
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        + "\n"
+    ).encode("utf-8")
+
+
+def corpus_v3():
+    paths = sorted(BASE_DOCUMENTS, key=lambda path: (path.casefold(), path))
+    paths_digest = hashlib.sha256(
+        canonical_bytes(
+            {
+                "ordering_version": "repo-relative-casefold-v1",
+                "paths": paths,
+            }
+        )
+    ).hexdigest()
+    return {
+        "coverage_version": "init-corpus-v1",
+        "coverage_mode": "selected-scope-exact",
+        "ordering_version": "repo-relative-casefold-v1",
+        "selected_scope": "docs",
+        "write_boundary": "docs",
+        "path_count": len(paths),
+        "paths_digest": "sha256:" + paths_digest,
+    }
+
+
+def manifest_payload():
+    corpus = corpus_v3()
+    dispositions = []
+    for path, data in sorted(
+        BASE_DOCUMENTS.items(), key=lambda item: (item[0].casefold(), item[0])
+    ):
+        dispositions.append(
+            {
+                "item_id": f"{path}#<whole-file>",
+                "path": path,
+                "section": {"kind": "whole-file"},
+                "disposition": "RETAIN",
+                "reason": "Retain the verified whole document.",
+                "source_digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+            }
+        )
+    return {
+        "schema_version": 3,
+        "approval_identity": hashlib.sha256(canonical_bytes([])).hexdigest(),
+        "corpus_transition": {"starting": corpus, "result": corpus},
+        "dispositions": dispositions,
+        "document_results": [],
+    }
 
 
 def complete_measurements(**overrides):
@@ -126,12 +192,23 @@ def run_checker_fixture(*, cold_paths=(), map_links=(), hot_sources=()):
         return json.loads(proc.stdout)
 
 
-def valid_state():
+def _state_payload(
+    *,
+    last_completed_event=EVENT_ID,
+    manifest_identity=None,
+    result_corpus=None,
+    document_results_digest=None,
+):
+    manifest_identity = manifest_identity or hashlib.sha256(manifest_bytes()).hexdigest()
+    result_corpus = result_corpus or corpus_v3()
+    document_results_digest = document_results_digest or (
+        "sha256:" + hashlib.sha256(canonical_bytes([])).hexdigest()
+    )
     return {
-        "schema_version": 1,
+        "schema_version": 3,
         "initialized": {
             "completed": True,
-            "skill_version": "0.1.0",
+            "skill_version": "0.3.0",
             "map": "docs/README.md",
             "hot_paths": ["docs/STATE.md"],
         },
@@ -146,7 +223,7 @@ def valid_state():
                 "document": "docs/STATE.md",
                 "digest": DIGEST_A,
                 "sources": [{"path": "src/config.py", "digest": DIGEST_B}],
-                "verified_event": EVENT_ID,
+                "verified_event": last_completed_event,
             }
         ],
         "protected_intent": [
@@ -158,8 +235,104 @@ def valid_state():
                 "status": "active",
             }
         ],
-        "last_completed_event": EVENT_ID,
+        "last_completed_event": last_completed_event,
+        "scope": {"selected": "docs", "inspected": "docs"},
+        "structural_scores": {"before": 30, "after": 84},
+        "hot_path_bytes": {
+            "before": {
+                "value": 96,
+                "unit": "bytes",
+                "provenance": [
+                    {
+                        "route": "docs/legacy.md",
+                        "bytes": 96,
+                        "source": "filesystem-stat",
+                    }
+                ],
+            },
+            "after": {
+                "value": 128,
+                "unit": "bytes",
+                "provenance": [
+                    {
+                        "route": "docs/README.md",
+                        "bytes": 64,
+                        "source": "filesystem-stat",
+                    },
+                    {
+                        "route": "docs/STATE.md",
+                        "bytes": 64,
+                        "source": "filesystem-stat",
+                    },
+                ],
+            },
+        },
+        "trust_coverage": {
+            "status": "verified",
+            "numerator": 2,
+            "denominator": 2,
+            "routes": [
+                {
+                    "route": "docs/STATE.md",
+                    "verified": True,
+                    "freshness": "fresh",
+                    "sources": [
+                        "state:initialized-hot-path",
+                        "state:verified-document",
+                    ],
+                },
+                {
+                    "route": "src/config.py",
+                    "verified": True,
+                    "freshness": "fresh",
+                    "sources": ["state:verified-source"],
+                },
+            ],
+        },
+        "initialization": {
+            "manifest_identity": manifest_identity,
+            "result_corpus": result_corpus,
+            "document_results_digest": document_results_digest,
+        },
     }
+
+
+def valid_state():
+    draft = _state_payload()
+    event = valid_event(state_semantic_digest_value=operational_state_digest(draft))
+    return _state_payload(last_completed_event=event["event_id"])
+
+
+def complete_init_state(root, *, manifest_identity=None, **overrides):
+    baseline = valid_state()
+    values = {
+        "skill_version": "0.3.0",
+        "selected_scope": "docs",
+        "inspected_scope": "docs",
+        "map_path": "docs/README.md",
+        "current_truth_routes": ["docs/STATE.md"],
+        "rubric_version": 2,
+        "score_before": 30,
+        "score_after": 84,
+        "rubric_status": "needs-attention",
+        "cold_paths": ["docs/archive/**"],
+        "verified_documents": baseline["verified_documents"],
+        "protected_intent": baseline["protected_intent"],
+        "hot_path_bytes": baseline["hot_path_bytes"],
+        "trust_coverage": baseline["trust_coverage"],
+        "manifest_identity": manifest_identity
+        or baseline["initialization"]["manifest_identity"],
+        "result_corpus": baseline["initialization"]["result_corpus"],
+        "document_results_digest": baseline["initialization"][
+            "document_results_digest"
+        ],
+        "last_completed_event": baseline["last_completed_event"],
+    }
+    unknown = sorted(set(overrides) - set(values))
+    if unknown:
+        raise TypeError(f"unknown complete-state override(s): {', '.join(unknown)}")
+    values.update(overrides)
+    return docs_checker.build_initialization_state(root, **values)
 
 
 def valid_findings():
@@ -181,23 +354,88 @@ def valid_findings():
     }
 
 
-def valid_event():
-    return {
+def valid_event(*, state_semantic_digest_value=None, findings_digest_value=None):
+    payload = manifest_payload()
+    manifest_data = canonical_bytes(payload)
+    manifest_identity = hashlib.sha256(manifest_data).hexdigest()
+    transition = payload["corpus_transition"]
+    state_semantic_digest_value = state_semantic_digest_value or (
+        operational_state_digest(_state_payload())
+    )
+    findings_digest_value = findings_digest_value or operational_findings_digest(
+        valid_findings()
+    )
+    event = {
         "event_id": EVENT_ID,
         "kind": "init",
         "completed_at": "2026-07-13T12:00:00Z",
-        "skill_version": "0.1.0",
+        "skill_version": "0.3.0",
         "approved_ids": [],
         "score_before": 30,
         "score_after": 84,
-        "changed_paths": [
-            "docs/README.md",
-            "docs/STATE.md",
-            ".diataxis/state.json",
-        ],
         "reason": "The repository had no bounded documentation entry point.",
         "summary": "Adopted the repository into the mapped documentation system.",
+        "worktree_kind": "filesystem",
+        "repository_identity": "1" * 64,
+        "worktree_identity": "2" * 64,
+        "worktree_state_identity": "3" * 64,
+        "changed_paths": [
+            ".diataxis/events.jsonl",
+            ".diataxis/findings.json",
+            "docs/README.md",
+            ".diataxis/state.json",
+            "manifest",
+        ],
+        "transaction_id": "TXN-1234567890ABCDEF",
+        "transaction_schema_version": 3,
+        "transaction_policy_version": "init-closeout-v3",
+        "starting_digests": {
+            ".diataxis/events.jsonl": "sha256:ABSENT",
+            ".diataxis/findings.json": "sha256:ABSENT",
+            ".diataxis/state.json": "sha256:ABSENT",
+            "manifest": "sha256:ABSENT",
+        },
+        "state_semantic_digest": state_semantic_digest_value,
+        "findings_digest": findings_digest_value,
+        "transaction_targets": [
+            ".diataxis/events.jsonl",
+            ".diataxis/findings.json",
+            ".diataxis/state.json",
+            "manifest",
+        ],
+        "target_roles": {
+            ".diataxis/events.jsonl": "event",
+            ".diataxis/findings.json": "findings",
+            ".diataxis/state.json": "state",
+            "manifest": "manifest",
+        },
+        "replacement_order": [
+            "manifest",
+            ".diataxis/state.json",
+            ".diataxis/findings.json",
+            ".diataxis/events.jsonl",
+        ],
+        "approval_bindings": [],
+        "selected_boundary": "docs",
+        "visibility": ["shared"],
+        "manifest": {
+            "path": f".diataxis/manifests/{EVENT_ID}.json",
+            "digest": "sha256:" + manifest_identity,
+        },
+        "manifest_digest": "sha256:" + manifest_identity,
+        "manifest_schema_version": 3,
+        "manifest_identity": manifest_identity,
+        "approval_identity": payload["approval_identity"],
+        "corpus_transition": transition,
+        "corpus_transition_digest": "sha256:"
+        + hashlib.sha256(canonical_bytes(transition)).hexdigest(),
+        "document_results_digest": "sha256:"
+        + hashlib.sha256(canonical_bytes(payload["document_results"])).hexdigest(),
     }
+    identifier = "EVT-" + init_event_fingerprint(event)[:8].upper()
+    event["event_id"] = identifier
+    event["manifest"]["path"] = f".diataxis/manifests/{identifier}.json"
+    return event
 
 
 def write_json(path, value):
@@ -212,28 +450,12 @@ def write_events(path, events):
 
 
 def manifest_bytes():
-    return (
-        json.dumps(
-            {
-                "schema_version": 1,
-                "event_id": EVENT_ID,
-                "dispositions": [
-                    {
-                        "path": "docs/legacy.md",
-                        "disposition": "archived",
-                        "target": "docs/archive/legacy.md",
-                    }
-                ],
-            },
-            sort_keys=True,
-        )
-        + "\n"
-    ).encode("utf-8")
+    return canonical_bytes(manifest_payload())
 
 
 def attach_manifest(control, event, data=None, *, digest=None, relative=None):
     data = manifest_bytes() if data is None else data
-    relative = relative or f".diataxis/manifests/{EVENT_ID}.json"
+    relative = relative or f".diataxis/manifests/{event['event_id']}.json"
     manifest_path = control.parent / Path(relative)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_bytes(data)
@@ -249,21 +471,24 @@ def create_repository(root):
     src = root / "src"
     docs.mkdir()
     src.mkdir()
-    (docs / "README.md").write_text(
-        "# Documentation\n\n[State](STATE.md)\n[Design](DESIGN.md)\n",
-        encoding="utf-8",
-    )
-    (docs / "STATE.md").write_text("# State\n", encoding="utf-8")
-    (docs / "DESIGN.md").write_text(
-        "# Design\n\n## Visual language\n",
-        encoding="utf-8",
-    )
+    for relative, data in BASE_DOCUMENTS.items():
+        (root / relative).write_bytes(data)
     (src / "config.py").write_text("VALUE = 1\n", encoding="utf-8")
     control = root / ".diataxis"
     control.mkdir()
-    write_json(control / "state.json", valid_state())
-    write_json(control / "findings.json", valid_findings())
-    write_events(control / "events.jsonl", [valid_event()])
+    state = valid_state()
+    findings = valid_findings()
+    event = valid_event(
+        state_semantic_digest_value=operational_state_digest(state),
+        findings_digest_value=operational_findings_digest(findings),
+    )
+    self_consistent_state = _state_payload(last_completed_event=event["event_id"])
+    write_json(control / "state.json", self_consistent_state)
+    write_json(control / "findings.json", findings)
+    write_events(control / "events.jsonl", [event])
+    manifest_path = root / event["manifest"]["path"]
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_bytes(manifest_bytes())
     return control
 
 
@@ -482,79 +707,65 @@ class RepositoryMemoryTests(unittest.TestCase):
         )
 
     def test_trust_union_uses_filesystem_identity_across_declaration_sources(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            control = create_repository(root)
-            state = valid_state()
-            state["initialized"]["hot_paths"] = ["DOCS/state.md"]
-            write_json(control / "state.json", state)
-            (root / "docs" / "README.md").write_text(
-                "# Documentation\n\n"
-                "Start here.\n\n"
-                "[State](STATE.md) <!-- docs:current -->\n",
-                encoding="utf-8",
-            )
-
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(SKILL / "scripts" / "check.py"),
-                    str(root),
-                    "--json",
-                    "--agent",
-                    "--hot",
-                    "docs/STATE.md",
+        coverage = docs_checker.evaluate_coverage(
+            configured_routes=["docs/STATE.md"],
+            state={
+                "initialized": {"hot_paths": ["DOCS/state.md"]},
+                "verified_documents": [verified_document_fixture()],
+            },
+            map_routes=[{"route": "docs/STATE.md", "marker": "current"}],
+            freshness={
+                "status": "fresh",
+                "routes": [
+                    {"route": "docs/STATE.md", "status": "fresh"},
+                    {"route": "src/config.py", "status": "fresh"},
                 ],
-                capture_output=True,
-                text=True,
+            },
+        )
+        same_identity = (
+            docs_checker._path_identity("docs/STATE.md")
+            == docs_checker._path_identity("DOCS/state.md")
+        )
+        if same_identity:
+            self.assertEqual(
+                (
+                    coverage["numerator"],
+                    coverage["denominator"],
+                    coverage["status"],
+                ),
+                (2, 2, "verified"),
             )
-
-            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-            coverage = json.loads(proc.stdout)["health"]["coverage"]
-            same_identity = (
-                docs_checker._path_identity("docs/STATE.md")
-                == docs_checker._path_identity("DOCS/state.md")
+            state_rows = [
+                row
+                for row in coverage["routes"]
+                if docs_checker._path_identity(row["route"])
+                == docs_checker._path_identity("docs/STATE.md")
+            ]
+            self.assertEqual(len(state_rows), 1)
+            self.assertEqual(state_rows[0]["freshness"], "fresh")
+            self.assertEqual(
+                state_rows[0]["sources"],
+                [
+                    "configured:hot-path",
+                    "map:current",
+                    "state:initialized-hot-path",
+                    "state:verified-document",
+                ],
             )
-            if same_identity:
-                self.assertEqual(
-                    (
-                        coverage["numerator"],
-                        coverage["denominator"],
-                        coverage["status"],
-                    ),
-                    (2, 2, "verified"),
-                )
-                state_rows = [
-                    row
-                    for row in coverage["routes"]
-                    if docs_checker._path_identity(row["route"])
-                    == docs_checker._path_identity("docs/STATE.md")
-                ]
-                self.assertEqual(len(state_rows), 1)
-                self.assertEqual(state_rows[0]["freshness"], "fresh")
-                self.assertEqual(
-                    state_rows[0]["sources"],
-                    [
-                        "configured:hot-path",
-                        "map:current",
-                        "state:initialized-hot-path",
-                        "state:verified-document",
-                    ],
-                )
-            else:
-                self.assertEqual(
-                    (
-                        coverage["numerator"],
-                        coverage["denominator"],
-                        coverage["status"],
-                    ),
-                    (2, 3, "partial"),
-                )
-                alias_row = next(
-                    row for row in coverage["routes"] if row["route"] == "DOCS/state.md"
-                )
-                self.assertEqual(alias_row["freshness"], "unverified")
-                self.assertEqual(alias_row["sources"], ["state:initialized-hot-path"])
+        else:
+            self.assertEqual(
+                (
+                    coverage["numerator"],
+                    coverage["denominator"],
+                    coverage["status"],
+                ),
+                (2, 3, "partial"),
+            )
+            alias_row = next(
+                row for row in coverage["routes"] if row["route"] == "DOCS/state.md"
+            )
+            self.assertEqual(alias_row["freshness"], "unverified")
+            self.assertEqual(alias_row["sources"], ["state:initialized-hot-path"])
 
     def test_exact_map_current_marker_adds_only_its_valid_route_to_trust(self):
         with tempfile.TemporaryDirectory() as td:
@@ -891,7 +1102,13 @@ class RepositoryMemoryTests(unittest.TestCase):
         self.assertEqual(extended, "EVT-7F2A91C4BBBB")
 
     def test_duplicate_event_timestamp_movement_is_not_a_conflict(self):
-        event = valid_event()
+        event = {
+            "event_id": EVENT_ID,
+            "kind": "fix",
+            "completed_at": "2026-07-13T12:00:00Z",
+            "changed_paths": ["docs/README.md"],
+            "summary": "Refresh the documentation map.",
+        }
         self.assertTrue(hasattr(docs_checker, "event_fingerprint"))
         self.assertTrue(hasattr(docs_checker, "event_id"))
         event["event_id"] = docs_checker.event_id(
@@ -912,9 +1129,176 @@ class RepositoryMemoryTests(unittest.TestCase):
 
             loaded = docs_checker.load_operational_state(root)
 
-            self.assertEqual(loaded["schema_version"], 1)
+            self.assertEqual(loaded["schema_version"], 3)
             self.assertEqual(loaded["initialized"]["map"], "docs/README.md")
+            self.assertEqual(
+                loaded["initialization"]["result_corpus"], corpus_v3()
+            )
             self.assertEqual(state_path.read_bytes(), before)
+
+    def test_schema1_and_schema2_state_are_explicitly_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            for version in (1, 2):
+                with self.subTest(schema_version=version):
+                    state = json.loads(json.dumps(valid_state()))
+                    state["schema_version"] = version
+                    with self.assertRaisesRegex(ValueError, "unsupported"):
+                        docs_checker.validate_operational_state(state, root)
+
+    def test_complete_init_state_records_and_strictly_validates_verified_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            state = complete_init_state(root)
+            normalized = docs_checker.validate_operational_state(state, root)
+
+            self.assertEqual(normalized, state)
+            self.assertEqual(state["schema_version"], 3)
+            self.assertEqual(state["scope"], {"selected": "docs", "inspected": "docs"})
+            self.assertEqual(state["structural_scores"], {"before": 30, "after": 84})
+            self.assertEqual(state["hot_path_bytes"]["after"]["value"], 128)
+            self.assertEqual(state["trust_coverage"]["numerator"], 2)
+            self.assertEqual(state["trust_coverage"]["denominator"], 2)
+            self.assertEqual(
+                state["initialization"]["manifest_identity"],
+                hashlib.sha256(manifest_bytes()).hexdigest(),
+            )
+            self.assertEqual(
+                state["initialization"]["result_corpus"], corpus_v3()
+            )
+            self.assertNotIn(str(root), json.dumps(state, sort_keys=True))
+
+            invalid_states = []
+            extra = json.loads(json.dumps(state))
+            extra["private_topic"] = "release-alias"
+            invalid_states.append(extra)
+            absolute = json.loads(json.dumps(state))
+            absolute["initialized"]["hot_paths"] = ["C:/private/checkout/docs"]
+            invalid_states.append(absolute)
+            for path in (".local/private-plan.md", ".LOCAL/private-plan.md"):
+                private = json.loads(json.dumps(state))
+                private["verified_documents"][0]["sources"][0]["path"] = path
+                invalid_states.append(private)
+            mismatch = json.loads(json.dumps(state))
+            mismatch["scope"]["inspected"] = "."
+            invalid_states.append(mismatch)
+            score = json.loads(json.dumps(state))
+            score["structural_scores"]["after"] = 101
+            invalid_states.append(score)
+            byte_provenance = json.loads(json.dumps(state))
+            byte_provenance["hot_path_bytes"]["after"]["value"] += 1
+            invalid_states.append(byte_provenance)
+            trust = json.loads(json.dumps(state))
+            trust["trust_coverage"]["numerator"] = True
+            invalid_states.append(trust)
+            manifest = json.loads(json.dumps(state))
+            manifest["initialization"]["manifest_identity"] = "SHA256:" + "A" * 64
+            invalid_states.append(manifest)
+            corpus = json.loads(json.dumps(state))
+            corpus["initialization"]["result_corpus"]["legacy"] = True
+            invalid_states.append(corpus)
+            results = json.loads(json.dumps(state))
+            results["initialization"]["document_results_digest"] = (
+                "sha256:" + "a" * 63
+            )
+            invalid_states.append(results)
+
+            for invalid in invalid_states:
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    docs_checker.validate_operational_state(invalid, root)
+
+    def test_state_v3_cross_binds_after_bytes_and_trust_to_declared_routes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            state = complete_init_state(root)
+            self.assertEqual(docs_checker.validate_operational_state(state, root), state)
+
+            invalid_states = []
+            empty_after = json.loads(json.dumps(state))
+            empty_after["hot_path_bytes"]["after"] = {
+                "value": 0,
+                "unit": "bytes",
+                "provenance": [],
+            }
+            invalid_states.append(empty_after)
+            missing_after = json.loads(json.dumps(state))
+            missing_after["hot_path_bytes"]["after"] = {
+                "value": 64,
+                "unit": "bytes",
+                "provenance": [
+                    {
+                        "route": "docs/README.md",
+                        "bytes": 64,
+                        "source": "filesystem-stat",
+                    }
+                ],
+            }
+            invalid_states.append(missing_after)
+            extra_after = json.loads(json.dumps(state))
+            extra_after["hot_path_bytes"]["after"]["value"] += 1
+            extra_after["hot_path_bytes"]["after"]["provenance"].append(
+                {"route": "src/config.py", "bytes": 1, "source": "filesystem-stat"}
+            )
+            invalid_states.append(extra_after)
+            empty_trust = json.loads(json.dumps(state))
+            empty_trust["trust_coverage"] = {
+                "status": "unverified",
+                "numerator": 0,
+                "denominator": 0,
+                "routes": [],
+            }
+            invalid_states.append(empty_trust)
+            missing_trust = json.loads(json.dumps(state))
+            missing_trust["trust_coverage"]["routes"] = missing_trust[
+                "trust_coverage"
+            ]["routes"][1:]
+            missing_trust["trust_coverage"]["numerator"] = 1
+            missing_trust["trust_coverage"]["denominator"] = 1
+            invalid_states.append(missing_trust)
+            fabricated = json.loads(json.dumps(state))
+            fabricated["trust_coverage"]["routes"][0]["sources"].append(
+                "state:verified-source"
+            )
+            invalid_states.append(fabricated)
+            invented_map = json.loads(json.dumps(state))
+            invented_map["trust_coverage"]["routes"][0]["sources"].append(
+                "state:initialized-map"
+            )
+            invalid_states.append(invented_map)
+
+            for invalid in invalid_states:
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    docs_checker.validate_operational_state(invalid, root)
+
+    def test_initialization_state_accepts_canonical_evaluate_coverage_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            create_repository(root)
+            source_state = valid_state()
+            coverage = docs_checker.evaluate_coverage(
+                state={
+                    "initialized": source_state["initialized"],
+                    "verified_documents": source_state["verified_documents"],
+                },
+                freshness={
+                    "status": "fresh",
+                    "routes": [
+                        {"route": "docs/STATE.md", "status": "fresh"},
+                        {"route": "src/config.py", "status": "fresh"},
+                    ],
+                },
+            )
+
+            self.assertEqual(
+                [row["route"] for row in coverage["routes"]],
+                ["docs/STATE.md", "src/config.py"],
+            )
+            state = complete_init_state(root, trust_coverage=coverage)
+            self.assertEqual(state["trust_coverage"], coverage)
+            self.assertEqual(docs_checker.validate_operational_state(state, root), state)
 
     def test_state_paths_are_normalized_and_traversal_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1041,7 +1425,7 @@ class RepositoryMemoryTests(unittest.TestCase):
             events = docs_checker.load_operational_events(root)
 
             self.assertEqual(findings["findings"][0]["id"], "DOC-7F2A91C4")
-            self.assertEqual(events[0]["event_id"], EVENT_ID)
+            self.assertEqual(events[0]["event_id"], valid_event()["event_id"])
             self.assertEqual(file_snapshot(root / ".diataxis"), before)
 
     def test_finding_evidence_normalizes_every_path_bearing_identity_field(self):
@@ -1151,8 +1535,9 @@ class RepositoryMemoryTests(unittest.TestCase):
             root = Path(td)
             control = create_repository(root)
             event = valid_event()
+            missing_id = event["event_id"]
             event["manifest"] = {
-                "path": f".diataxis/manifests/{EVENT_ID}.json",
+                "path": f".diataxis/manifests/{missing_id}.json",
                 "digest": "sha256:" + "c" * 64,
             }
             write_events(control / "events.jsonl", [event])
@@ -1273,19 +1658,20 @@ class RepositoryMemoryTests(unittest.TestCase):
             self.assertEqual((outside.read_bytes(), outside.stat().st_mtime_ns), outside_before)
 
     def test_persisted_event_id_mismatch_is_state_conflict(self):
-        findings = docs_checker.validate_operational_events(
-            [{"event_id": EVENT_ID, "kind": "init"}]
-        )
+        event = valid_event()
+        event["event_id"] = "EVT-00000000"
+        event["manifest"]["path"] = ".diataxis/manifests/EVT-00000000.json"
+        findings = docs_checker.validate_operational_events([event])
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0]["kind"], "state-conflict")
         self.assertEqual(findings[0]["priority"], "P0")
-        self.assertIn("event_id does not match semantic content", findings[0]["detail"])
+        self.assertEqual(findings[0]["detail"], "operational event is invalid")
 
     def test_conflicting_duplicate_event_id_is_state_conflict(self):
         events = [
-            {"event_id": EVENT_ID, "kind": "init"},
             {"event_id": EVENT_ID, "kind": "fix"},
+            {"event_id": EVENT_ID, "kind": "update"},
         ]
         collision = [
             "93a10aff" + "a" * 56,
@@ -1404,8 +1790,8 @@ class RepositoryMemoryTests(unittest.TestCase):
     def test_duplicate_json_keys_are_state_conflicts_in_every_control_file(self):
         state = json.dumps(valid_state(), sort_keys=True)
         duplicate_state = state.replace(
-            '"schema_version": 1',
-            '"schema_version": 1, "schema_version": 1',
+            '"schema_version": 3',
+            '"schema_version": 3, "schema_version": 3',
             1,
         )
         stored_findings = json.dumps(valid_findings(), sort_keys=True)
@@ -1414,10 +1800,11 @@ class RepositoryMemoryTests(unittest.TestCase):
             '"schema_version": 1, "schema_version": 1',
             1,
         )
-        event = json.dumps(valid_event(), sort_keys=True)
+        valid = valid_event()
+        event = json.dumps(valid, sort_keys=True)
         duplicate_event = event.replace(
-            f'"event_id": "{EVENT_ID}"',
-            f'"event_id": "{EVENT_ID}", "event_id": "{EVENT_ID}"',
+            f'"event_id": "{valid["event_id"]}"',
+            f'"event_id": "{valid["event_id"]}", "event_id": "{valid["event_id"]}"',
             1,
         )
         cases = {

@@ -28,7 +28,7 @@ from skills.docs.scripts._docs_checker.paths import (
     ANYWHERE_PRUNE_DIRS,
     REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
 )
-from skills.docs.scripts._docs_checker.receipt import DISCOVERY_CONTRACT_V2
+from skills.docs.scripts._docs_checker.receipt import DISCOVERY_CONTRACT_VERSION
 
 
 def finding_identities(count):
@@ -82,7 +82,7 @@ def actual_doctor_discovery_payload(status, scope="docs", map_name="README.md", 
         elif status == "choice-required":
             _write_markdown(root, "docs/README.md")
             _write_markdown(root, "wiki/index.md")
-        elif status == "no-candidates":
+        elif status == "adoption-preview":
             pass
         elif status == "stopped" and physical:
             for index in range(INIT_DISCOVERY_LIMITS["child_entries_per_container"] + 1):
@@ -242,7 +242,7 @@ def actual_doctor_logical_boundary_payload():
         ):
             payload = discover_init_scope(root, "docs")
 
-        expected_boundary = [{"kind": "missing-container", "path": "docs"}]
+        expected_boundary = [{"kind": "metadata-io", "path": "docs"}]
         if (
             payload["status"] != "stopped"
             or payload["physical_limit"] is not None
@@ -1413,10 +1413,7 @@ class TrajectoryGateTests(unittest.TestCase):
                 "owner": "docs",
                 "kind": "init-discovery",
                 **trajectory_discovery_contract.build_doctor_discovery_action(
-                    discover_init_scope(
-                        root,
-                        contract_version=DISCOVERY_CONTRACT_V2,
-                    )
+                    discover_init_scope(root)
                 ),
             }
 
@@ -1458,10 +1455,7 @@ class TrajectoryGateTests(unittest.TestCase):
                 "owner": "docs",
                 "kind": "init-discovery",
                 **trajectory_discovery_contract.build_doctor_discovery_action(
-                    discover_init_scope(
-                        root,
-                        contract_version=DISCOVERY_CONTRACT_V2,
-                    )
+                    discover_init_scope(root)
                 ),
             }
         receipt = self.load("bulwark-map-accepted.json")
@@ -1491,10 +1485,9 @@ class TrajectoryGateTests(unittest.TestCase):
     def test_doctor_terminal_discovery_results_stop_honestly_before_content(self):
         cases = (
             ("choice-required", True),
-            ("no-candidates", True),
+            ("adoption-preview", True),
             ("stopped", True),
             ("stopped", False),
-            ("batch-limited", True),
         )
         for status, physical in cases:
             with self.subTest(status=status, physical=physical):
@@ -1587,7 +1580,7 @@ class TrajectoryGateTests(unittest.TestCase):
                     result["errors"],
                 )
 
-    def test_doctor_terminal_discovery_outcome_uses_an_exact_v1_allowlist(self):
+    def test_doctor_terminal_discovery_outcome_uses_an_exact_schema3_allowlist(self):
         for field in (
             "diagnosis",
             "diagnosed_findings",
@@ -1654,7 +1647,7 @@ class TrajectoryGateTests(unittest.TestCase):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["command"] = "doctor"
         receipt["retrieval"]["actions"] = [
-            self.doctor_discovery_action("no-candidates")
+            self.doctor_discovery_action("adoption-preview")
         ]
         self.bind_terminal_doctor_outcome(
             receipt,
@@ -1727,6 +1720,8 @@ class TrajectoryGateTests(unittest.TestCase):
                 receipt["command"] = "doctor"
                 discovery = self.doctor_discovery_action()
                 mutate(discovery)
+                if name == "content-read":
+                    refresh_discovery_checksum(discovery)
                 checker = self.mapped_actions(False)[-1]
                 checker["scope"] = "docs"
                 receipt["outcome"]["scope"] = "docs"
@@ -1760,7 +1755,7 @@ class TrajectoryGateTests(unittest.TestCase):
         for status, physical in (
             ("ready", True),
             ("choice-required", True),
-            ("no-candidates", True),
+            ("adoption-preview", True),
             ("stopped", True),
             ("stopped", False),
             ("batch-limited", True),
@@ -1856,7 +1851,7 @@ class TrajectoryGateTests(unittest.TestCase):
             (root / "alpha" / "docs").write_text("not a directory", encoding="utf-8")
             payload = discover_init_scope(root)
 
-        self.assertEqual(payload["status"], "no-candidates")
+        self.assertEqual(payload["status"], "adoption-preview")
         self.assertIn(
             {"path": "alpha/docs", "reason": "not-directory"},
             payload["applied_exclusions"],
@@ -2217,10 +2212,10 @@ class TrajectoryGateTests(unittest.TestCase):
         cases = (
             ("ready", True),
             ("choice-required", True),
-            ("no-candidates", True),
+            ("adoption-preview", True),
             ("stopped", True),
             ("stopped", False),
-            ("logical-missing-container", None),
+            ("logical-metadata-io", None),
             ("batch-limited", True),
             ("candidate-limit", None),
         )
@@ -2232,7 +2227,7 @@ class TrajectoryGateTests(unittest.TestCase):
                     "kind": "init-discovery",
                     **deepcopy(actual_doctor_candidate_limit_payload()),
                 }
-            elif status == "logical-missing-container":
+            elif status == "logical-metadata-io":
                 base = {
                     "owner": "docs",
                     "kind": "init-discovery",
@@ -2324,11 +2319,11 @@ class TrajectoryGateTests(unittest.TestCase):
         bases = (
             ("ready", self.doctor_discovery_action()),
             ("choice", self.doctor_discovery_action("choice-required")),
-            ("no-candidates", self.doctor_discovery_action("no-candidates")),
+            ("adoption", self.doctor_discovery_action("adoption-preview")),
             ("physical", self.doctor_discovery_action("stopped", physical=True)),
             ("logical", self.doctor_discovery_action("stopped", physical=False)),
             (
-                "missing-container",
+                "metadata-io",
                 deepcopy(actual_doctor_logical_boundary_payload()),
             ),
             ("batch", self.doctor_discovery_action("batch-limited")),
@@ -2383,7 +2378,7 @@ class TrajectoryGateTests(unittest.TestCase):
         actions = (
             self.doctor_discovery_action(),
             self.doctor_discovery_action("choice-required"),
-            self.doctor_discovery_action("no-candidates"),
+            self.doctor_discovery_action("adoption-preview"),
             self.doctor_discovery_action("stopped", physical=True),
             self.doctor_discovery_action("stopped", physical=False),
             deepcopy(actual_doctor_logical_boundary_payload()),
@@ -3751,6 +3746,21 @@ class TrajectoryGateTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "PASS")
 
+    def test_public_receipts_allow_opaque_continuation_tokens(self):
+        receipt = self.load("bulwark-map-accepted.json")
+        receipt["retrieval"]["actions"].append(
+            {
+                "owner": "external",
+                "kind": "continuation",
+                "status": "available",
+                "continuation": {"token": "eyJzY2hlbWEiOjF9"},
+            }
+        )
+
+        result = trajectory_gate.evaluate(receipt)
+
+        self.assertEqual(result["status"], "PASS")
+
     def test_public_receipts_allow_urls_and_prose_slashes(self):
         receipt = self.load("bulwark-map-accepted.json")
         receipt["presentation"]["visible_diagnostics"] = [
@@ -3967,7 +3977,7 @@ class TrajectoryGateTests(unittest.TestCase):
 
                 self.assertEqual(errors, [])
 
-    def test_v2_local_prunes_survive_v1_compatibility_projection(self):
+    def test_schema3_local_prunes_remain_visible_and_valid(self):
         cases = (
             ("credentials-and-cache", (".local/credentials", ".local/cache")),
             ("mixed-shared-and-local", ("docs/.cache", ".local/credentials")),
@@ -3979,7 +3989,7 @@ class TrajectoryGateTests(unittest.TestCase):
                 for relative in pruned_paths:
                     (root / relative).mkdir(parents=True)
                 action = trajectory_discovery_capture.build_doctor_discovery_action(
-                    discovery_module.discover_init_scope(root, contract_version=2)
+                    discovery_module.discover_init_scope(root)
                 )
                 self.assertTrue(
                     any(
@@ -4020,18 +4030,18 @@ class TrajectoryGateTests(unittest.TestCase):
                     original_local_prunes,
                 )
 
-    def test_v2_malformed_local_prune_evidence_fails_closed(self):
+    def test_schema3_malformed_local_prune_evidence_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _write_markdown(root, ".local/0.3.0-campaign/KICKOFF-PROMPT.md")
             (root / ".local" / "credentials").mkdir(parents=True)
             action = trajectory_discovery_capture.build_doctor_discovery_action(
-                discovery_module.discover_init_scope(root, contract_version=2)
+                discovery_module.discover_init_scope(root)
             )
             action["applied_exclusions"][0]["extra"] = "malformed"
             payload = {
                 field: action[field]
-                for field in trajectory_discovery_capture.DOCTOR_DISCOVERY_RECEIPT_FIELDS_V2
+                for field in trajectory_discovery_capture.DOCTOR_DISCOVERY_RECEIPT_FIELDS
             }
             action["receipt_checksum"] = (
                 trajectory_discovery_capture._canonical_receipt_checksum(payload)
@@ -4043,13 +4053,26 @@ class TrajectoryGateTests(unittest.TestCase):
             )
             self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
 
-    def test_shared_v1_prune_receipt_remains_unchanged(self):
+    def test_schema3_shared_prune_receipt_remains_valid(self):
         errors = []
         trajectory_discovery_contract.validate_doctor_discovery_action(
             actual_doctor_prune_payload(),
             errors,
         )
         self.assertEqual(errors, [])
+
+    def test_public_discovery_validator_rejects_non_schema3_receipts(self):
+        original = actual_doctor_prune_payload()
+        for version in (1, 2, 4, True):
+            with self.subTest(schema_version=repr(version)):
+                action = deepcopy(original)
+                action["schema_version"] = version
+                errors = []
+                trajectory_discovery_contract.validate_doctor_discovery_action(
+                    action,
+                    errors,
+                )
+                self.assertIn("retrieval.invalid_doctor_init_discovery", errors)
 
     def test_fable5_receipt_checksum_is_coherence_not_authentication(self):
         original = deepcopy(actual_doctor_cross_parent_limit_payload())
@@ -4226,7 +4249,7 @@ class TrajectoryGateTests(unittest.TestCase):
             (
                 "kind-string-subclass",
                 lambda action: action["next_boundary"][0].update(
-                    kind=StringSubclass("missing-container")
+                    kind=StringSubclass("metadata-io")
                 ),
             ),
             (
@@ -4244,7 +4267,7 @@ class TrajectoryGateTests(unittest.TestCase):
                 }
                 self.assertEqual(
                     action["next_boundary"],
-                    [{"kind": "missing-container", "path": "docs"}],
+                    [{"kind": "metadata-io", "path": "docs"}],
                 )
                 mutate(action)
                 if name == "unknown-key":
@@ -4349,11 +4372,11 @@ class TrajectoryGateTests(unittest.TestCase):
             ):
                 first = builder(raw)
                 second = builder(deepcopy(raw))
-                moved = builder(alternate_root)
+                with self.assertRaisesRegex(ValueError, "schema-3"):
+                    builder(alternate_root)
 
         self.assertEqual(raw, original)
         self.assertEqual(first, second)
-        self.assertEqual(first, moved)
         self.assertEqual(first["owner"], "docs")
         self.assertEqual(first["kind"], "init-discovery")
         self.assertNotIn("root", first)
@@ -4361,7 +4384,7 @@ class TrajectoryGateTests(unittest.TestCase):
             set(first) - {"owner", "kind", "receipt_checksum"},
             set(original) - {"root"},
         )
-        self.assertNotIn(original["root"], json.dumps(first, sort_keys=True))
+        self.assertNotIn(alternate_root["root"], json.dumps(first, sort_keys=True))
         self.assertRegex(first["receipt_checksum"], r"^[0-9a-f]{64}$")
         self.assertEqual(
             capture.DISCOVERY_RECEIPT_CHECKSUM_VERSION,
@@ -4380,7 +4403,7 @@ class TrajectoryGateTests(unittest.TestCase):
             {
                 "contract": "task5-init-discovery-receipt-checksum",
                 "payload": payload,
-                "version": 1,
+                "version": DISCOVERY_CONTRACT_VERSION,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -4416,30 +4439,42 @@ class TrajectoryGateTests(unittest.TestCase):
             with self.subTest(semantic_field=field):
                 mutated = deepcopy(original)
                 mutated[field] = changed(mutated[field])
+                mutated_payload = {
+                    key: value
+                    for key, value in mutated.items()
+                    if key != "root"
+                }
                 self.assertNotEqual(
-                    builder(mutated)["receipt_checksum"],
+                    capture._canonical_receipt_checksum(mutated_payload),
                     first["receipt_checksum"],
                 )
 
-        wrong_version = deepcopy(original)
-        wrong_version["schema_version"] = 2
-        with self.assertRaisesRegex(ValueError, "exact Task 5"):
-            builder(wrong_version)
+        for version in (1, 2, 4, True):
+            with self.subTest(rejected_schema=repr(version)):
+                wrong_version = deepcopy(original)
+                wrong_version["schema_version"] = version
+                with self.assertRaisesRegex(ValueError, "contract version"):
+                    builder(wrong_version)
 
         not_json = deepcopy(original)
         not_json["observed"]["metadata_operations"] = float("nan")
-        with self.assertRaisesRegex(ValueError, "exact Task 5 JSON"):
+        with self.assertRaisesRegex(ValueError, "schema-3 Task 5 JSON"):
             builder(not_json)
 
     def test_discovery_contract_module_is_focused_one_way_and_import_pure(self):
         capture_path = ROOT / "tools" / "trajectory_discovery_capture.py"
         contract_path = ROOT / "tools" / "trajectory_discovery_contract.py"
         v1_policy_path = ROOT / "tools" / "trajectory_discovery_v1_policy.py"
-        v2_contract_path = ROOT / "tools" / "trajectory_discovery_v2_contract.py"
+        retired_v2_contract_path = (
+            ROOT / "tools" / "trajectory_discovery_v2_contract.py"
+        )
         self.assertTrue(capture_path.is_file(), "missing focused discovery capture module")
         self.assertTrue(contract_path.is_file(), "missing focused discovery contract module")
         self.assertTrue(v1_policy_path.is_file(), "missing focused v1 policy module")
-        self.assertTrue(v2_contract_path.is_file(), "missing focused v2 contract module")
+        self.assertFalse(
+            retired_v2_contract_path.exists(),
+            "retired v2 discovery contract must not be restored",
+        )
 
         routes_path = ROOT / "tools" / "trajectory_routes.py"
         routes_source = routes_path.read_text(encoding="utf-8")
@@ -4482,7 +4517,7 @@ class TrajectoryGateTests(unittest.TestCase):
         self.assertNotIn("def _canonical_receipt_checksum", contract_source)
         self.assertIn("def validate_doctor_discovery_action", contract_source)
         self.assertIn("trajectory_discovery_v1_policy", contract_imports)
-        self.assertIn("trajectory_discovery_v2_contract", contract_imports)
+        self.assertNotIn("trajectory_discovery_v2_contract", contract_imports)
         self.assertIn("trajectory_discovery_capture", v1_policy_source)
         self.assertNotIn("trajectory_discovery_contract", v1_policy_source)
         self.assertLess(len(routes_source.splitlines()), 700)
@@ -4512,7 +4547,7 @@ class TrajectoryGateTests(unittest.TestCase):
         )
         captured = self.doctor_discovery_action()
         raw = {
-            "root": str(ROOT),
+            "root": ".",
             **{
                 field: captured[field]
                 for field in capture.DOCTOR_DISCOVERY_RECEIPT_FIELDS
@@ -4532,7 +4567,7 @@ class TrajectoryGateTests(unittest.TestCase):
                 "assert trajectory_routes.ANYWHERE_PRUNE_DIRS is contract.ANYWHERE_PRUNE_DIRS\n"
                 f"raw = json.loads({raw_json!r})\n"
                 "action = capture.build_doctor_discovery_action(raw)\n"
-                "assert raw['root'] not in json.dumps(action, sort_keys=True)\n"
+                "assert 'root' not in action\n"
                 "assert len(action['receipt_checksum']) == 64\n"
             )
             environment = os.environ.copy()
