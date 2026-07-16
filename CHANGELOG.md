@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (2026-07-16)
+
+- Made Init adoption deterministic and engine-owned: the installed `init_closeout.py` entrypoint constructs the schema-3 request, preview, manifest, and receipt, and the model presents the verified result without reconstructing it (#14).
+- Repaired the first-run Init journey, including Windows short-path corpus discovery and explicit-scope path identity (#13, #14).
+- Grew the deterministic suite to more than 700 tests, adding Init adoption CLI and shared-corpus visibility coverage.
+
 ## 0.1.0 — Public alpha (2026-07-13)
 
 - Established one canonical semantic version across Agent Skills metadata, native plugin manifests, generated wrappers, and help output.
