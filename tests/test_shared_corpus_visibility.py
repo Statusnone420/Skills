@@ -83,6 +83,37 @@ def create_directory_link(link, target):
 
 
 class SharedCorpusVisibilityTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows short paths only")
+    def test_prevalidated_git_inventory_accepts_short_root_alias(self):
+        import ctypes
+
+        with tempfile.TemporaryDirectory() as td:
+            long_root = Path(td) / "Git Repository With Long Name"
+            long_root.mkdir()
+            initialize_git(long_root)
+            write_markdown(long_root, "docs/tracked.md", "# Tracked\n")
+            run_git(long_root, "add", "--", "docs/tracked.md")
+
+            buffer = ctypes.create_unicode_buffer(32768)
+            length = ctypes.windll.kernel32.GetShortPathNameW(
+                str(long_root),
+                buffer,
+                len(buffer),
+            )
+            if not length or os.path.normcase(buffer.value) == os.path.normcase(
+                str(long_root)
+            ):
+                self.skipTest("Windows short-path aliases unavailable")
+
+            result = docs_discovery.scan_selected_document_corpus(
+                Path(buffer.value),
+                "docs",
+                "selected-scope-exact",
+            )
+
+            self.assertTrue(result["complete"], result)
+            self.assertEqual(result["paths"], ["docs/tracked.md"])
+
     def test_prechecked_missing_git_marker_avoids_unbudgeted_probe(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

@@ -270,6 +270,12 @@ def tracked_markdown_scope(
     root = Path(root).absolute()
     scope_norm = normalize_repo_relative(scope, "scope")
 
+    if inventory_only:
+        if git_marker_present is None:
+            raise ValueError("inventory-only Git marker was not prevalidated")
+        if not git_marker_present:
+            return None
+
     def declared_git_repository():
         if git_marker_present is not None:
             return git_marker_present
@@ -277,7 +283,13 @@ def tracked_markdown_scope(
 
     try:
         top = subprocess.run(
-            ["git", "-C", os.fspath(root), "rev-parse", "--show-toplevel"],
+            [
+                "git",
+                "-C",
+                os.fspath(root),
+                "rev-parse",
+                "--show-prefix" if inventory_only else "--show-toplevel",
+            ],
             capture_output=True,
             timeout=5,
             check=False,
@@ -290,18 +302,24 @@ def tracked_markdown_scope(
         if declared_git_repository():
             raise OSError("Git visibility is unavailable")
         return None
-    try:
-        top_path = Path(top.stdout.decode("utf-8", "strict").strip()).absolute()
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise ValueError("Git worktree root is invalid") from exc
-    root_identity = os.path.abspath(root) if inventory_only else os.path.realpath(root)
-    top_identity = (
-        os.path.abspath(top_path) if inventory_only else os.path.realpath(top_path)
-    )
-    if os.path.normcase(root_identity) != os.path.normcase(top_identity):
-        if declared_git_repository():
+    if inventory_only:
+        try:
+            prefix = top.stdout.decode("utf-8", "strict").rstrip("\r\n")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Git worktree prefix is invalid") from exc
+        if prefix:
             raise ValueError("repository root does not match Git worktree root")
-        return None
+    else:
+        try:
+            top_path = Path(top.stdout.decode("utf-8", "strict").strip()).absolute()
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError("Git worktree root is invalid") from exc
+        root_identity = os.path.realpath(root)
+        top_identity = os.path.realpath(top_path)
+        if os.path.normcase(root_identity) != os.path.normcase(top_identity):
+            if declared_git_repository():
+                raise ValueError("repository root does not match Git worktree root")
+            return None
     try:
         listed = subprocess.run(
             [
