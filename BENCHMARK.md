@@ -52,7 +52,7 @@ The first dogfood pass used only the completed read-only checker against 13 disp
 | Local-only authority | `choice-required`, local candidates present-uninspected, absence claim disallowed, `content_reads: 0` |
 | Protected-surface inventory | 9 synthetic protected surfaces; 10 in the safe local public checkout, with incomplete evidence honestly reported |
 | Vendor symlink | Created out-of-scope vendor symlink; checker remained structure-healthy and did not traverse it |
-| Context-cost telemetry | Maximum generated web prompt 26,596 bytes; repository hot-path bytes remained provenance-tagged provisional telemetry |
+| Context-cost telemetry | Maximum generated web prompt 26,596 bytes at that pre-rework run (24,679 bytes after the deterministic Init rework); repository hot-path bytes remained provenance-tagged provisional telemetry |
 
 The authorized Cline local-authority check reproduced the routing boundary: automatic discovery returned a choice boundary with two local candidates and no absence claim; an explicit local scope planned 12 files/94,889 bytes with `content_reads: 0`; selected read-only retrieval verified nine staged plan entries, including Chat Calm and performance work. The route/body stayed private and no local map or orientation hook was written. A safe local checkout with a configured remote provided the public-repository evidence; no network clone was performed. These are deterministic contract observations, not a claim about arbitrary model navigation.
 
