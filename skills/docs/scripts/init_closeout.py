@@ -4,17 +4,22 @@
 Usage:
   python init_closeout.py <repository-root> preview < request.json
   python init_closeout.py <repository-root> apply < request.json
+  python init_closeout.py <repository-root> preview --request-file request.json
+  python init_closeout.py <repository-root> apply --request-file request.json
 
-Requests are bounded UTF-8 JSON on stdin. Preview is zero-write and emits the
-exact approval string. Apply requires the same evidence plus that exact string;
-it reconstructs the plan from current files and never accepts target bytes.
-Responses are bounded machine-readable JSON on stdout.
+Requests are bounded UTF-8 JSON on stdin or the explicit request file. Preview
+is zero-write and emits the exact approval string. Apply requires the same
+evidence plus that exact string; it reconstructs the plan from current files
+and never accepts target bytes. Responses are bounded machine-readable JSON on
+stdout.
 """
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
 
 from _docs_checker.init_closeout import (
@@ -78,16 +83,49 @@ def _failure(error, request=None):
     return response
 
 
+def _read_request(request_file):
+    if request_file is None:
+        try:
+            return sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+        except OSError as exc:
+            raise InitCloseoutError(
+                "invalid-request", "request-unavailable", "request-read"
+            ) from exc
+
+    try:
+        with request_file.open("rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise InitCloseoutError(
+                    "invalid-request", "request-unavailable", "request-read"
+                )
+            return handle.read(MAX_REQUEST_BYTES + 1)
+    except InitCloseoutError:
+        raise
+    except OSError as exc:
+        raise InitCloseoutError(
+            "invalid-request", "request-unavailable", "request-read"
+        ) from exc
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Preview or apply one verified docs initialization closeout."
     )
     parser.add_argument("root", type=Path, help="explicit repository root")
     parser.add_argument("operation", choices=("preview", "apply"))
+    parser.add_argument(
+        "--request-file",
+        type=Path,
+        help="bounded UTF-8 JSON request file; defaults to stdin",
+    )
     arguments = parser.parse_args(argv)
 
     validated_request = None
-    raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+    try:
+        raw = _read_request(arguments.request_file)
+    except InitCloseoutError as error:
+        _write_response(_failure(error))
+        return 2
     if len(raw) > MAX_REQUEST_BYTES:
         error = InitCloseoutError(
             "invalid-request", "request-capacity", "request-read"

@@ -248,19 +248,14 @@ class InitCloseoutProcessTests(unittest.TestCase):
         init_reference = (SCRIPTS.parent / "references" / "init.md").read_text(
             encoding="utf-8"
         )
-        transport_prefix = (
-            "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
-        )
         self.assertIn(
-            transport_prefix
-            + "Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' "
-            "'<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview",
+            "& '<python>' '<installed-skill>/scripts/init_closeout.py' "
+            "'<repository-root>' preview --request-file '<request-json>'",
             init_reference,
         )
         self.assertIn(
-            transport_prefix
-            + "Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' "
-            "'<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply",
+            "& '<python>' '<installed-skill>/scripts/init_closeout.py' "
+            "'<repository-root>' apply --request-file '<request-json>'",
             init_reference,
         )
 
@@ -268,26 +263,21 @@ class InitCloseoutProcessTests(unittest.TestCase):
             return "'" + str(value).replace("'", "''") + "'"
 
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
+            root = Path(td) / "repository"
             build_repository(root)
-            request_path = root / "init-request.json"
+            request_path = Path(td) / "init-request.json"
             request_path.write_bytes(canonical_bytes(build_request(root)))
 
             def invoke(operation):
-                command = transport_prefix + " ".join(
+                command = " ".join(
                     (
-                        "Get-Content",
-                        "-Raw",
-                        "-Encoding",
-                        "UTF8",
-                        "-LiteralPath",
-                        powershell_literal(request_path),
-                        "|",
                         "&",
                         powershell_literal(sys.executable),
                         powershell_literal(CLOSEOUT),
                         powershell_literal(root),
                         operation,
+                        "--request-file",
+                        powershell_literal(request_path),
                     )
                 )
                 return subprocess.run(
@@ -1270,6 +1260,78 @@ class InitRepeatDoctorTests(unittest.TestCase):
 
 
 class InitCloseoutBoundaryTests(unittest.TestCase):
+
+    def test_request_file_transport_is_bounded_and_missing_file_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repository"
+            build_repository(root)
+
+            request_path = Path(td) / "init-request.json"
+            request_path.write_bytes(canonical_bytes(build_request(root)))
+            before = tree_snapshot(root)
+            selected_file_process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "preview",
+                    "--request-file",
+                    str(request_path),
+                ],
+                cwd=ROOT,
+                input=b"{malformed-stdin",
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(selected_file_process.returncode, 0)
+            self.assertEqual(
+                json.loads(selected_file_process.stdout)["status"],
+                "approval-required",
+            )
+            self.assertEqual(tree_snapshot(root), before)
+
+            missing = Path(td) / "missing-request.json"
+            before = tree_snapshot(root)
+            missing_process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "preview",
+                    "--request-file",
+                    str(missing),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing_process.returncode, 0)
+            missing_payload = json.loads(missing_process.stdout)
+            self.assertEqual(missing_payload["classification"], "request-unavailable")
+            self.assertEqual(missing_payload["writes"], 0)
+            self.assertEqual(tree_snapshot(root), before)
+
+            oversized = Path(td) / "oversized-request.json"
+            oversized.write_bytes(b"{" + b"x" * MAX_REQUEST_BYTES)
+            before = tree_snapshot(root)
+            oversized_process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "preview",
+                    "--request-file",
+                    str(oversized),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(oversized_process.returncode, 0)
+            oversized_payload = json.loads(oversized_process.stdout)
+            self.assertEqual(oversized_payload["classification"], "request-capacity")
+            self.assertEqual(oversized_payload["writes"], 0)
+            self.assertEqual(tree_snapshot(root), before)
 
     def test_boundary_rejects_duplicate_oversized_extra_traversal_and_unicode_is_safe(self):
         with tempfile.TemporaryDirectory() as td:

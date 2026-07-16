@@ -276,18 +276,19 @@ A later, separate user message must repeat the one exact approval:
 Approve $docs init preview <preview-id> with manifest <manifest-sha256>
 ```
 
-Route the bounded canonical request JSON through the installed closeout entrypoint on stdin.
-For the zero-write preview, set `operation` to `preview` and use the exact command for the
-active shell. On POSIX:
+Route the bounded canonical request JSON through the installed closeout entrypoint. For the
+zero-write preview, set `operation` to `preview` and use the exact command for the active shell.
+On POSIX, pass the request on stdin:
 
 ```text
 <python> <installed-skill>/scripts/init_closeout.py <repository-root> preview < request.json
 ```
 
-On PowerShell, replace every quoted placeholder with its literal path:
+On PowerShell, pass the request file directly so the native text pipeline cannot re-encode it.
+Replace every quoted placeholder with its literal path:
 
 ```text
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview
+& '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview --request-file '<request-json>'
 ```
 
 After the separate exact approval, add only the allowed `approval` field, set `operation` to
@@ -300,7 +301,7 @@ After the separate exact approval, add only the allowed `approval` field, set `o
 On PowerShell:
 
 ```text
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply
+& '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply --request-file '<request-json>'
 ```
 
 Do not manually reconstruct the closeout plan, manifest, target bytes, or apply action. The
