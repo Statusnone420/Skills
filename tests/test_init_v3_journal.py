@@ -1430,8 +1430,15 @@ class InitV3JournalApplyTests(unittest.TestCase):
                 lifecycle_io.os, "replace", side_effect=observe_replace
             ), mock.patch.object(
                 lifecycle_io.os, "unlink", side_effect=observe_unlink
-            ):
-                result = self.apply(root, plan)
+            ) as patched_unlink:
+                supported_dir_fd = set(lifecycle_io.os.supports_dir_fd)
+                supported_dir_fd.add(patched_unlink)
+                with mock.patch.object(
+                    lifecycle_io.os,
+                    "supports_dir_fd",
+                    supported_dir_fd,
+                ):
+                    result = self.apply(root, plan)
 
             self.assertEqual(result["status"], "applied")
             self.assertEqual(observed, expected)
