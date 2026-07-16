@@ -1,9 +1,11 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).parents[1]
@@ -11,6 +13,7 @@ SCRIPTS = ROOT / "skills" / "docs" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from _docs_checker import discovery as docs_discovery
+from _docs_checker import paths as docs_paths
 from _docs_checker.paths import tracked_markdown_scope
 
 
@@ -57,7 +60,104 @@ def build_visibility_fixture(root):
     run_git(root, "add", "-f", "--", "docs/forced/tracked.md")
 
 
+def create_directory_link(link, target):
+    if os.name != "nt":
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            raise unittest.SkipTest("directory symlinks unavailable") from exc
+        return
+    command = (
+        "New-Item -ItemType Junction -Path "
+        f"'{str(link).replace(chr(39), chr(39) * 2)}' -Target "
+        f"'{str(target).replace(chr(39), chr(39) * 2)}' | Out-Null"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", command],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        raise unittest.SkipTest("directory junctions unavailable")
+
+
 class SharedCorpusVisibilityTests(unittest.TestCase):
+    def test_prechecked_missing_git_marker_avoids_unbudgeted_probe(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            not_a_repository = subprocess.CompletedProcess(
+                ["git"],
+                1,
+                stdout=b"",
+                stderr=b"",
+            )
+
+            with mock.patch.object(
+                docs_paths.subprocess,
+                "run",
+                return_value=not_a_repository,
+            ), mock.patch.object(
+                docs_paths.os.path,
+                "lexists",
+                side_effect=AssertionError("unbudgeted Git marker probe"),
+            ):
+                self.assertIsNone(
+                    tracked_markdown_scope(
+                        root,
+                        ".",
+                        git_marker_present=False,
+                    )
+                )
+
+    def test_git_backed_init_accounts_for_every_python_metadata_probe(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            build_visibility_fixture(root)
+            write_markdown(root, "README.md", "# Repository\n")
+            run_git(root, "add", "--", "README.md")
+            real_lstat = docs_discovery.os.lstat
+            real_stat = docs_discovery.os.stat
+            observed = {"lstat": 0, "stat": 0}
+
+            def counted_lstat(path, *args, **kwargs):
+                observed["lstat"] += 1
+                return real_lstat(path, *args, **kwargs)
+
+            def counted_stat(path, *args, **kwargs):
+                observed["stat"] += 1
+                return real_stat(path, *args, **kwargs)
+
+            with mock.patch.object(
+                docs_discovery.os,
+                "lstat",
+                side_effect=counted_lstat,
+            ), mock.patch.object(
+                docs_discovery.os,
+                "stat",
+                side_effect=counted_stat,
+            ):
+                payload = docs_discovery.discover_init_scope(root)
+
+            self.assertNotEqual(payload["status"], "stopped")
+            self.assertEqual(
+                payload["observed"]["metadata_operations"],
+                observed["lstat"] + observed["stat"],
+            )
+
+    def test_git_backed_init_rejects_tracked_route_through_reparse_parent(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            build_visibility_fixture(root)
+            original_docs = root / "original-docs"
+            (root / "docs").rename(original_docs)
+            outside = root / "outside"
+            write_markdown(outside, "tracked.md", "# OUTSIDE_SENTINEL\n")
+            create_directory_link(root / "docs", outside)
+
+            with self.assertRaises(ValueError):
+                docs_discovery.discover_init_scope(root)
+
     def test_declared_but_broken_git_repository_fails_closed(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

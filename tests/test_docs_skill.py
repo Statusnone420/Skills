@@ -1733,6 +1733,27 @@ class DocsSkillContractTests(unittest.TestCase):
             )
             self.assertEqual(payload["physical_limit"]["kind"], "metadata_operations")
 
+    def test_halted_init_discovery_skips_git_visibility_probe(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+
+            with mock.patch.dict(
+                docs_discovery.INIT_DISCOVERY_LIMITS,
+                {"metadata_operations": 1},
+            ), mock.patch.object(
+                docs_discovery,
+                "tracked_markdown_scope",
+                side_effect=AssertionError("work after metadata cap"),
+            ):
+                try:
+                    payload = self._init_discovery_api(root)
+                except AssertionError as exc:
+                    self.fail(str(exc))
+
+            self.assertEqual(payload["status"], "stopped")
+            self.assertEqual(payload["observed"]["metadata_operations"], 1)
+            self.assertEqual(payload["physical_limit"]["kind"], "metadata_operations")
+
     def test_init_discovery_cli_facade_does_not_preconsume_physical_budget(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -1845,7 +1866,9 @@ class DocsSkillContractTests(unittest.TestCase):
             handbook = root / "handbook"
             handbook.mkdir()
             (handbook / "README.md").write_text("# Handbook\n", encoding="utf-8")
-            operations_before_entry_stat = len(root.absolute().parts) + 3
+            # The Git marker, explicit-scope validation, scope revalidation,
+            # and scope scandir follow root validation before the first child stat.
+            operations_before_entry_stat = len(root.absolute().parts) + 4
 
             with mock.patch.dict(
                 docs_discovery.INIT_DISCOVERY_LIMITS,

@@ -588,6 +588,7 @@ def _initial_state(root):
         "io_errors": [],
         "root_documents": [],
         "selected_evidence": [],
+        "tracked_metadata": {},
         "has_root_instructions": False,
         "local_candidates": [],
         "surface_paths": set(),
@@ -609,6 +610,75 @@ def _tracked_scope_paths(tracked_paths, selected_scope):
     return [path for path in tracked_paths if path.startswith(prefix)]
 
 
+def _budgeted_tracked_route_info(state, relative, *, phase):
+    """Validate one Git route component-by-component through the Init budget."""
+    relative = normalize_repo_relative(relative, "tracked path")
+    current = state["root"]
+    current_relative = "."
+    parts = tuple(Path(relative).parts)
+    for index, part in enumerate(parts):
+        current = current / part
+        current_relative = _join_relative(current_relative, part)
+        identity = _path_identity(current_relative)
+        if identity in state["tracked_metadata"]:
+            info = state["tracked_metadata"][identity]
+        else:
+            info = _lstat_path(
+                state,
+                current,
+                current_relative,
+                phase=phase,
+                depth=index,
+                missing_ok=True,
+            )
+            state["tracked_metadata"][identity] = info
+        if state["halted"] or info is None:
+            return None
+        if _info_is_reparse(info):
+            raise ValueError("tracked path crosses a symlink or reparse component")
+        if index < len(parts) - 1:
+            if not stat.S_ISDIR(info.st_mode):
+                return None
+        elif not stat.S_ISREG(info.st_mode):
+            return None
+    return info
+
+
+def _tracked_repository_markdown(state):
+    """Resolve Git visibility and budget every tracked-route validation."""
+    if state["halted"]:
+        return None
+    marker = _lstat_path(
+        state,
+        state["root"] / ".git",
+        ".git",
+        phase="candidate",
+        missing_ok=True,
+    )
+    if state["halted"]:
+        return None
+    inventory = tracked_markdown_scope(
+        state["root"],
+        ".",
+        git_marker_present=marker is not None,
+        inventory_only=True,
+    )
+    if inventory is None:
+        return None
+    tracked = []
+    for relative in inventory:
+        info = _budgeted_tracked_route_info(
+            state,
+            relative,
+            phase="candidate",
+        )
+        if state["halted"]:
+            break
+        if info is not None:
+            tracked.append(relative)
+    return tracked
+
+
 def _tracked_scope_metadata(state, selected_scope, tracked_paths):
     """Build bounded metadata without traversing local-only filesystem trees."""
     paths = _tracked_scope_paths(tracked_paths, selected_scope)
@@ -626,17 +696,12 @@ def _tracked_scope_metadata(state, selected_scope, tracked_paths):
             )
             _record_boundary(state, "selected-markdown-paths", relative)
             break
-        try:
-            info = os.lstat(state["root"] / Path(relative))
-        except OSError:
-            state["io_errors"].append(
-                {
-                    "phase": "scope",
-                    "path": relative,
-                    "kind": "metadata-io",
-                }
-            )
-            state["halted"] = True
+        info = _budgeted_tracked_route_info(
+            state,
+            relative,
+            phase="scope",
+        )
+        if state["halted"] or info is None:
             metadata["complete"] = False
             break
         if _info_is_reparse(info) or not stat.S_ISREG(info.st_mode):
@@ -695,7 +760,13 @@ def _discover_tracked_candidates(state, tracked_paths):
         parts = relative.split("/")
         if len(parts) == 1:
             if is_maintained_root_document(relative):
-                info = os.lstat(state["root"] / relative)
+                info = _budgeted_tracked_route_info(
+                    state,
+                    relative,
+                    phase="candidate",
+                )
+                if state["halted"] or info is None:
+                    return
                 state["root_documents"].append(
                     root_document_evidence(relative, info)
                 )
@@ -744,7 +815,7 @@ def scan_selected_document_corpus(
     state = _initial_state(root)
     try:
         validate_root(state)
-        tracked_paths = tracked_markdown_scope(root, ".")
+        tracked_paths = _tracked_repository_markdown(state)
         if tracked_paths is not None:
             additions = [
                 normalize_repo_relative(path, "additional shared path")
@@ -962,7 +1033,7 @@ def discover_init_scope(
     requested_scope = (
         None if explicit_scope is None else os.fspath(explicit_scope)
     )
-    tracked_paths = tracked_markdown_scope(root, ".")
+    tracked_paths = _tracked_repository_markdown(state)
     normalized_scope = None
     jurisdiction_scope = "."
     root_only_overrides = []

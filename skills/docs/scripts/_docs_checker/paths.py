@@ -250,17 +250,31 @@ def _raise_walk_error(error):
     raise error
 
 
-def tracked_markdown_scope(root: Path, scope: str) -> list[str] | None:
+def tracked_markdown_scope(
+    root: Path,
+    scope: str,
+    *,
+    git_marker_present: bool | None = None,
+    inventory_only: bool = False,
+) -> list[str] | None:
     """Return physically present Git-tracked Markdown, or None outside Git.
 
     Tracked membership is the shared/private boundary. Ignore appearance never
     excludes a tracked file, while ignored and ordinary untracked files are
     both local-only. A requested root merely nested inside another Git
     worktree uses no-Git filesystem behavior instead of inheriting the
-    parent's visibility rules.
+    parent's visibility rules. ``inventory_only`` is reserved for callers that
+    have already validated the root and will validate every returned route
+    through their own bounded filesystem-I/O layer.
     """
     root = Path(root).absolute()
     scope_norm = normalize_repo_relative(scope, "scope")
+
+    def declared_git_repository():
+        if git_marker_present is not None:
+            return git_marker_present
+        return os.path.lexists(root / ".git")
+
     try:
         top = subprocess.run(
             ["git", "-C", os.fspath(root), "rev-parse", "--show-toplevel"],
@@ -269,21 +283,23 @@ def tracked_markdown_scope(root: Path, scope: str) -> list[str] | None:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        if os.path.lexists(root / ".git"):
+        if declared_git_repository():
             raise OSError("Git visibility is unavailable") from exc
         return None
     if top.returncode != 0:
-        if os.path.lexists(root / ".git"):
+        if declared_git_repository():
             raise OSError("Git visibility is unavailable")
         return None
     try:
         top_path = Path(top.stdout.decode("utf-8", "strict").strip()).absolute()
     except (UnicodeDecodeError, ValueError) as exc:
         raise ValueError("Git worktree root is invalid") from exc
-    if os.path.normcase(os.path.realpath(root)) != os.path.normcase(
-        os.path.realpath(top_path)
-    ):
-        if os.path.lexists(root / ".git"):
+    root_identity = os.path.abspath(root) if inventory_only else os.path.realpath(root)
+    top_identity = (
+        os.path.abspath(top_path) if inventory_only else os.path.realpath(top_path)
+    )
+    if os.path.normcase(root_identity) != os.path.normcase(top_identity):
+        if declared_git_repository():
             raise ValueError("repository root does not match Git worktree root")
         return None
     try:
@@ -324,6 +340,9 @@ def tracked_markdown_scope(root: Path, scope: str) -> list[str] | None:
         if scope_norm != "." and relative != scope_norm and not relative.startswith(prefix):
             continue
         if Path(relative).suffix.lower() != ".md" or _is_pruned_relative(relative):
+            continue
+        if inventory_only:
+            routes.append(relative)
             continue
         path = safe_path(root / relative, root)
         if os.path.lexists(path) and (path.is_file() or _is_reparse(path)):
