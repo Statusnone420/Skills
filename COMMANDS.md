@@ -16,7 +16,7 @@ Unknown or missing commands return help without side effects.
 
 ## Operating-system boundaries
 
-`init` is the one-time, read-only adoption preview. It selects a bounded jurisdiction, reports first-contact discovery and local/protected routes, and proposes the map/highway, operational-memory files, verification, and complete disposition manifest. A later exact approval is required before lifecycle closeout.
+`init` is the one-time adoption command, and its first response is a read-only preview produced by a deterministic engine: the installed `init_closeout.py` entrypoint owns scope selection, corpus accounting, and preview construction, and the model presents the engine's verified receipt rather than reconstructing it. The preview covers the bounded jurisdiction, first-contact discovery, local/protected routes, the proposed map/highway and operational-memory files, verification, and the complete disposition manifest. `--scope <repository-relative-directory>` is the only public scope override, and a later exact approval is required before lifecycle closeout.
 
 `doctor` is ongoing read-only diagnosis. It reports every compact finding in the evidenced scope, groups evidence-backed treatments, and binds each treatment to a content-derived `DOC-*` ID plus full fingerprint. It never claims a scoped result is repository-exhaustive. `context` routes task topics through shared and present local maps; missing local knowledge is unavailable, not proof of absence.
 

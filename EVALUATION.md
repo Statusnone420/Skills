@@ -1,6 +1,6 @@
 # Evaluation
 
-The evaluation workflow uses deterministic fixtures, disposable repositories, recorded attempts, and sanitized visible artifacts. The public-alpha evidence currently includes five matched safety-pressure pairs, a preserved `init` approval-boundary failure and remediation, more than 100 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
+The evaluation workflow uses deterministic fixtures, disposable repositories, recorded attempts, and sanitized visible artifacts. The public-alpha evidence currently includes five matched safety-pressure pairs, a preserved `init` approval-boundary failure and remediation, more than 700 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
 
 ## Layered regression gates
 
@@ -102,4 +102,4 @@ On 2026-07-14, a local-only checker harness exercised 13 disposable repository c
 
 The no-doc case returned an adoption preview with `content_reads: 0`; the large-slop case returned a bounded batch-limited preview without opening the unique fact; stale and merged state returned blocked Trust outcomes; the local-only case returned choice-required with present-uninspected candidates and absence claims disallowed; and protected-surface previews reported 9 synthetic surfaces. The authorized Cline local-authority run found a choice boundary with two local candidates, then an explicit local scope planned 12 files/94,889 bytes with zero content reads; selected read-only retrieval verified nine staged plan entries, including Chat Calm and performance work. No local body, private route, or map was copied into shared state or public output.
 
-A safe local checkout with a configured remote supplied the public-repository evidence: 10 protected surfaces were inventoried conservatively, the evidence was incomplete and scope-limited, and no relocation or mutation was attempted. No network clone was run. The 16,384-byte hot-path value and 26,596-byte prompt maximum remain measured telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.
+A safe local checkout with a configured remote supplied the public-repository evidence: 10 protected surfaces were inventoried conservatively, the evidence was incomplete and scope-limited, and no relocation or mutation was attempted. No network clone was run. The 16,384-byte hot-path value and the measured prompt maximum remain telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting. After the deterministic Init rework, the regenerated maximum is 24,679 bytes (`doctor`), down from the 26,596 bytes observed here.

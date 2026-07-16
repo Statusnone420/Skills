@@ -16,7 +16,7 @@ This public-alpha tutorial uses a disposable repository and keeps the first pass
 
 For changes, `$docs update ...` revalidates affected evidence. Structural commands such as `init`, `migrate`, and `cleanup` preview first and require a later exact approval.
 
-Init is a one-time adoption preview. It is zero-write until you approve the exact preview and manifest; subsequent verified closeout records routes, finding lifecycles, hashes, events, and disposition identity under committed `.diataxis/` state. No external database or daemon is required. Local-only knowledge remains local, and provider-facing public entrances remain at their established paths.
+Init is a one-time adoption preview produced by a deterministic engine—the model presents the engine's verified result rather than constructing one. It is zero-write until you approve the exact preview and manifest; subsequent verified closeout records routes, finding lifecycles, hashes, events, and disposition identity under committed `.diataxis/` state. No external database or daemon is required. Local-only knowledge remains local, and provider-facing public entrances remain at their established paths.
 
 The 16 KiB repository hot-path figure is provisional telemetry only. It does not affect the structural percentage, Trust, health verdict, or deletion pressure. Web adapters use command-specific progressive disclosure and report measured prompt sizes rather than inheriting that repository heuristic.
 

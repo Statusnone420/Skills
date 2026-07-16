@@ -37,7 +37,7 @@ class PublicDocumentationContractTests(unittest.TestCase):
         self.assertIn("Your repository's documentation should help agents", readme)
         self.assertIn("Public alpha", readme)
         self.assertIn("$docs doctor", readme)
-        self.assertIn("100+ deterministic tests", readme)
+        self.assertIn("700+ deterministic tests", readme)
         benchmark = (ROOT / "BENCHMARK.md").read_text(encoding="utf-8")
         self.assertIn("108-run matrix", benchmark)
         self.assertIn("not run", benchmark.lower())

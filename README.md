@@ -49,18 +49,13 @@ Doctor's first pass is read-only. It maps what exists, checks obvious documentat
 
 ## The workflow
 
-```text
-Ask and scope
-    ↓
-Bounded map + check + diagnosis
-    ↓
-Evidence-backed treatment manifest
-    ↓
-STOP — you select and approve treatments
-    ↓
-Isolated write / update / fix / migrate / cleanup
-    ↓
-Re-check, show the diff, and stop before commit
+```mermaid
+flowchart TD
+    A["Ask and scope"] --> B["Bounded map + check + diagnosis"]
+    B --> C["Evidence-backed treatment manifest"]
+    C --> D(["STOP — you select and approve treatments"])
+    D --> E["Isolated write / update / fix / migrate / cleanup"]
+    E --> F["Re-check, show the diff, and stop before commit"]
 ```
 
 ## Commands
@@ -91,12 +86,13 @@ Compatibility is evidence-tiered—not universal. Static adapter validation is n
 - Repository confinement with symlink, junction, and reparse-point defenses.
 - Explicit-only skill invocation and prompt-injection-resistant repository handling.
 - Dirty-worktree preservation and approval gates before structural changes.
-- **100+ deterministic tests** across Windows and Linux CI.
+- Deterministic, engine-owned Init adoption: the installed entrypoint constructs the preview, manifest, and receipt; the model presents the verified result and never reconstructs it.
+- **700+ deterministic tests** across Windows and Linux CI.
 - Canonical/generated parity checks and sanitized, reproducible evaluation fixtures.
 
 Every finding has a content-derived `DOC-*` identity and full fingerprint. Line movement and timestamps do not retarget it; changed semantic identity does. Approved structural transformations carry exact ID/fingerprint pairs, protected-surface evidence, recovery boundaries, and a complete disposition manifest. Failed verification is a state conflict, never a successful closeout.
 
-The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,412 to 26,596 bytes; the 40,000-byte packaging guard is a documented regression check with 13,404 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
+The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,484 to 24,679 bytes; the 40,000-byte packaging guard is a documented regression check with 15,321 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
 
 ## Benchmark status
 

@@ -1,6 +1,6 @@
 # Benchmark status
 
-As of 2026-07-12, the public-alpha evidence includes deterministic fixtures, RED captures, five matched safety-pressure pairs plus the preserved init failure/remediation, more than 100 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
+As of 2026-07-16, the public-alpha evidence includes deterministic fixtures, RED captures, five matched safety-pressure pairs plus the preserved init failure/remediation, more than 700 deterministic tests, plugin validation, and a 5/5 live Windows junction probe.
 
 ## Map retrieval pilot
 
@@ -58,4 +58,4 @@ The authorized Cline local-authority check reproduced the routing boundary: auto
 
 ## What remains to measure
 
-External-model navigation quality, live cross-harness behavior, and a network-backed public-repository comparison remain unmeasured. The 16 KiB hot-path value and 26,596-byte prompt maximum remain telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting.
+External-model navigation quality, live cross-harness behavior, and a network-backed public-repository comparison remain unmeasured. The 16 KiB hot-path value and the measured prompt maximum remain telemetry/provisional targets; Task 10 does not justify a final hard threshold or weighting. After the deterministic Init rework, the regenerated prompt maximum is 24,679 bytes (`doctor`).
