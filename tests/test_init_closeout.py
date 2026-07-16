@@ -248,13 +248,18 @@ class InitCloseoutProcessTests(unittest.TestCase):
         init_reference = (SCRIPTS.parent / "references" / "init.md").read_text(
             encoding="utf-8"
         )
+        transport_prefix = (
+            "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        )
         self.assertIn(
-            "Get-Content -Raw -LiteralPath '<request-json>' | & '<python>' "
+            transport_prefix
+            + "Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' "
             "'<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview",
             init_reference,
         )
         self.assertIn(
-            "Get-Content -Raw -LiteralPath '<request-json>' | & '<python>' "
+            transport_prefix
+            + "Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' "
             "'<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply",
             init_reference,
         )
@@ -269,10 +274,12 @@ class InitCloseoutProcessTests(unittest.TestCase):
             request_path.write_bytes(canonical_bytes(build_request(root)))
 
             def invoke(operation):
-                command = " ".join(
+                command = transport_prefix + " ".join(
                     (
                         "Get-Content",
                         "-Raw",
+                        "-Encoding",
+                        "UTF8",
                         "-LiteralPath",
                         powershell_literal(request_path),
                         "|",

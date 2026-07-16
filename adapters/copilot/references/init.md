@@ -249,7 +249,7 @@ active shell. On POSIX:
 On PowerShell, replace every quoted placeholder with its literal path:
 
 ```text
-Get-Content -Raw -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' preview
 ```
 
 After the separate exact approval, add only the allowed `approval` field, set `operation` to
@@ -262,7 +262,7 @@ After the separate exact approval, add only the allowed `approval` field, set `o
 On PowerShell:
 
 ```text
-Get-Content -Raw -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-Content -Raw -Encoding UTF8 -LiteralPath '<request-json>' | & '<python>' '<installed-skill>/scripts/init_closeout.py' '<repository-root>' apply
 ```
 
 Do not manually reconstruct the closeout plan, manifest, target bytes, or apply action. The
