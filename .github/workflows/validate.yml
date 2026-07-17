@@ -26,3 +26,19 @@ jobs:
         if: matrix.group == 'core'
         shell: bash
         run: python -B tools/build_adapters.py --check --output adapters
+  tests_gate:
+    name: Tests
+    if: always()
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require complete matrix success
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.tests.result }}
+        run: |
+          if [ "$MATRIX_RESULT" != "success" ]; then
+            echo "::error::Test matrix result was $MATRIX_RESULT."
+            exit 1
+          fi
+          echo "All test matrix jobs passed."
