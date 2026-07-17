@@ -47,7 +47,7 @@ class ClaudeDistributionContractTests(unittest.TestCase):
             self.assertEqual(manifest["description"], "Bounded repository memory. Evidence-backed documentation.")
             self.assertEqual(manifest["repository"], "https://github.com/Statusnone420/Skills")
             self.assertEqual(manifest["license"], "Apache-2.0")
-            self.assertEqual(manifest["version"], "0.1.0")
+            self.assertEqual(manifest["version"], "0.1.1")
             skill_root = output / "claude" / "skills" / "docs"
             self.assertFalse((output / "claude" / "SKILL.md").exists())
             generated_skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")

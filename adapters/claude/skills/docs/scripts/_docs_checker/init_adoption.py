@@ -18,7 +18,7 @@ from .init_closeout import (
 from .scan import discover_markdown, scan_documents
 
 
-SKILL_VERSION = "0.1.0"
+SKILL_VERSION = "0.1.1"
 
 
 def canonical_request_bytes(value):

@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased (2026-07-16)
+## 0.1.1 — Init and Doctor closeout repair (2026-07-16)
 
+- Bumped the canonical and generated plugin release identity so marketplaces can fetch the merged repair instead of reusing the `0.1.0` cache.
 - Made Init adoption deterministic and engine-owned: the installed `init_closeout.py` entrypoint constructs the schema-3 request, preview, manifest, and receipt, and the model presents the verified result without reconstructing it (#14).
 - Repaired the first-run Init journey, including Windows short-path corpus discovery and explicit-scope path identity (#13, #14).
 - Grew the deterministic suite to more than 700 tests, adding Init adoption CLI and shared-corpus visibility coverage.

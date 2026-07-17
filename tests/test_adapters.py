@@ -435,7 +435,7 @@ class AdapterBuilderTests(unittest.TestCase):
             manifest["version"] = "9.9.9"
             manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8")
             wrapper_path = out / "gemini/docs.md"
-            wrapper_path.write_text(wrapper_path.read_text(encoding="utf-8").replace("v0.1.0", "v9.9.9"), encoding="utf-8")
+            wrapper_path.write_text(wrapper_path.read_text(encoding="utf-8").replace("v0.1.1", "v9.9.9"), encoding="utf-8")
 
             check = subprocess.run(
                 [sys.executable, str(BUILDER), "--check", "--output", str(out)],
@@ -454,7 +454,7 @@ class AdapterBuilderTests(unittest.TestCase):
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
             skill_path = out / "copilot/SKILL.md"
             skill_path.write_text(
-                skill_path.read_text(encoding="utf-8").replace('version: "0.1.0"', 'version: "9.9.9"'),
+                skill_path.read_text(encoding="utf-8").replace('version: "0.1.1"', 'version: "9.9.9"'),
                 encoding="utf-8",
             )
 
@@ -538,20 +538,20 @@ class AdapterBuilderTests(unittest.TestCase):
             canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
             for vendor in ("claude", "copilot", "grok", "cursor"):
                 text = (adapter_skill_root(out, vendor) / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn('  version: "0.1.0"', text)
+                self.assertIn('  version: "0.1.1"', text)
                 self.assertIn("user-invocable: true", text)
                 self.assertIn("disable-model-invocation: true", text)
                 self.assertEqual(text.split("---", 2)[-1].replace("\nuser-invocable: true\ndisable-model-invocation: true", "", 1), canonical.split("---", 2)[-1])
             for vendor in ("gemini", "opencode"):
                 wrapper = (out / vendor / "docs.md").read_text(encoding="utf-8")
                 self.assertIn("docs", wrapper.lower()); self.assertIn("raw trailing text", wrapper.lower())
-                self.assertIn("Diátaxis Docs v0.1.0", wrapper)
+                self.assertIn("Diátaxis Docs v0.1.1", wrapper)
             web = (out / "web" / "docs-help.txt").read_text(encoding="utf-8")
             self.assertIn("capabilit", web.lower())
-            self.assertIn("Diátaxis Docs v0.1.0", web)
+            self.assertIn("Diátaxis Docs v0.1.1", web)
             manifest = json.loads((out / "plugin/.codex-plugin/plugin.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["name"], "statusnone-skills")
-            self.assertEqual(manifest["version"], "0.1.0")
+            self.assertEqual(manifest["version"], "0.1.1")
             self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
             self.assertEqual(manifest["interface"].get("brandColor"), "#6657E8")
             self.assertEqual(manifest["interface"].get("composerIcon"), "./assets/bounded-compass.png")
