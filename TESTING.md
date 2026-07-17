@@ -12,8 +12,9 @@ flowchart LR
     F --> H["MDX safe text parsing"]
     G --> I["Docs commands"]
     H --> I
-    J["Unknown navigation manifest"] --> K["Recognized but unmeasured"]
+    J["Selected-surface engine"] --> K["Markdown map or bounded Mintlify provider"]
     K --> I
+    L["Malformed or unsupported provider input"] --> M["Unmeasured, fail closed"]
 ```
 
 ## Commands
@@ -54,5 +55,7 @@ Run the Ubuntu proof from a Linux-native checkout under `$HOME`, not directly fr
 5. Run the repository documentation checker.
 6. Run `all` on Windows and WSL once the narrower gates pass.
 7. Let CI repeat the same grouped commands; CI confirms local evidence rather than discovering basic failures.
+
+Provider regressions also prove that Map, Check, Doctor, Audit, and Init use the same selected-surface evidence, while semantic candidates remain labeled and bounded.
 
 No valid test may be skipped, deleted, or weakened to pass a gate. A completion claim requires fresh output, a reviewed diff, and explicit separation of change-caused failures from verified pre-existing failures.

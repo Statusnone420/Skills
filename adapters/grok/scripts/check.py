@@ -149,7 +149,7 @@ from _docs_checker.lifecycle_io import (
     verify_local_route_hashes,
 )
 from _docs_checker.metadata_io import is_expected_environmental_error
-from _docs_checker.navigation import unsupported_navigation_manifest
+from _docs_checker.navigation import NavigationBoundary, select_navigation
 from _docs_checker.paths import (
     ANYWHERE_PRUNE_DIRS,
     REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
@@ -221,16 +221,25 @@ def check(
     _assert_no_reparse_components(root)
     map_norm = normalize_repo_relative(map_path, "map")
     scope_norm = normalize_repo_relative(scope, "scope")
-    if unsupported_navigation_manifest(root, scope_norm, map_norm) is not None:
-        raise ValueError("unsupported documentation navigation manifest")
+    navigation = select_navigation(root, scope_norm, map_norm)
+    scan_scope = (
+        navigation["scope"] if navigation["provider"] == "mintlify" else scope_norm
+    )
+    if navigation["provider"] == "mintlify":
+        scan_map = navigation["entry"] or (
+            navigation["navigated_pages"] + navigation["hidden_pages"]
+        )[0]
+    else:
+        scan_map = map_norm
     configured_hot_paths = unique_relative_paths(
         [
             normalize_repo_relative(path, "hot paths")
             for path in (hot_paths or [])
         ]
     )
-    normalized_hot_paths = unique_relative_paths([map_norm] + configured_hot_paths)
-    scoped, findings, applied_prunes = discover_markdown(root, scope_norm)
+    normalized_hot_paths = unique_relative_paths([scan_map] + configured_hot_paths)
+    scoped, findings, applied_prunes = discover_markdown(root, scan_scope)
+    findings.extend(navigation.get("findings", []))
     findings.extend(inspect_operational_memory(root))
     state = None
     active_findings = []
@@ -244,12 +253,13 @@ def check(
         pass
     result = scan_documents(
         root,
-        map_norm,
+        scan_map,
         normalized_hot_paths,
         scoped,
         findings,
         applied_prunes,
         () if state is None else state["cold_paths"],
+        navigation=navigation,
     )
     findings, hot_path, measurements = result
     freshness = (
@@ -270,6 +280,7 @@ def check(
             "baseline": None if state is None else state["rubric"],
             "freshness": freshness,
             "coverage": coverage,
+            "navigation": navigation,
         }
     )
     if _measurements:
@@ -403,6 +414,33 @@ def main(argv=None):
             findings, hot_path, measurements = check(
                 root, map_norm, hot, scope_norm, _measurements=True
             )
+    except NavigationBoundary as exc:
+        if namespace.json or recovery_mode:
+            print(
+                json.dumps(
+                    {
+                        "status": exc.result.get("status", "unmeasured"),
+                        "has_findings": False,
+                        "root": ".",
+                        "scope": exc.result.get("scope"),
+                        "navigation": exc.result,
+                        "error": exc.result.get(
+                            "classification",
+                            "unsupported documentation navigation manifest",
+                        ),
+                        "findings": [],
+                    },
+                    ensure_ascii=True,
+                )
+            )
+        else:
+            print(
+                "error: "
+                + exc.result.get(
+                    "classification", "unsupported documentation navigation manifest"
+                )
+            )
+        return 2
     except OSError as exc:
         if not is_expected_environmental_error(exc):
             raise
@@ -467,6 +505,15 @@ def main(argv=None):
         print(json.dumps(discovery, ensure_ascii=True))
         return 2 if discovery.get("status") == "state-conflict" else 0
     if namespace.json:
+        health = health_summary(
+            measurements,
+            findings=measurements["active_findings"],
+            baseline=measurements["baseline"],
+            freshness=measurements["freshness"],
+            coverage=measurements["coverage"],
+        )
+        health["surface"] = measurements["navigation"]["scope"]
+        health["provider"] = measurements["navigation"]["provider"]
         print(
             json.dumps(
                 {
@@ -477,13 +524,8 @@ def main(argv=None):
                     "map": map_norm,
                     "prunes": measurements["prunes"],
                     "hot_path": hot_path,
-                    "health": health_summary(
-                        measurements,
-                        findings=measurements["active_findings"],
-                        baseline=measurements["baseline"],
-                        freshness=measurements["freshness"],
-                        coverage=measurements["coverage"],
-                    ),
+                    "navigation": measurements["navigation"],
+                    "health": health,
                     "findings": findings,
                 },
                 ensure_ascii=True,

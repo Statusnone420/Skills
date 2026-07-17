@@ -59,6 +59,7 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
                     "map",
                     "prunes",
                     "hot_path",
+                    "navigation",
                     "health",
                     "findings",
                 },
@@ -235,7 +236,9 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
             },
         )
         self.assertLessEqual(graph["health"], {"identity", "paths"})
-        self.assertLessEqual(graph["scan"], {"formats", "paths", "identity", "health"})
+        self.assertLessEqual(
+            graph["scan"], {"formats", "paths", "identity", "health", "navigation"}
+        )
         self.assertLessEqual(graph["memory"], {"formats", "paths", "identity"})
         self.assertEqual(graph["navigation"], {"formats", "paths"})
         visiting = set()

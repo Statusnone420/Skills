@@ -15,11 +15,11 @@ from .init_closeout import (
     preview_response,
     validate_public_request,
 )
-from .navigation import unsupported_navigation_manifest
+from .navigation import NavigationBoundary, select_navigation
 from .scan import discover_markdown, scan_documents
 
 
-SKILL_VERSION = "0.1.2"
+SKILL_VERSION = "0.1.3"
 
 
 def canonical_request_bytes(value):
@@ -62,11 +62,9 @@ def _select_scope(root, explicit_scope=None):
             "discovery-incomplete",
             "discovery",
         )
-    if unsupported_navigation_manifest(
-        root,
-        selected_scope,
-        _preferred_map_path(selected_scope),
-    ) is not None:
+    try:
+        select_navigation(root, selected_scope, _preferred_map_path(selected_scope))
+    except NavigationBoundary:
         raise InitCloseoutError(
             "waiting",
             "unsupported-documentation-navigation-manifest",
@@ -85,8 +83,14 @@ def _map_path(paths, selected_scope):
     return by_identity.get(preferred.casefold(), paths[0])
 
 
-def _structural_health(root, selected_scope, map_path):
-    scoped, findings, applied_prunes = discover_markdown(root, selected_scope)
+def _structural_health(root, selected_scope, map_path, navigation):
+    scan_scope = (
+        navigation["scope"]
+        if navigation.get("provider") == "mintlify"
+        else selected_scope
+    )
+    scoped, findings, applied_prunes = discover_markdown(root, scan_scope)
+    findings.extend(navigation.get("findings", []))
     findings, _, measurements = scan_documents(
         root,
         map_path,
@@ -94,6 +98,7 @@ def _structural_health(root, selected_scope, map_path):
         scoped,
         findings,
         applied_prunes,
+        navigation=navigation,
     )
     return health_summary(measurements, findings=findings)
 
@@ -127,12 +132,21 @@ def build_adoption_request(
             "corpus-scan",
         )
 
+    navigation = select_navigation(
+        root,
+        selected_scope,
+        _preferred_map_path(selected_scope),
+    )
     map_path = _map_path(paths, selected_scope)
+    if navigation.get("provider") == "mintlify":
+        entry = navigation.get("entry")
+        if entry in paths:
+            map_path = entry
     health_scope = selected_scope
-    if selected_scope != ".":
+    if navigation.get("provider") != "mintlify" and selected_scope != ".":
         scope_depth = len(Path(selected_scope).parts)
         health_scope = Path(*Path(paths[0]).parts[:scope_depth]).as_posix()
-    health = _structural_health(root, health_scope, map_path)
+    health = _structural_health(root, health_scope, map_path, navigation)
     dispositions = [
         {
             "item_id": f"{relative}#<whole-file>",

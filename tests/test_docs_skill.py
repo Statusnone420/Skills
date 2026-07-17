@@ -117,7 +117,7 @@ class DocsSkillContractTests(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
 
-        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.2\"", skill)
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.3\"", skill)
         self.assertIn("Diátaxis Docs v<metadata.version>", commands)
 
     def test_default_help_uses_plain_english_daily_commands(self):
@@ -370,10 +370,10 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_canonical_version_is_strict_semver(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertEqual(build_adapters.canonical_version(skill), "0.1.2")
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.3")
         for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
             with self.subTest(invalid=invalid):
-                malformed = skill.replace('version: "0.1.2"', f'version: "{invalid}"')
+                malformed = skill.replace('version: "0.1.3"', f'version: "{invalid}"')
                 with self.assertRaises(ValueError):
                     build_adapters.canonical_version(malformed)
 
@@ -431,6 +431,28 @@ class DocsSkillContractTests(unittest.TestCase):
         context_start = commands.index("`context <task>`")
         context_end = commands.index("`write <need>`", context_start)
         self.assertIn("must not run the checker solely to calculate health", commands[context_start:context_end])
+
+    def test_selected_surface_is_shared_and_semantic_findings_have_a_ceiling(self):
+        skill = " ".join((SKILL / "SKILL.md").read_text(encoding="utf-8").lower().split())
+        commands = " ".join((SKILL / "references" / "commands.md").read_text(encoding="utf-8").lower().split())
+        doctor = " ".join((SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower().split())
+        init = " ".join((SKILL / "references" / "init.md").read_text(encoding="utf-8").lower().split())
+
+        for text in (skill, commands, doctor, init):
+            with self.subTest(document="shared surface", text=text[:32]):
+                self.assertIn("same deterministic selected-surface evidence", text)
+                self.assertIn("provider facts", text)
+                self.assertIn("unresolved candidates", text)
+        for phrase in (
+            "deterministic engine is the factual floor, not the model ceiling",
+            "label semantic findings and unresolved candidates separately",
+            "may not contradict provider facts",
+            "may not promote an unverified candidate to p0, p1, or p2",
+        ):
+            self.assertIn(phrase, commands)
+        self.assertIn("audit consumes the same deterministic selected-surface evidence", commands)
+        self.assertIn("root readme orientation remains separate", commands)
+        self.assertIn("hidden rather than broken or unreachable", commands)
 
     def test_doctor_approval_isolation_binds_git_to_the_selected_root(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
