@@ -2,7 +2,7 @@
 
 ## Daily help
 
-- `doctor [what you want improved]`  Diagnose documentation and prescribe the correct repairs. With no extra text, scan overall health. Initial diagnosis makes no edits.
+- `doctor [--details] [what you want improved]`  Diagnose documentation and prescribe the correct repairs. With no extra text, scan overall health. Initial diagnosis makes no edits.
 - `context <what you are doing>`  Show where to start and what repository knowledge matters for the task. No edits.
 - `write <what is missing>`  Create the focused documentation readers need, after verifying the facts.
 - `update <what changed>`  Bring affected documentation in line with a code, configuration, product, or design change.
@@ -37,9 +37,9 @@ For `context`, `map`, and `check`, orient from existing map/current-state files;
 `cleanup`: preview splits, merges, archives, removals, and estimated context savings without changing files; later, separate user message must accept the exact preview and revalidate evidence, proposal, and worktree.
 `help [all]`: `Diátaxis Docs v<metadata.version>`; `help` returns Daily help; `help all` returns Daily help plus Help all; no repo I/O.
 
-`doctor [goal]`: diagnose and prescribe in a read-only initial response. Bare Doctor reports every compact checker finding in its declared/evidenced scan scope and groups them into one or more correct evidence-backed treatments; it does not cap finding or treatment count. Goal text narrows diagnosis while retaining related blockers, reporting exclusions, and avoiding any repository-exhaustive claim for a scoped result. `check` remains the structural score only: no advice and no edits.
+`doctor [--details] [goal]`: diagnose and prescribe in a read-only initial response. Bare Doctor retains every compact checker finding in its declared/evidenced scan scope and shows finding/treatment counts plus one compact card per correct evidence-backed treatment; it does not cap finding or treatment count. Full evidence is explicit `--details` output. Goal text narrows diagnosis while retaining related blockers, reporting exclusions, and avoiding any repository-exhaustive claim for a scoped result. `check` remains the structural score only: no advice and no edits.
 
-On missing or uncertain map evidence, Doctor first runs the explicit read-only discovery route `<python> <checker-path> <repository-root> --json --agent --init-discovery`; `$docs doctor --scope <repository-relative-directory> [goal text]` appends the explicit scope and confines the result to it. Respect selection-required/truncated/physical-limit user actions and open content only after a bounded scope is selected. Report requested, normalized, selected, and inspected scope; exclusions/prunes; configured and observed limits; the planned content batch and unopened routes; and `content_reads`. Then run the normal checker once for the selected scope and report all of its compact findings. Semantic evidence opens remain bounded to four files and unverified suspicions stay unresolved.
+On missing or uncertain map evidence, Doctor first runs the explicit read-only discovery route `<python> <checker-path> <repository-root> --json --agent --init-discovery`; `$docs doctor [--details] --scope <repository-relative-directory> [goal text]` appends the explicit scope and confines the result to it. Respect selection-required/truncated/physical-limit user actions and open content only after a bounded scope is selected. Retain requested, normalized, selected, and inspected scope; exclusions/prunes; configured and observed limits; the planned content batch and unopened routes; and `content_reads` in its evidence receipt. Then run the normal checker once for the selected scope and group all compact findings into the default treatment cards. Semantic evidence opens remain bounded to four files and unverified suspicions stay unresolved.
 
 Only Doctor permits bounded post-check evidence after the checker; map and check reject repository reads after it. Print `health.meter` once from checker evidence and explain measured evidence. When work remains, include exact approval syntax for one or many treatments, naming every exact `DOC-*` ID and full fingerprint. After initialization or treatment, recommend `$docs doctor` to establish the next comparable baseline.
 
@@ -47,7 +47,7 @@ Writes separate verified facts, inference, and candidates. Unknown commands have
 
 ## Command closeout boundary
 
-`doctor`, `check`, `map`, `context`, `audit`, and `classify` are read-only: they write neither documentation nor `.diataxis/` operational memory. A same-message request to diagnose and apply does not broaden that boundary. Only an exact, separately approved `init`, `write`, `update`, `fix`, `migrate`, or `cleanup` result may enter lifecycle closeout.
+`doctor`, `check`, `map`, `context`, `audit`, and `classify` are read-only: they write neither documentation nor `.diataxis/` operational memory. A same-message request to diagnose and apply does not broaden that boundary. Doctor's outside-repository treatment receipt is an engine-owned approval artifact, not a repository mutation; only its later exact approved closeout may enter lifecycle closeout. Only an exact, separately approved `init`, `write`, `update`, `fix`, `migrate`, or `cleanup` result may enter lifecycle closeout.
 
 Before a mutating closeout, revalidate every approved `DOC-*` ID against its full fingerprint, the selected repository and scope, starting control-file digests, the exact disposition set, protected-surface authorization and nonempty compatibility evidence, and any local-only route. Write the approved documentation result first and run its promised verification. A failed or unavailable verification makes zero state, findings, event, local-map, or manifest closeout writes and records no successful baseline.
 

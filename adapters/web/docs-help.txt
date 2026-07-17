@@ -34,7 +34,7 @@ For `map` and `doctor`, missing documentation recommends `$docs init`; existing 
 Selected command contract (canonical):
 `help [all]`: `Diátaxis Docs v<metadata.version>`; `help` returns Daily help; `help all` returns Daily help plus Help all; no repo I/O.
 
-- `doctor [what you want improved]`  Diagnose documentation and prescribe the correct repairs. With no extra text, scan overall health. Initial diagnosis makes no edits.
+- `doctor [--details] [what you want improved]`  Diagnose documentation and prescribe the correct repairs. With no extra text, scan overall health. Initial diagnosis makes no edits.
 
 - `context <what you are doing>`  Show where to start and what repository knowledge matters for the task. No edits.
 

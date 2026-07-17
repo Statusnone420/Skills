@@ -12,6 +12,7 @@ ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 CHECKER_FILES = (
     "scripts/check.py",
     "scripts/init_closeout.py",
+    "scripts/doctor_closeout.py",
     "scripts/_docs_checker/__init__.py",
     "scripts/_docs_checker/paths.py",
     "scripts/_docs_checker/metadata_io.py",
@@ -30,6 +31,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/lifecycle_io.py",
     "scripts/_docs_checker/init_closeout.py",
     "scripts/_docs_checker/init_adoption.py",
+    "scripts/_docs_checker/doctor_closeout.py",
     "scripts/_docs_checker/health.py",
 )
 CANONICAL_RESOURCE_FILES = (

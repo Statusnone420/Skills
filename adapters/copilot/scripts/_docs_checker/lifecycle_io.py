@@ -936,6 +936,9 @@ def _plan_authorization_semantics(plan, root):
         )
         if plan.get("retained_source_probes") != retained_source_probes:
             raise ValueError("retained source probes do not match the manifest")
+    elif event.get("kind") == "fix":
+        if plan.get("retained_source_probes") != retained_source_probes:
+            raise ValueError("document closeout retained probes are invalid")
     authorized_corpus_transition = copy.deepcopy(plan.get("corpus_transition"))
     if (
         event.get("kind") == "init"
@@ -1062,10 +1065,7 @@ def _plan_authorization_semantics(plan, root):
     if init_source_changes:
         semantics["init_source_changes"] = init_source_changes
         semantics["init_source_bindings"] = expected_source_bindings
-    if event.get("kind") == "init":
-        semantics["retained_source_probes"] = copy.deepcopy(
-            retained_source_probes
-        )
+    semantics["retained_source_probes"] = copy.deepcopy(retained_source_probes)
     return semantics
 
 
@@ -1128,11 +1128,12 @@ def _validate_authorization_projection_binding_v3(
         or transaction_digest(identity_projection) != transaction_digest_value
     ):
         raise ValueError("initialization recovery authorization identity is invalid")
+    command = projection.get("command")
     if (
         projection["transaction_schema_version"] != TRANSACTION_SCHEMA_VERSION
         or projection["transaction_policy_version"]
         != TRANSACTION_POLICY_VERSION
-        or projection["command"] != "init"
+        or command not in {"init", "fix"}
         or not isinstance(projection["approvals"], list)
         or not isinstance(projection["visibility"], list)
         or not isinstance(projection["document_operations"], list)
@@ -1146,10 +1147,22 @@ def _validate_authorization_projection_binding_v3(
     if selected_boundary != projection["selected_boundary"]:
         raise ValueError("initialization recovery authorization boundary is invalid")
 
+    is_init = command == "init"
     manifest_entries = [entry for entry in entries if entry["role"] == "manifest"]
-    if len(manifest_entries) != 1:
+    if (is_init and len(manifest_entries) != 1) or (
+        not is_init and manifest_entries
+    ):
         raise ValueError("initialization recovery authorization manifest is invalid")
-    manifest_path = manifest_entries[0]["path"]
+    manifest_path = manifest_entries[0]["path"] if manifest_entries else None
+    if not is_init and (
+        projection["disposition"] is not None
+        or projection["corpus_transition"] is not None
+        or projection["local_map_digest"] is not None
+        or projection["local_map_schema_version"] is not None
+        or projection["protected_preview_digest"] is not None
+        or projection["visibility"] != ["shared"]
+    ):
+        raise ValueError("document closeout recovery authorization is invalid")
     starting = {
         _authorization_entry_label_v3(entry, manifest_path): entry["start"]["digest"]
         for entry in entries
@@ -1213,6 +1226,12 @@ def _validate_authorization_projection_binding_v3(
         seen_documents.add(path)
 
     control_entries = [entry for entry in entries if entry["plane"] == "control"]
+    if not is_init and {entry["role"] for entry in control_entries} != {
+        "state",
+        "findings",
+        "event",
+    }:
+        raise ValueError("document closeout recovery controls are invalid")
     expected_controls = [
         {
             "operation": "CONTROL_REPLACE",
@@ -1243,13 +1262,15 @@ def _validate_authorization_projection_binding_v3(
         ):
             raise ValueError("initialization recovery retained probe is invalid")
         probe_paths.add(identity)
+    if not is_init and probes:
+        raise ValueError("document closeout retained probes are invalid")
 
     source_entries = {
         entry["path"]: entry
         for entry in control_entries
         if entry["role"] in {"agents", "gitignore"}
     }
-    if fields & _AUTHORIZATION_PROJECTION_SOURCE_FIELDS_V3:
+    if is_init and fields & _AUTHORIZATION_PROJECTION_SOURCE_FIELDS_V3:
         changes = _normalize_init_source_changes(
             projection["init_source_changes"],
             "init",
@@ -1266,8 +1287,12 @@ def _validate_authorization_projection_binding_v3(
                 "target_digest": entry["result"]["digest"],
             }:
                 raise ValueError("initialization recovery source authorization is invalid")
-    elif source_entries:
+    elif is_init and source_entries:
         raise ValueError("initialization recovery source authorization is missing")
+    elif not is_init and (
+        source_entries or fields & _AUTHORIZATION_PROJECTION_SOURCE_FIELDS_V3
+    ):
+        raise ValueError("document closeout source authorization is invalid")
     return copy.deepcopy(dict(projection))
 
 
@@ -1279,8 +1304,11 @@ def _validate_recovered_authorization_v3(
 ):
     """Cross-bind staged control semantics to the authenticated projection."""
     projection = journal["authorization_projection"]
+    command = projection["command"]
     entries = journal["entries"]
     controls = {entry["role"]: entry for entry in entries if entry["plane"] == "control"}
+    if command not in {"init", "fix"} or not {"state", "findings", "event"}.issubset(controls):
+        raise ValueError("initialization recovery control authorization is invalid")
     targets = {
         entry["path"]: recovered_bodies[entry["result"]["staged"]]
         for entry in controls.values()
@@ -1295,6 +1323,7 @@ def _validate_recovered_authorization_v3(
         or _event_authorization_digest(event)
         != projection["event_semantic_digest"]
         or event.get("transaction_id") != journal["transaction_id"]
+        or event.get("kind") != command
     ):
         raise ValueError("initialization recovery event authorization is invalid")
 
@@ -1321,25 +1350,33 @@ def _validate_recovered_authorization_v3(
         raise ValueError("initialization recovery state authorization is invalid")
 
     disposition, manifest_path = _disposition_authorization(event, targets)
-    if (
-        disposition != projection["disposition"]
-        or controls["manifest"]["path"] != manifest_path
-        or projection["corpus_transition"] != event.get("corpus_transition")
-        or disposition.get("corpus_transition") != projection["corpus_transition"]
-        or disposition.get("manifest_identity")
-        != state["initialization"]["manifest_identity"]
-        or disposition.get("corpus_transition", {}).get("result")
-        != state["initialization"]["result_corpus"]
-        or disposition.get("document_results_digest")
-        != state["initialization"]["document_results_digest"]
+    if command == "init":
+        if (
+            disposition != projection["disposition"]
+            or controls.get("manifest", {}).get("path") != manifest_path
+            or projection["corpus_transition"] != event.get("corpus_transition")
+            or disposition.get("corpus_transition") != projection["corpus_transition"]
+            or disposition.get("manifest_identity")
+            != state["initialization"]["manifest_identity"]
+            or disposition.get("corpus_transition", {}).get("result")
+            != state["initialization"]["result_corpus"]
+            or disposition.get("document_results_digest")
+            != state["initialization"]["document_results_digest"]
+        ):
+            raise ValueError("initialization recovery manifest authorization is invalid")
+    elif (
+        disposition is not None
+        or manifest_path is not None
+        or "manifest" in controls
+        or projection["disposition"] is not None
+        or projection["corpus_transition"] is not None
+        or event.get("corpus_transition") is not None
     ):
-        raise ValueError("initialization recovery manifest authorization is invalid")
+        raise ValueError("document closeout manifest authorization is invalid")
 
     if (
         event.get("starting_digests") != projection["starting_digests"]
         or event.get("transaction_targets") != sorted(projection["target_roles"])
-        or event.get("target_roles") != projection["target_roles"]
-        or event.get("replacement_order") != projection["replacement_order"]
         or event.get("approval_bindings", []) != projection["approvals"]
         or event.get("selected_boundary") != projection["selected_boundary"]
         or event.get("visibility") != projection["visibility"]
@@ -1347,6 +1384,15 @@ def _validate_recovered_authorization_v3(
         != projection["protected_preview_digest"]
     ):
         raise ValueError("initialization recovery event operation binding is invalid")
+    if command == "init" and (
+        event.get("target_roles") != projection["target_roles"]
+        or event.get("replacement_order") != projection["replacement_order"]
+    ):
+        raise ValueError("initialization recovery event operation binding is invalid")
+    if command == "fix" and (
+        "target_roles" in event or "replacement_order" in event
+    ):
+        raise ValueError("document closeout event operation binding is invalid")
 
     local_entry = controls.get("local-map")
     if local_entry is None:
@@ -1701,6 +1747,8 @@ def _prepare_plan(
             prepared_dispositions["dispositions"],
             document_operations,
         )
+    elif command == "fix":
+        plan["retained_source_probes"] = []
     if init_source_changes:
         plan["init_source_changes"] = init_source_changes
         plan["init_source_bindings"] = init_source_bindings
@@ -3046,12 +3094,13 @@ def _reconciled_terminal_v3(root, recovery_root, marker):
         control_directory_preexisted=True,
         created_directories=marker["created_parent_identities"],
     )
-    journal_like = {
-        "entries": [
-            {**copy.deepcopy(entry), "status": "pending"}
-            for entry in marker["entries"]
-        ]
-    }
+    entries = [
+        {**copy.deepcopy(entry), "status": "pending"}
+        for entry in marker["entries"]
+    ]
+    event_entry = next(entry for entry in entries if entry["role"] == "event")
+    _, event_state = _classify_live_entry_v3(root, event_entry)
+    journal_like = {"entries": entries}
     return _reconciled_journal_v3(root, journal_like)
 
 
@@ -3064,7 +3113,7 @@ def _read_live_file_v3(root, relative, maximum_bytes):
     return data
 
 
-def _live_init_event_v3(root, transaction_id):
+def _live_event_v3(root, transaction_id, command=None):
     events_bytes = _read_live_file_v3(
         root,
         f"{STATE_DIRECTORY}/{EVENTS_FILE}",
@@ -3081,9 +3130,19 @@ def _live_init_event_v3(root, transaction_id):
     ):
         raise ValueError("live initialization event evidence is invalid")
     event = events[-1]
-    if event.get("kind") != "init" or event.get("transaction_id") != transaction_id:
+    if event.get("transaction_id") != transaction_id or (
+        command is not None and event.get("kind") != command
+    ):
         raise ValueError("live initialization event does not match transaction")
     return event
+
+
+def _live_init_event_v3(root, transaction_id):
+    return _live_event_v3(root, transaction_id, "init")
+
+
+def _live_fix_event_v3(root, transaction_id):
+    return _live_event_v3(root, transaction_id, "fix")
 
 
 def _validate_live_init_commit_v3(root, transaction_id):
@@ -3180,6 +3239,44 @@ def _validate_live_init_commit_v3(root, transaction_id):
     ):
         raise ValueError("live initialization result corpus does not match")
     return event
+
+
+def _validate_live_fix_commit_v3(root, transaction_id):
+    root = Path(root).absolute()
+    event = _live_fix_event_v3(root, transaction_id)
+    state_bytes = _read_live_file_v3(
+        root,
+        f"{STATE_DIRECTORY}/{STATE_FILE}",
+        MAX_STATE_BYTES,
+    )
+    findings_bytes = _read_live_file_v3(
+        root,
+        f"{STATE_DIRECTORY}/{FINDINGS_FILE}",
+        MAX_FINDINGS_BYTES,
+    )
+    try:
+        state = validate_operational_state(json.loads(state_bytes), root)
+        findings = validate_operational_findings(json.loads(findings_bytes), root)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise ValueError("live document closeout operational state is invalid") from exc
+    if (
+        _canonical_bytes(state) != state_bytes
+        or _canonical_bytes(findings) != findings_bytes
+        or state.get("last_completed_event") != event.get("event_id")
+        or state_semantic_digest(state) != event.get("state_semantic_digest")
+        or findings_digest(findings) != event.get("findings_digest")
+    ):
+        raise ValueError("live document closeout state does not match event")
+    return event
+
+
+def _validate_live_committed_closeout_v3(root, transaction_id):
+    event = _live_event_v3(root, transaction_id)
+    if event["kind"] == "init":
+        return _validate_live_init_commit_v3(root, transaction_id)
+    if event["kind"] == "fix":
+        return _validate_live_fix_commit_v3(root, transaction_id)
+    raise ValueError("live committed closeout command is invalid")
 
 
 def _validate_no_live_init_commit_v3(root, transaction_id):
@@ -3867,8 +3964,13 @@ def _validate_terminal_action_v3(root, recovery_root, marker, action):
         raise ValueError("initialization terminal live state does not match action")
     if reconciliation["successful_event_recorded"] is not (action == "finalize"):
         raise ValueError("initialization terminal event state does not match action")
-    if action == "finalize":
+    command = marker["authorization_projection"]["command"]
+    if action == "finalize" and command == "init":
         _validate_live_init_commit_v3(root, marker["transaction_id"])
+    elif action == "finalize" and command == "fix":
+        _validate_live_fix_commit_v3(root, marker["transaction_id"])
+    elif action == "finalize":
+        raise ValueError("initialization terminal command is invalid")
     else:
         _validate_no_live_init_commit_v3(root, marker["transaction_id"])
     return reconciliation
@@ -4409,25 +4511,33 @@ def _verify_pre_event_v3(root, plan, journal):
         for entry in journal["entries"]
     ):
         raise ValueError("pre-event journal status does not match installed results")
-    if plan.get("corpus_transition") != plan["event"].get("corpus_transition"):
-        raise ValueError("pre-event result corpus binding does not match")
-    expected_corpus = plan["corpus_transition"]["result"]
-    observed_corpus = scan_selected_document_corpus(
-        root,
-        expected_corpus["selected_scope"],
-        expected_corpus["coverage_mode"],
-        additional_shared_paths=[
-            operation["path"]
-            for operation in plan["document_operations"]
-            if operation["result_digest"] != _ABSENT_DIGEST
-        ],
-    )
-    if (
-        observed_corpus.get("complete") is not True
-        or observed_corpus.get("content_reads") != 0
-        or observed_corpus.get("corpus") != expected_corpus
+    if plan.get("command") == "init":
+        if plan.get("corpus_transition") != plan["event"].get("corpus_transition"):
+            raise ValueError("pre-event result corpus binding does not match")
+        expected_corpus = plan["corpus_transition"]["result"]
+        observed_corpus = scan_selected_document_corpus(
+            root,
+            expected_corpus["selected_scope"],
+            expected_corpus["coverage_mode"],
+            additional_shared_paths=[
+                operation["path"]
+                for operation in plan["document_operations"]
+                if operation["result_digest"] != _ABSENT_DIGEST
+            ],
+        )
+        if (
+            observed_corpus.get("complete") is not True
+            or observed_corpus.get("content_reads") != 0
+            or observed_corpus.get("corpus") != expected_corpus
+        ):
+            raise ValueError("pre-event result corpus does not match installed documents")
+    elif (
+        plan.get("command") != "fix"
+        or plan.get("corpus_transition") is not None
+        or plan["event"].get("corpus_transition") is not None
+        or plan.get("retained_source_probes") != []
     ):
-        raise ValueError("pre-event result corpus does not match installed documents")
+        raise ValueError("document closeout pre-event authorization is invalid")
     if LOCAL_MAP_PATH in plan["targets"] and _git_ignore_status(root) != "ignored":
         raise ValueError("installed local map is not ignored")
     _verify_retained_source_probes_v3(root, plan)
@@ -4546,6 +4656,11 @@ def _rollback_recovery_v3(root, recovery_root, journal=None):
                 os.chmod(target, start["mode"])
                 os.utime(target, ns=(start["mtime_ns"], start["mtime_ns"]))
             _directory_fsync(target.parent)
+            # A byte-identical control result is ambiguous on disk. Advance
+            # the journal rollback phase before checking that start state.
+            entry["status"] = "pending"
+            if not os.path.lexists(Path(recovery_root) / "terminal.json"):
+                _write_active_journal_v3(recovery_root, journal)
             _, restored = _classify_live_entry_v3(root, entry)
             if restored != "start":
                 raise OSError("rollback did not restore exact start state")
@@ -4804,12 +4919,16 @@ def apply_verified_closeout(
     protected_preview=None,
     protected_verification=None,
     documentation_rollback=None,
+    use_v3_recovery=False,
 ):
     if (
         isinstance(plan, Mapping)
-        and plan.get("command") == "init"
         and plan.get("transaction_schema_version") == 3
         and plan.get("transaction_policy_version") == "init-closeout-v3"
+        and (
+            plan.get("command") == "init"
+            or (plan.get("command") == "fix" and use_v3_recovery)
+        )
     ):
         return _apply_verified_closeout_v3(
             root,
@@ -5158,6 +5277,10 @@ def _load_journal_v3(root, recovery_root):
         or type(journal["recovery_container_preexisted"]) is not bool
     ):
         raise ValueError("initialization recovery journal header is invalid")
+    projection = journal["authorization_projection"]
+    command = projection.get("command") if isinstance(projection, Mapping) else None
+    if command not in {"init", "fix"}:
+        raise ValueError("initialization recovery journal command is invalid")
     facts = journal["parent_facts"]
     if not isinstance(facts, list) or len(facts) > 512:
         raise ValueError("initialization recovery parent facts are invalid")
@@ -5364,14 +5487,22 @@ def _load_journal_v3(root, recovery_root):
     if len(event_entries) != 1:
         raise ValueError("initialization recovery journal event is invalid")
     control_roles = [entry["role"] for entry in control_entries]
-    if (
-        any(control_roles.count(role) != 1 for role in {"manifest", "state", "findings", "event"})
+    if command == "init" and (
+        any(
+            control_roles.count(role) != 1
+            for role in {"manifest", "state", "findings", "event"}
+        )
         or any(
             control_roles.count(role) > 1
             for role in {"local-map", "gitignore", "agents"}
         )
     ):
         raise ValueError("initialization recovery control set is invalid")
+    if command == "fix" and (
+        len(control_roles) != 3
+        or set(control_roles) != {"state", "findings", "event"}
+    ):
+        raise ValueError("document closeout recovery control set is invalid")
     document_probes = []
     probe_result = b"journal-contract-probe"
     for entry in document_entries:
@@ -5444,22 +5575,23 @@ def _load_journal_v3(root, recovery_root):
         raise ValueError("initialization recovery event body is invalid")
     init_event = staged_events[-1]
     if (
-        init_event.get("kind") != "init"
+        init_event.get("kind") != command
         or init_event.get("transaction_id") != journal["transaction_id"]
     ):
         raise ValueError("initialization recovery event binding is invalid")
-    manifest = next(entry for entry in control_entries if entry["role"] == "manifest")
-    expected_manifest_path = (
-        f"{STATE_DIRECTORY}/manifests/{init_event['event_id']}.json"
-    )
-    if manifest["path"] != expected_manifest_path:
-        raise ValueError("initialization recovery manifest path is invalid")
-    event_order = [
-        "manifest" if path == manifest["path"] else path
-        for path in expected_order
-    ]
-    if init_event.get("replacement_order") != event_order:
-        raise ValueError("initialization recovery event order is invalid")
+    if command == "init":
+        manifest = next(entry for entry in control_entries if entry["role"] == "manifest")
+        expected_manifest_path = (
+            f"{STATE_DIRECTORY}/manifests/{init_event['event_id']}.json"
+        )
+        if manifest["path"] != expected_manifest_path:
+            raise ValueError("initialization recovery manifest path is invalid")
+        event_order = [
+            "manifest" if path == manifest["path"] else path
+            for path in expected_order
+        ]
+        if init_event.get("replacement_order") != event_order:
+            raise ValueError("initialization recovery event order is invalid")
     _validate_recovered_authorization_v3(
         root,
         journal,
@@ -5575,7 +5707,7 @@ def _markerless_tombstone_reconciliation_v3(root, recovery, transaction_id, acti
             if any(islice(directory.iterdir(), 1)):
                 raise ValueError("terminal marker is missing while recovery bodies remain")
     if action == "finalize":
-        event = _validate_live_init_commit_v3(root, transaction_id)
+        event = _validate_live_committed_closeout_v3(root, transaction_id)
         record = {
             "transaction_id": transaction_id,
             "event_id": event["event_id"],
