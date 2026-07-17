@@ -6,9 +6,10 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import unquote
 
-from .formats import is_document_path
+from .formats import is_document_path, parse_frontmatter_scalars
 from .health import PROVISIONAL_TARGET_BYTES
 from .identity import finding_fingerprint, finding_id, slug
+from .navigation import resolve_navigation_link
 from .paths import (
     _assert_no_reparse_components,
     _first_reparse_component,
@@ -232,8 +233,17 @@ def scan_documents(
     findings,
     applied_prunes,
     cold_patterns=(),
+    *,
+    navigation=None,
 ):
     """Inspect selected Markdown content and return findings and measurements."""
+    orientation = navigation.get("orientation") if isinstance(navigation, dict) else None
+    orientation_keys = {
+        _path_identity(orientation["path"])
+        if isinstance(orientation, dict) and isinstance(orientation.get("path"), str)
+        else None
+    }
+    orientation_keys.discard(None)
     tracked_routes = tracked_markdown_scope(root, ".")
     tracked_keys = (
         None
@@ -242,6 +252,8 @@ def scan_documents(
     )
 
     def shared_markdown_route(relative):
+        if _path_identity(relative) in orientation_keys:
+            return False
         return (
             not is_document_path(relative)
             or tracked_keys is None
@@ -304,13 +316,16 @@ def scan_documents(
     first_h1 = {}
     texts = {}
     for path in files:
-        text = strip_fences(path.read_text(encoding="utf-8", errors="replace"))
+        raw_text = path.read_text(encoding="utf-8", errors="replace")
+        text = strip_fences(raw_text)
         texts[path] = text
         headings = HEADING.findall(text)
         anchors[path] = {slug(heading) for heading in headings}
         first_h1[path] = next((heading.strip() for heading in H1.findall(text)), None)
-        if first_h1[path]:
-            titles.setdefault(first_h1[path].lower(), []).append(
+        metadata = parse_frontmatter_scalars(raw_text)
+        title = first_h1[path] or metadata["values"].get("title")
+        if isinstance(title, str) and title.strip():
+            titles.setdefault(title.strip().lower(), []).append(
                 _relative_posix(path, root)
             )
 
@@ -325,30 +340,100 @@ def scan_documents(
         text = texts[path]
         for raw_target in LINK.findall(text):
             raw_target = unquote(raw_target)
-            target, _, anchor = raw_target.partition("#")
-            if not target and anchor:
-                target = "#" + anchor
-            if target.startswith("#"):
-                destination = path
-            elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target, re.I):
-                continue
-            else:
-                destination = None
-            checked_links += 1
-            if anchor:
-                checked_anchors += 1
-            if destination is None:
+            source_relative = _relative_posix(path, root)
+            if navigation and navigation.get("provider") == "mintlify":
+                resolution = resolve_navigation_link(
+                    root, navigation, source_relative, raw_target
+                )
+                if resolution["status"] == "external":
+                    continue
+                checked_links += 1
+                if resolution.get("asset"):
+                    if resolution["status"] != "resolved":
+                        findings.append(
+                            {
+                                "kind": "missing-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    try:
+                        destination = safe_path(root / resolution["path"], root)
+                    except ValueError:
+                        findings.append(
+                            {
+                                "kind": "outside-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    if not destination.is_file():
+                        findings.append(
+                            {
+                                "kind": "missing-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    valid_links += 1
+                    continue
+                anchor = resolution.get("fragment", "")
+                if anchor:
+                    checked_anchors += 1
+                if resolution["status"] != "resolved":
+                    kind = {
+                        "outside": "outside-link",
+                        "missing": "missing-link",
+                        "unsupported": "unsupported-navigation-link",
+                    }.get(resolution["status"], "missing-link")
+                    findings.append(
+                        {
+                            "kind": kind,
+                            "path": source_relative,
+                            "target": raw_target,
+                        }
+                    )
+                    continue
                 try:
-                    destination = safe_path(path.parent / target, root)
+                    destination = safe_path(root / resolution["path"], root)
                 except ValueError:
                     findings.append(
                         {
                             "kind": "outside-link",
-                            "path": _relative_posix(path, root),
-                            "target": target,
+                            "path": source_relative,
+                            "target": raw_target,
                         }
                     )
                     continue
+                target = raw_target
+            else:
+                target, _, anchor = raw_target.partition("#")
+                if not target and anchor:
+                    target = "#" + anchor
+                if target.startswith("#"):
+                    destination = path
+                elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target, re.I):
+                    continue
+                else:
+                    destination = None
+                checked_links += 1
+                if anchor:
+                    checked_anchors += 1
+                if destination is None:
+                    try:
+                        destination = safe_path(path.parent / target, root)
+                    except ValueError:
+                        findings.append(
+                            {
+                                "kind": "outside-link",
+                                "path": source_relative,
+                                "target": target,
+                            }
+                        )
+                        continue
             destination_relative = _relative_posix(destination, root)
             if not destination.exists() or not shared_markdown_route(
                 destination_relative
@@ -356,14 +441,17 @@ def scan_documents(
                 findings.append(
                     {
                         "kind": "missing-link",
-                        "path": _relative_posix(path, root),
+                        "path": source_relative,
                         "target": target,
                     }
                 )
                 continue
             valid_links += 1
             links[path].append(destination)
-            if (
+            if navigation and navigation.get("provider") == "mintlify":
+                if destination_relative in navigation.get("navigated_pages", ()):
+                    valid_navigation_destinations.add(destination)
+            elif (
                 path == mapfile
                 and destination != mapfile
                 and destination in files
@@ -396,8 +484,10 @@ def scan_documents(
                     findings.append(
                         {
                             "kind": "missing-anchor",
-                            "path": _relative_posix(path, root),
-                            "target": target + "#" + anchor,
+                            "path": source_relative,
+                            "target": target
+                            if "#" in target
+                            else target + "#" + anchor,
                         }
                     )
 
@@ -405,8 +495,20 @@ def scan_documents(
     if not map_exists and scoped:
         findings.append({"kind": "missing-map", "map": map_norm})
 
+    file_route_names = {_relative_posix(path, root) for path in files}
     map_current_routes = []
-    if map_exists:
+    if navigation and navigation.get("provider") == "mintlify":
+        map_current_routes = [
+            {"route": route, "marker": "authoritative"}
+            for route in navigation.get("navigated_pages", ())
+            if route in file_route_names
+        ]
+        valid_navigation_destinations.update(
+            path
+            for path in files
+            if _relative_posix(path, root) in navigation.get("navigated_pages", ())
+        )
+    elif map_exists:
         for raw_target, marker in CURRENT_ROUTE_LINK.findall(texts[mapfile]):
             target = unquote(raw_target).partition("#")[0]
             if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target, re.I):
@@ -442,7 +544,37 @@ def scan_documents(
         for finding in findings
         if finding.get("kind") == "cold-current-conflict"
     }
-    if mapfile in files:
+    if navigation and navigation.get("provider") == "mintlify":
+        hidden_keys = {
+            _path_identity(route) for route in navigation.get("hidden_pages", ())
+        }
+        for path in files:
+            relative = _relative_posix(path, root)
+            if _path_identity(relative) in hidden_keys:
+                reachable.add(path)
+        todo = [
+            path
+            for path in files
+            if _relative_posix(path, root)
+            in navigation.get("navigated_pages", ())
+        ]
+        reachable.update(todo)
+        while todo:
+            for destination in links.get(todo.pop(), []):
+                if destination in files and destination not in reachable:
+                    reachable.add(destination)
+                    todo.append(destination)
+        for path in files:
+            relative = _relative_posix(path, root)
+            if path not in reachable and _path_identity(relative) not in hidden_keys:
+                findings.append(
+                    {
+                        "kind": "unreachable",
+                        "path": relative,
+                        "map": navigation.get("authority"),
+                    }
+                )
+    elif mapfile in files:
         reachable = {mapfile}
         todo = [mapfile]
         while todo:
@@ -501,6 +633,24 @@ def scan_documents(
 
     for title, paths in titles.items():
         if len(paths) > 1:
+            if navigation and navigation.get("provider") == "mintlify":
+                context_keys = []
+                contextual = True
+                for path in paths:
+                    rows = [
+                        row
+                        for row in navigation.get("contexts", {}).get(path, ())
+                        if row.get("hidden") is not True
+                    ]
+                    breadcrumbs = {
+                        tuple(row.get("breadcrumb", ())) for row in rows
+                    }
+                    if len(breadcrumbs) != 1:
+                        contextual = False
+                        break
+                    context_keys.append(next(iter(breadcrumbs)))
+                if contextual and len(set(context_keys)) == len(paths):
+                    continue
             findings.append({"kind": "duplicate-title", "title": title, "paths": paths})
 
     maintained_path_names = {_relative_posix(path, root) for path in files}
