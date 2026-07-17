@@ -13,14 +13,19 @@ import check as docs_checker
 
 
 class MdxCompatibilityTests(unittest.TestCase):
-    def _write_cline_shaped_fixture(self, root):
+    def _write_cline_shaped_fixture(
+        self,
+        root,
+        *,
+        schema="https://mintlify.com/docs.json",
+    ):
         docs = root / "docs"
         guide = docs / "getting-started"
         guide.mkdir(parents=True)
         (docs / "docs.json").write_text(
             json.dumps(
                 {
-                    "$schema": "https://mintlify.com/docs.json",
+                    "$schema": schema,
                     "navigation": {
                         "tabs": [
                             {
@@ -72,7 +77,7 @@ Install the extension and choose a model provider.
         subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
         subprocess.run(["git", "add", "docs"], cwd=root, check=True)
 
-    def _checker(self, root, *, map_path):
+    def _checker(self, root, *, map_path, scope="docs"):
         return subprocess.run(
             [
                 sys.executable,
@@ -82,7 +87,7 @@ Install the extension and choose a model provider.
                 "--json",
                 "--agent",
                 "--scope",
-                "docs",
+                scope,
                 "--map",
                 map_path,
             ],
@@ -134,6 +139,39 @@ Install the extension and choose a model provider.
             "unsupported documentation navigation manifest",
         )
         self.assertEqual(payload["findings"], [])
+
+    def test_schema_json_manifest_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(
+                root,
+                schema="https://mintlify.com/schema.json",
+            )
+
+            result = self._checker(root, map_path="docs/README.md")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["error"],
+            "unsupported documentation navigation manifest",
+        )
+
+    def test_root_scope_detects_conventional_nested_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+
+            result = self._checker(
+                root,
+                map_path="docs/README.md",
+                scope=".",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["error"],
+            "unsupported documentation navigation manifest",
+        )
 
     def test_explicit_mdx_map_is_measured_without_executing_components(self):
         with tempfile.TemporaryDirectory() as directory:
