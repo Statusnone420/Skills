@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 from pathlib import Path
 
+from .formats import is_document_path
 from .paths import normalize_repo_relative
 
 
@@ -21,13 +22,10 @@ MAINTAINED_ROOT_DOCUMENT_NAMES = (
     "STATE",
 )
 _MAINTAINED_KEYS = frozenset(name.casefold() for name in MAINTAINED_ROOT_DOCUMENT_NAMES)
-_MARKDOWN_SUFFIXES = frozenset({".md", ".markdown"})
-
-
 def is_maintained_root_document(name):
     path = Path(name)
     return bool(
-        path.suffix.casefold() in _MARKDOWN_SUFFIXES
+        is_document_path(path)
         and path.stem.casefold() in _MAINTAINED_KEYS
     )
 

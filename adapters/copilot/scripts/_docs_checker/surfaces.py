@@ -5,6 +5,12 @@ import os
 import stat
 from pathlib import Path
 
+from .formats import (
+    is_component_document_path,
+    is_document_path,
+    is_navigation_manifest_path,
+    is_readme_document,
+)
 from .knowledge import local_prune_reason
 from .paths import _is_pruned_relative, normalize_repo_relative, safe_path
 
@@ -68,8 +74,7 @@ def _stem(path):
 
 
 def _is_readme(path):
-    candidate = Path(path)
-    return candidate.stem.casefold() == "readme" and candidate.suffix.casefold() in {".md", ".markdown"}
+    return is_readme_document(path)
 
 
 def _base_policy(path, host):
@@ -88,6 +93,10 @@ def _base_policy(path, host):
         return "host-community-surface", "platform-recognized", True
     if any(token in stem for token in ("changelog", "migration", "migrating", "release")):
         return "version-history", "externally-linked/stable-public-path", True
+    if lowered.startswith("docs/") and is_navigation_manifest_path(path):
+        return "documentation-navigation", "automation/tooling-consumed", True
+    if lowered.startswith("docs/") and is_component_document_path(path):
+        return "documentation-site-route", "externally-linked/stable-public-path", True
     if name in {"mkdocs.yml", "mkdocs.yaml", "docusaurus.config.js", "docusaurus.config.ts"}:
         return "documentation-site-config", "automation/tooling-consumed", True
     if lowered.startswith(("docs/site/", "website/docs/", "site/docs/", "public/docs/")):
@@ -102,7 +111,7 @@ def surface_observation_allowed(path, *, is_directory):
     if is_directory:
         return path in {".github", "docs"} or path.startswith((".github/", "docs/"))
     _, _, protected = _base_policy(path, "github")
-    return bool(protected or (path.startswith("docs/") and Path(path).suffix.casefold() in {".md", ".markdown"}))
+    return bool(protected or (path.startswith("docs/") and is_document_path(path)))
 
 
 def _references(value):

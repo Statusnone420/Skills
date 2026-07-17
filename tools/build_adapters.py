@@ -14,6 +14,7 @@ CHECKER_FILES = (
     "scripts/init_closeout.py",
     "scripts/doctor_closeout.py",
     "scripts/_docs_checker/__init__.py",
+    "scripts/_docs_checker/formats.py",
     "scripts/_docs_checker/paths.py",
     "scripts/_docs_checker/metadata_io.py",
     "scripts/_docs_checker/continuation.py",
@@ -33,6 +34,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/init_adoption.py",
     "scripts/_docs_checker/doctor_closeout.py",
     "scripts/_docs_checker/health.py",
+    "scripts/_docs_checker/navigation.py",
 )
 CANONICAL_RESOURCE_FILES = (
     "agents/openai.yaml",

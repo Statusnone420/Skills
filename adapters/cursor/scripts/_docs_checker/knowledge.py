@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+from .formats import is_document_path
 from .paths import _is_pruned_relative, normalize_repo_relative, safe_path
 
 
@@ -97,7 +98,7 @@ def local_directory_evidence(name):
 def local_document_file_evidence(name):
     path = Path(name)
     return bool(
-        path.suffix.casefold() in {".md", ".markdown"}
+        is_document_path(path)
         and path.stem.casefold() in _DOCUMENT_FILE_STEMS
     )
 

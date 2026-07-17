@@ -14,6 +14,7 @@ SCRIPTS = ROOT / "skills" / "docs" / "scripts"
 CHECKER = SCRIPTS / "check.py"
 PACKAGE = SCRIPTS / "_docs_checker"
 MODULES = (
+    "formats",
     "paths",
     "metadata_io",
     "continuation",
@@ -28,6 +29,7 @@ MODULES = (
     "identity",
     "memory",
     "health",
+    "navigation",
 )
 
 
@@ -201,21 +203,22 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
                     if node.level and imported_module in graph:
                         graph[name].add(imported_module)
 
-        self.assertEqual(graph["paths"], set())
+        self.assertEqual(graph["formats"], set())
+        self.assertEqual(graph["paths"], {"formats"})
         self.assertEqual(graph["identity"], set())
         self.assertEqual(graph["metadata_io"], set())
         self.assertEqual(graph["continuation"], {"paths"})
-        self.assertEqual(graph["knowledge"], {"paths"})
-        self.assertEqual(graph["root_evidence"], {"paths"})
+        self.assertEqual(graph["knowledge"], {"formats", "paths"})
+        self.assertEqual(graph["root_evidence"], {"formats", "paths"})
         self.assertEqual(graph["discovery_policy"], {"paths"})
-        self.assertEqual(graph["surfaces"], {"knowledge", "paths"})
+        self.assertEqual(graph["surfaces"], {"formats", "knowledge", "paths"})
         self.assertEqual(
             graph["receipt"],
             {"continuation", "knowledge", "paths", "surfaces"},
         )
         self.assertEqual(
             graph["discovery_io"],
-            {"discovery_policy", "metadata_io"},
+            {"discovery_policy", "formats", "metadata_io"},
         )
         self.assertEqual(
             graph["discovery"],
@@ -223,6 +226,7 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
                 "continuation",
                 "discovery_io",
                 "discovery_policy",
+                "formats",
                 "knowledge",
                 "paths",
                 "receipt",
@@ -231,8 +235,9 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
             },
         )
         self.assertLessEqual(graph["health"], {"identity", "paths"})
-        self.assertLessEqual(graph["scan"], {"paths", "identity", "health"})
-        self.assertLessEqual(graph["memory"], {"paths", "identity"})
+        self.assertLessEqual(graph["scan"], {"formats", "paths", "identity", "health"})
+        self.assertLessEqual(graph["memory"], {"formats", "paths", "identity"})
+        self.assertEqual(graph["navigation"], {"formats", "paths"})
         visiting = set()
         visited = set()
 
@@ -249,6 +254,23 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
 
         for module in graph:
             visit(module)
+
+    def test_document_suffix_policy_has_one_owner(self):
+        forbidden = (
+            'endswith(".md")',
+            "endswith('.md')",
+            'suffix.lower() == ".md"',
+            'suffix.lower() != ".md"',
+            'suffix.casefold() == ".md"',
+            'suffix.casefold() != ".md"',
+        )
+        for path in PACKAGE.glob("*.py"):
+            if path.name == "formats.py":
+                continue
+            source = path.read_text(encoding="utf-8")
+            for fragment in forbidden:
+                with self.subTest(path=path.name, fragment=fragment):
+                    self.assertNotIn(fragment, source)
 
     def test_physical_discovery_work_has_one_owner_and_receipt_uses_canonical_policy(self):
         discovery_tree = ast.parse(

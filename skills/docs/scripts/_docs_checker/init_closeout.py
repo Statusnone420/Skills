@@ -21,6 +21,7 @@ import subprocess
 import threading
 import unicodedata
 
+from .formats import is_document_path
 from .discovery import (
     CorpusValidationError,
     derive_result_corpus,
@@ -249,7 +250,7 @@ def _normalize_shared_path_v3(
         _invalid(f"invalid-{name}")
     if boundary is not None and not _within_boundary(normalized, boundary):
         _invalid(f"invalid-{name}")
-    if markdown and not normalized.casefold().endswith(".md"):
+    if markdown and not is_document_path(normalized):
         _invalid(f"invalid-{name}")
     return normalized
 

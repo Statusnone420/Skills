@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qsl, unquote, urlsplit
 
+from .formats import is_document_path, is_navigation_manifest_path
+
 
 # Directory names excluded from recursive documentation scans. Metadata,
 # dependency, environment, and cache names are excluded at any depth. Broader
@@ -256,6 +258,7 @@ def tracked_markdown_scope(
     *,
     git_marker_present: bool | None = None,
     inventory_only: bool = False,
+    include_navigation: bool = False,
 ) -> list[str] | None:
     """Return physically present Git-tracked Markdown, or None outside Git.
 
@@ -357,7 +360,10 @@ def tracked_markdown_scope(
             raise ValueError("Git tracked path is not UTF-8") from exc
         if scope_norm != "." and relative != scope_norm and not relative.startswith(prefix):
             continue
-        if Path(relative).suffix.lower() != ".md" or _is_pruned_relative(relative):
+        if (
+            not is_document_path(relative)
+            and not (include_navigation and is_navigation_manifest_path(relative))
+        ) or _is_pruned_relative(relative):
             continue
         if inventory_only:
             routes.append(relative)
@@ -421,7 +427,7 @@ def iter_markdown_scope(root: Path, scope: str, applied_prunes=None) -> tuple[li
                 continue
             if _is_reparse(path):
                 findings.append({"kind": "symlink", "path": relative})
-            elif path.suffix.lower() == ".md":
+            elif is_document_path(path):
                 files.append(path)
     return files, findings
 

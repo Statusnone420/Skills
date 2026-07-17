@@ -4,6 +4,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import time
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -461,6 +462,9 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             cursor = first["continuation"]["cursor"]
             changed = docs / "00.md"
             original_stat = changed.stat()
+            # Ensure the metadata-only change identity crosses the filesystem's
+            # timestamp tick before restoring the public modified time.
+            time.sleep(0.02)
             changed.write_bytes(b"BBBB")
             os.utime(
                 changed,
@@ -490,6 +494,8 @@ class Task51RootAndContinuationTests(unittest.TestCase):
             cursor = first["continuation"]["cursor"]
             changed = docs / "12.md"
             original_stat = changed.stat()
+            # Fast ext4/WSL runs can otherwise rewrite within the same ctime tick.
+            time.sleep(0.02)
             changed.write_bytes(b"BBBB")
             os.utime(
                 changed,

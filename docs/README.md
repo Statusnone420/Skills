@@ -4,7 +4,7 @@ Public narrative: [root README](../README.md) → [getting started](../GETTING_S
 
 Trust and design: [architecture](../ARCHITECTURE.md), [origin](../ORIGIN.md), [evaluation](../EVALUATION.md), [benchmark](../BENCHMARK.md), and [compatibility](../COMPATIBILITY.md).
 
-Operations: [roadmap](../ROADMAP.md), [changelog](../CHANGELOG.md), [contributing](../CONTRIBUTING.md), [security](../SECURITY.md), and [current state](STATE.md).
+Operations: [roadmap](../ROADMAP.md), [changelog](../CHANGELOG.md), [contributing](../CONTRIBUTING.md), [testing](../TESTING.md), [security](../SECURITY.md), and [current state](STATE.md).
 
 Canonical implementation: [`skills/docs/SKILL.md`](../skills/docs/SKILL.md) with [commands](../skills/docs/references/commands.md) and [memory](../skills/docs/references/memory.md). Generated adapters are deliberately cold for this map.
 

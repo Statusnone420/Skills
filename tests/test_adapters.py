@@ -107,6 +107,7 @@ class AdapterBuilderTests(unittest.TestCase):
             },
             {
                 "__init__.py",
+                "formats.py",
                 "paths.py",
                 "metadata_io.py",
                 "continuation.py",
@@ -126,6 +127,7 @@ class AdapterBuilderTests(unittest.TestCase):
                 "init_adoption.py",
                 "doctor_closeout.py",
                 "health.py",
+                "navigation.py",
             },
         )
 

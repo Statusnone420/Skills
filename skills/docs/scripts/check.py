@@ -19,6 +19,7 @@ _SAFE_PUBLIC_CLI_ERRORS = frozenset(
         "content continuation token is invalid",
         "path traversal is not allowed",
         "root must be a real directory",
+        "unsupported documentation navigation manifest",
     }
 )
 _PUBLIC_CONFINEMENT_ERROR = "symlink or reparse path component"
@@ -148,6 +149,7 @@ from _docs_checker.lifecycle_io import (
     verify_local_route_hashes,
 )
 from _docs_checker.metadata_io import is_expected_environmental_error
+from _docs_checker.navigation import unsupported_navigation_manifest
 from _docs_checker.paths import (
     ANYWHERE_PRUNE_DIRS,
     REPOSITORY_ROOT_ONLY_PRUNE_DIRS,
@@ -219,6 +221,8 @@ def check(
     _assert_no_reparse_components(root)
     map_norm = normalize_repo_relative(map_path, "map")
     scope_norm = normalize_repo_relative(scope, "scope")
+    if unsupported_navigation_manifest(root, scope_norm, map_norm) is not None:
+        raise ValueError("unsupported documentation navigation manifest")
     configured_hot_paths = unique_relative_paths(
         [
             normalize_repo_relative(path, "hot paths")
