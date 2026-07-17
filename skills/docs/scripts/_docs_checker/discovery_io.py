@@ -3,6 +3,8 @@
 import stat
 from pathlib import Path
 
+from .formats import is_document_path
+
 from .discovery_policy import (
     INIT_DISCOVERY_LIMITS,
     join_relative,
@@ -461,7 +463,7 @@ def _scan_selected_scope(
             elif stat.S_ISREG(info.st_mode):
                 if surface_observation(child_relative, is_directory=False):
                     state["surface_paths"].add(child_relative)
-                if Path(entry.name).suffix.lower() == ".md":
+                if is_document_path(entry.name):
                     files.append(
                         (
                             child_relative,

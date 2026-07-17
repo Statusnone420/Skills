@@ -8,6 +8,7 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from .formats import is_document_path
 from .identity import (
     _FINDING_ID,
     _IDENTITY_PATH_FIELDS,
@@ -811,7 +812,7 @@ def normalize_dispositions_v3(value, root=None):
             raise ValueError(f"{name}.disposition is invalid")
         _require_exact_keys(raw, common | variants[outcome], name)
         path = _normalize_shared_contract_path(raw["path"], f"{name}.path", root)
-        if not path.casefold().endswith(".md"):
+        if not is_document_path(path):
             raise ValueError(f"{name}.path must be Markdown")
         item_id = _require_string(raw["item_id"], f"{name}.item_id")
         if whole_file:
@@ -887,7 +888,7 @@ def normalize_dispositions_v3(value, root=None):
             target = _normalize_shared_contract_path(
                 raw["target"], f"{name}.target", root
             )
-            if not target.casefold().endswith(".md"):
+            if not is_document_path(target):
                 raise ValueError(f"{name}.target must be Markdown")
             item["target"] = target
         if "target_digest" in raw:

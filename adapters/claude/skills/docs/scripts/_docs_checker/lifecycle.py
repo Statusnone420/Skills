@@ -7,6 +7,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 
+from .formats import is_document_path
 from .identity import event_fingerprint, event_id
 from .knowledge import LOCAL_MAP_LIFECYCLE_SCHEMA_VERSION
 from .memory import (
@@ -322,7 +323,7 @@ def _normalize_section_markdown_route_v3(value, name):
     first = route.split("/", 1)[0].casefold()
     if (
         route != value
-        or not route.casefold().endswith(".md")
+        or not is_document_path(route)
         or first in {".diataxis", ".local"}
         or route.casefold() == "agents.md"
     ):
@@ -788,7 +789,7 @@ def _normalize_transaction_operations_v3(
         path_key = path.casefold()
         boundary_key = write_boundary.casefold()
         if (
-            not path.casefold().endswith(".md")
+            not is_document_path(path)
             or path_key.split("/", 1)[0] in {".diataxis", ".local"}
             or path_key == "agents.md"
             or (

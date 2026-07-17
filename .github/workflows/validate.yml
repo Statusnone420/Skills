@@ -6,14 +6,23 @@ permissions:
   contents: read
 jobs:
   tests:
+    name: Tests (${{ matrix.os }} / ${{ matrix.group }})
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        group: [core, lifecycle, trajectory]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - name: Run stdlib tests and reproducibility check
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+      - name: Verify test partition
+        run: python -B tools/run_tests.py verify
+      - name: Run ${{ matrix.group }} tests
+        run: python -B tools/run_tests.py ${{ matrix.group }}
+      - name: Verify generated adapters
+        if: matrix.group == 'core'
         shell: bash
-        run: |
-          python -m unittest discover -s tests -p 'test_*.py'
-          python tools/build_adapters.py --check --output adapters
+        run: python -B tools/build_adapters.py --check --output adapters

@@ -43,6 +43,7 @@ from .knowledge import (
     local_knowledge_preview,
     local_prune_reason,
 )
+from .formats import is_document_path
 from .paths import (
     _path_identity,
     normalize_repo_relative,
@@ -670,6 +671,7 @@ def _tracked_repository_markdown(state):
         ".",
         git_marker_present=marker is not None,
         inventory_only=True,
+        include_navigation=True,
     )
     if inventory is None:
         return None
@@ -683,7 +685,10 @@ def _tracked_repository_markdown(state):
         if state["halted"]:
             break
         if info is not None:
-            tracked.append(relative)
+            if surface_observation_allowed(relative, is_directory=False):
+                state["surface_paths"].add(relative)
+            if is_document_path(relative):
+                tracked.append(relative)
     return tracked
 
 

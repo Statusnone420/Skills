@@ -6,6 +6,7 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import unquote
 
+from .formats import is_document_path
 from .health import PROVISIONAL_TARGET_BYTES
 from .identity import finding_fingerprint, finding_id, slug
 from .paths import (
@@ -242,7 +243,7 @@ def scan_documents(
 
     def shared_markdown_route(relative):
         return (
-            Path(relative).suffix.lower() != ".md"
+            not is_document_path(relative)
             or tracked_keys is None
             or _path_identity(relative) in tracked_keys
         )
@@ -282,7 +283,7 @@ def scan_documents(
             continue
         path = safe_path(candidate, root)
         selected_paths[relative] = path
-        if path.is_file() and path.suffix.lower() == ".md":
+        if path.is_file() and is_document_path(path):
             selected_files.append(path)
     mapfile = selected_paths[map_norm]
     cold_paths = {
@@ -367,7 +368,7 @@ def scan_documents(
                 and destination != mapfile
                 and destination in files
                 and destination.is_file()
-                and destination.suffix.lower() == ".md"
+                and is_document_path(destination)
             ):
                 valid_navigation_destinations.add(destination)
             if anchor and destination not in anchors:
@@ -507,7 +508,7 @@ def scan_documents(
         finding["path"]
         for finding in findings
         if finding.get("kind") == "symlink"
-        and Path(finding.get("path", "")).suffix.lower() == ".md"
+        and is_document_path(finding.get("path", ""))
     )
     implicated_paths = {
         finding.get("path")

@@ -467,7 +467,7 @@ class Task7ArchitectureTests(Task7ContractCase):
         self.assertIn("lifecycle", graph["lifecycle_io"])
         self.assertLessEqual(
             graph["lifecycle"],
-            {"identity", "knowledge", "memory", "paths", "surfaces"},
+            {"formats", "identity", "knowledge", "memory", "paths", "surfaces"},
         )
         self.assertLessEqual(
             graph["lifecycle_io"],

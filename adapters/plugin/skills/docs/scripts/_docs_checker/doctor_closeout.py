@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 
+from .formats import is_document_path
 from .identity import finding_fingerprint, finding_id
 from .health import normalized_content_digest
 from .lifecycle import select_persisted_findings, transition_finding
@@ -94,7 +95,7 @@ def _normalize_markdown_path(value, name, scope):
         raise DoctorCloseoutError("invalid-request", "path-invalid", "request-validation") from exc
     if (
         path == "."
-        or Path(path).suffix.lower() != ".md"
+        or not is_document_path(path)
         or not _within_scope(path, scope)
         or path.casefold() == ".local"
         or path.casefold().startswith(".local/")
@@ -352,7 +353,7 @@ def _reject_unapproved_changed_markdown(root, scope, allowed_paths):
                 "stale-preview", "git-status-malformed", "document-revalidation"
             ) from exc
         if (
-            path.casefold().endswith(".md")
+            is_document_path(path)
             and _within_scope(path, scope)
             and path not in allowed_paths
         ):
