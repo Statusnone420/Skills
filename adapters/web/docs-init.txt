@@ -33,7 +33,7 @@ For `map` and `doctor`, missing documentation recommends `$docs init`; existing 
 Selected command contract (canonical):
 - `init`  Initialize this repository.
 
-`init`: perform a one-time repository adoption whose size follows the diagnosed repository condition. Its initial response is a complete zero-write adoption preview. Follow the single detailed [Init interaction contract](init.md); the LLM running the skill owns bounded continuation and asks only at genuine ambiguity or the exact approval boundary.
+`init`: perform the one-time repository adoption through the deterministic engine entrypoint. Its initial response is a complete zero-write adoption preview constructed by the engine, which owns scope selection, continuation, corpus accounting, request construction, and preview construction; there is no model-owned continuation. Follow the single detailed [Init interaction contract](init.md); present only the engine's verified receipt, never reconstruct or improve it, and ask only at genuine scope ambiguity or the exact approval boundary.
 
 Supporting rules required by this command:
 # Init interaction contract
