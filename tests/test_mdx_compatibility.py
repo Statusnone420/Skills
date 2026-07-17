@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 SKILL = ROOT / "skills" / "docs"
+INIT_CLOSEOUT = SKILL / "scripts" / "init_closeout.py"
 sys.path.insert(0, str(SKILL / "scripts"))
 import check as docs_checker
 
@@ -172,6 +173,57 @@ Install the extension and choose a model provider.
             json.loads(result.stdout)["error"],
             "unsupported documentation navigation manifest",
         )
+
+    def test_init_adoption_refuses_recognized_unmapped_navigation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repo"
+            root.mkdir()
+            self._write_cline_shaped_fixture(root)
+            subprocess.run(
+                ["git", "config", "user.email", "fixture@example.invalid"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Fixture"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "commit", "--quiet", "-m", "fixture"],
+                cwd=root,
+                check=True,
+            )
+            receipt = base / "init-receipt.json"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(INIT_CLOSEOUT),
+                    str(root),
+                    "adopt-preview",
+                    "--scope",
+                    "docs",
+                    "--receipt-file",
+                    str(receipt),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            receipt_exists = receipt.exists()
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "waiting")
+        self.assertEqual(
+            payload["classification"],
+            "unsupported-documentation-navigation-manifest",
+        )
+        self.assertEqual(payload["writes"], 0)
+        self.assertFalse(receipt_exists)
 
     def test_explicit_mdx_map_is_measured_without_executing_components(self):
         with tempfile.TemporaryDirectory() as directory:

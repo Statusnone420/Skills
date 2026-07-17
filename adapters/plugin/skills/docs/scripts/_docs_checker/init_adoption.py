@@ -15,6 +15,7 @@ from .init_closeout import (
     preview_response,
     validate_public_request,
 )
+from .navigation import unsupported_navigation_manifest
 from .scan import discover_markdown, scan_documents
 
 
@@ -61,15 +62,25 @@ def _select_scope(root, explicit_scope=None):
             "discovery-incomplete",
             "discovery",
         )
+    if unsupported_navigation_manifest(
+        root,
+        selected_scope,
+        _preferred_map_path(selected_scope),
+    ) is not None:
+        raise InitCloseoutError(
+            "waiting",
+            "unsupported-documentation-navigation-manifest",
+            "adoption-discovery",
+        )
     return selected_scope
 
 
+def _preferred_map_path(selected_scope):
+    return "README.md" if selected_scope == "." else f"{selected_scope}/README.md"
+
+
 def _map_path(paths, selected_scope):
-    preferred = (
-        "README.md"
-        if selected_scope == "."
-        else f"{selected_scope}/README.md"
-    )
+    preferred = _preferred_map_path(selected_scope)
     by_identity = {path.casefold(): path for path in paths}
     return by_identity.get(preferred.casefold(), paths[0])
 
