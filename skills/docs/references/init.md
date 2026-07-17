@@ -21,11 +21,16 @@ quality review during adoption. Those are later, explicitly human-chosen
 Doctor, audit, or migrate tasks.
 
 For the structural receipt, Init consumes the same deterministic selected-surface
-evidence as Map, Check, Doctor, and Audit. Provider facts remain the factual
-floor, not the model ceiling. Any bounded semantic findings and unresolved
-candidates must be labeled separately; they may not contradict provider facts
-or promote an unverified candidate to P0, P1, or P2. Init does not execute MDX
-imports, exports, JSX, JavaScript, expressions, or components.
+evidence as Map, Check, Doctor, and Audit. The receipt includes the normalized
+provider authority, entry, navigated and hidden pages, provider findings, and
+the authority manifest digest when a provider manifest is measured. Apply
+re-measures that evidence before any write, using tracked authority in Git and
+the confined filesystem authority outside Git; provider drift is a stale
+preview. Provider facts remain the factual floor, not the model ceiling. Any
+bounded semantic findings and unresolved candidates must be labeled separately;
+they may not contradict provider facts or promote an unverified candidate to
+P0, P1, or P2. Init does not execute MDX imports, exports, JSX, JavaScript,
+expressions, or components.
 
 The responsibilities are deliberately separate:
 

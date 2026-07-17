@@ -56,6 +56,6 @@ Run the Ubuntu proof from a Linux-native checkout under `$HOME`, not directly fr
 6. Run `all` on Windows and WSL once the narrower gates pass.
 7. Let CI repeat the same grouped commands; CI confirms local evidence rather than discovering basic failures.
 
-Provider regressions also prove that Map, Check, Doctor, Audit, and Init use the same selected-surface evidence, while semantic candidates remain labeled and bounded.
+Provider regressions also prove that Map, Check, Doctor, Audit, and Init use the same selected-surface evidence, including root-manifest authority, root README score isolation, tracked Git visibility, provider findings, and authority-digest Init revalidation on Git and non-Git fixtures. Semantic candidates remain labeled and bounded.
 
 No valid test may be skipped, deleted, or weakened to pass a gate. A completion claim requires fresh output, a reviewed diff, and explicit separation of change-caused failures from verified pre-existing failures.

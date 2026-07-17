@@ -19,6 +19,7 @@ class MdxCompatibilityTests(unittest.TestCase):
         root,
         *,
         schema="https://mintlify.com/docs.json",
+        initialize_git=True,
     ):
         docs = root / "docs"
         guide = docs / "getting-started"
@@ -75,8 +76,52 @@ Install the extension and choose a model provider.
 """,
             encoding="utf-8",
         )
-        subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
-        subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+        if initialize_git:
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+    def _write_root_manifest_fixture(self, root, *, initialize_git=False):
+        self._write_cline_shaped_fixture(root, initialize_git=False)
+        (root / "docs" / "docs.json").unlink()
+        (root / "docs.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://mintlify.com/docs.json",
+                    "navigation": {
+                        "groups": [
+                            {
+                                "group": "Docs",
+                                "pages": [
+                                    "docs/cline-overview",
+                                    "docs/getting-started/installing-cline",
+                                ],
+                            }
+                        ]
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (root / "README.md").write_text(
+            "# Repository orientation\n\n[Not part of the site](missing)\n",
+            encoding="utf-8",
+        )
+        if initialize_git:
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "fixture@example.invalid"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Fixture"], cwd=root, check=True
+            )
+            subprocess.run(
+                ["git", "add", "README.md", "docs", "docs.json"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(["git", "commit", "--quiet", "-m", "fixture"], cwd=root, check=True)
 
     def _checker(self, root, *, map_path, scope="docs"):
         return subprocess.run(
@@ -180,6 +225,141 @@ Install the extension and choose a model provider.
         self.assertEqual(
             json.loads(result.stdout)["navigation"]["authority"], "docs/docs.json"
         )
+
+    def test_root_manifest_keeps_root_readme_out_of_provider_measurement_and_init(self):
+        from _docs_checker.init_adoption import adoption_preview
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_root_manifest_fixture(root)
+
+            result = self._checker(root, map_path="README.md", scope=".")
+            payload = json.loads(result.stdout)
+            navigation = payload["navigation"]
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(navigation["authority"], "docs.json")
+            self.assertEqual(navigation["provider_root"], ".")
+            self.assertEqual(
+                navigation["orientation"], {"path": "README.md", "separate": True}
+            )
+            self.assertNotIn("README.md", navigation["hidden_pages"])
+            self.assertEqual(
+                payload["health"]["categories"]["reachability"]["raw"],
+                {"reachable": 2, "maintained": 2},
+            )
+            self.assertNotIn("missing-link", [item["kind"] for item in payload["findings"]])
+
+            _request, preview = adoption_preview(
+                root, explicit_scope=".", completed_at="2026-07-17T00:00:00Z"
+            )
+
+        self.assertEqual(preview["score_receipt"]["categories"]["reachability"]["raw"], {
+            "reachable": 2,
+            "maintained": 2,
+        })
+
+    def test_zero_resolved_provider_pages_are_unmeasured_without_empty_entry_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "docs.json").write_text(
+                json.dumps(
+                    {
+                        "$schema": "https://mintlify.com/docs.json",
+                        "navigation": {"pages": ["missing"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = self._checker(root, map_path="README.md", scope=".")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured", result.stdout + result.stderr)
+        self.assertIn("empty-entry-surface", payload["navigation"]["unsupported_features"])
+        self.assertNotIn("health", payload)
+
+    def test_git_tracked_manifest_wins_over_untracked_root_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            (root / "docs.json").write_text("not json", encoding="utf-8")
+
+            result = self._checker(root, map_path="docs/README.md", scope=".")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["navigation"]["authority"], "docs/docs.json")
+
+    def test_tracked_reparse_manifest_is_unmeasured_without_markdown_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repo"
+            root.mkdir()
+            self._write_cline_shaped_fixture(root)
+            manifest = root / "docs" / "docs.json"
+            manifest.unlink()
+            outside = base / "outside.json"
+            outside.write_text("{}", encoding="utf-8")
+            try:
+                manifest.symlink_to(outside)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink creation unavailable")
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured", result.stdout + result.stderr)
+        self.assertEqual(payload["findings"], [])
+        self.assertNotIn("health", payload)
+        self.assertEqual(payload["navigation"]["classification"], "unsafe-navigation-manifest")
+
+    def test_init_apply_revalidates_provider_evidence_for_git_and_filesystem_repositories(self):
+        from _docs_checker.init_adoption import adoption_apply, adoption_preview
+        from _docs_checker.init_closeout import InitCloseoutError
+
+        for git_enabled in (False, True):
+            with self.subTest(git_enabled=git_enabled), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self._write_cline_shaped_fixture(root, initialize_git=git_enabled)
+                if git_enabled:
+                    subprocess.run(
+                        ["git", "config", "user.email", "fixture@example.invalid"],
+                        cwd=root,
+                        check=True,
+                    )
+                    subprocess.run(
+                        ["git", "config", "user.name", "Fixture"], cwd=root, check=True
+                    )
+                    subprocess.run(
+                        ["git", "commit", "--quiet", "-m", "fixture"],
+                        cwd=root,
+                        check=True,
+                    )
+                request, preview = adoption_preview(
+                    root, explicit_scope="docs", completed_at="2026-07-17T00:00:00Z"
+                )
+                provider_evidence = request["evidence"]["navigation_evidence"]
+                self.assertEqual(provider_evidence["provider"], "mintlify")
+                self.assertEqual(provider_evidence["findings"], [])
+                self.assertTrue(provider_evidence["manifest_digest"].startswith("sha256:"))
+                manifest_path = root / "docs" / "docs.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["navigation"]["tabs"][0]["groups"][0]["pages"].append("missing")
+                manifest["redirects"] = [
+                    {"source": "/legacy", "destination": "/cline-overview"}
+                ]
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+                try:
+                    adoption_apply(root, request, preview["approval"])
+                except InitCloseoutError as caught:
+                    self.assertEqual(caught.status, "stale-preview")
+                    self.assertEqual(caught.classification, "adoption-receipt-drift")
+                else:
+                    self.fail("provider evidence drift was accepted during Init apply")
 
     def test_init_adoption_measures_supported_navigation_surface(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -375,6 +555,11 @@ Install the extension and choose a model provider.
                 + "[Legacy](/legacy?from=docs)\n",
                 encoding="utf-8",
             )
+            installing.write_text(
+                installing.read_text(encoding="utf-8")
+                + "\n[Back](../cline-overview#missing-anchor)\n",
+                encoding="utf-8",
+            )
             manifest = json.loads((docs / "docs.json").read_text(encoding="utf-8"))
             manifest["redirects"] = [
                 {
@@ -392,8 +577,18 @@ Install the extension and choose a model provider.
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(
-            [item["kind"] for item in payload["findings"]],
+            [item for item in payload["findings"] if item["kind"] == "outside-link"],
             [],
+        )
+        self.assertEqual(
+            [item for item in payload["findings"] if item["kind"] == "missing-anchor"],
+            [
+                {
+                    "kind": "missing-anchor",
+                    "path": "docs/getting-started/installing-cline.mdx",
+                    "target": "../cline-overview#missing-anchor",
+                }
+            ],
         )
         self.assertEqual(
             payload["navigation"]["redirects"],
@@ -432,6 +627,42 @@ Install the extension and choose a model provider.
             payload["navigation"]["contexts"]["docs/reference.mdx"][0]["breadcrumb"],
         )
 
+    def test_navigation_context_labels_must_be_strings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            docs = root / "docs"
+            manifest = json.loads((docs / "docs.json").read_text(encoding="utf-8"))
+            manifest["navigation"]["tabs"][0]["tab"] = ["Docs"]
+            (docs / "docs.json").write_text(json.dumps(manifest), encoding="utf-8")
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured")
+        self.assertIn("navigation-shape", payload["navigation"]["unsupported_features"])
+
+    def test_mixed_navigation_visibility_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            docs = root / "docs"
+            manifest = json.loads((docs / "docs.json").read_text(encoding="utf-8"))
+            manifest["navigation"]["tabs"][0]["groups"][0]["pages"].append(
+                {"page": "cline-overview", "hidden": True}
+            )
+            (docs / "docs.json").write_text(json.dumps(manifest), encoding="utf-8")
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured")
+        self.assertIn("mixed-visibility", payload["navigation"]["unsupported_features"])
+
     def test_unsupported_mintlify_features_are_unmeasured_without_fallback_score(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -457,6 +688,54 @@ Install the extension and choose a model provider.
         self.assertEqual(payload["findings"], [])
         self.assertEqual(payload["navigation"]["status"], "unmeasured")
         self.assertIn("$ref", payload["navigation"]["unsupported_features"])
+
+    def test_unresolved_provider_frontmatter_metadata_is_unmeasured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            (root / "docs" / "cline-overview.mdx").write_text(
+                "---\nhidden: [true]\n---\n\n# Cline overview\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured")
+        self.assertIn("frontmatter-metadata", payload["navigation"]["unsupported_features"])
+
+    def test_frontmatter_limit_applies_to_the_frontmatter_region_only(self):
+        from _docs_checker.formats import MAX_FRONTMATTER_BYTES, parse_frontmatter_scalars
+
+        source = "---\nhidden: false\n---\n\n" + ("body\n" * MAX_FRONTMATTER_BYTES)
+        parsed = parse_frontmatter_scalars(source)
+
+        self.assertEqual(parsed["status"], "measured")
+        self.assertEqual(parsed["values"]["hidden"], False)
+
+    def test_redirects_with_missing_final_destinations_are_unmeasured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            docs = root / "docs"
+            manifest = json.loads((docs / "docs.json").read_text(encoding="utf-8"))
+            manifest["redirects"] = [
+                {"source": "/legacy", "destination": "/middle"},
+                {"source": "/middle", "destination": "/missing"},
+            ]
+            (docs / "docs.json").write_text(json.dumps(manifest), encoding="utf-8")
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "unmeasured")
+        self.assertIn(
+            "redirect-destination", payload["navigation"]["unsupported_features"]
+        )
 
     def test_unknown_navigation_fields_fail_closed_without_ignored_pages(self):
         with tempfile.TemporaryDirectory() as directory:

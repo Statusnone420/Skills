@@ -1,5 +1,7 @@
 """Bounded, vendor-neutral navigation evidence providers."""
 
+import copy
+import hashlib
 import json
 import os
 import posixpath
@@ -9,6 +11,7 @@ from urllib.parse import unquote, urlsplit
 
 from .formats import (
     DOCUMENT_SUFFIXES,
+    FRONTMATTER_NAVIGATION_KEYS,
     MAX_FRONTMATTER_BYTES,
     is_document_path,
     is_navigation_manifest_path,
@@ -135,14 +138,29 @@ def _manifest_candidates(scope):
 
 
 def _candidate_manifest_paths(root, scope):
+    tracked = tracked_markdown_scope(
+        root,
+        ".",
+        git_marker_present=os.path.lexists(root / ".git"),
+        inventory_only=True,
+        include_navigation=True,
+    )
+    tracked_keys = (
+        None
+        if tracked is None
+        else {Path(relative).as_posix().casefold() for relative in tracked}
+    )
     candidates = []
     for relative in _manifest_candidates(scope):
+        if tracked_keys is not None and relative.casefold() not in tracked_keys:
+            continue
+        raw_candidate = root / relative
+        if not os.path.lexists(raw_candidate):
+            continue
         try:
-            candidate = safe_path(root / relative, root)
+            candidate = safe_path(raw_candidate, root)
         except ValueError:
-            continue
-        if not os.path.lexists(candidate):
-            continue
+            return None, relative, "unsafe-manifest"
         if _is_reparse(candidate) or not candidate.is_file():
             return None, relative, "unsafe-manifest"
         candidates.append((relative, candidate))
@@ -342,8 +360,12 @@ def _collect_navigation_pages(navigation):
     def context_for(value, context):
         result = list(context)
         for key in _CONTEXT_KEYS:
-            label = value.get(key) if isinstance(value, Mapping) else None
-            if isinstance(label, str) and label and label not in result:
+            if not isinstance(value, Mapping) or key not in value:
+                continue
+            label = value[key]
+            if type(label) is not str or not label:
+                raise ValueError(f"navigation context label {key} must be a non-empty string")
+            if label not in result:
                 result.append(label)
         return result
 
@@ -478,6 +500,26 @@ def _validate_redirect_cycles(redirects):
             raise ValueError("redirect hop limit exceeded")
 
 
+def _validate_redirect_destinations(root, provider_root, selected_scope, redirects):
+    mapping = {item["source"]: item["destination"] for item in redirects}
+    for source in mapping:
+        current = source
+        for _ in range(MAX_REDIRECT_HOPS + 1):
+            destination = mapping.get(current)
+            if destination is None:
+                break
+            current = destination.split("#", 1)[0]
+        else:
+            raise ValueError("redirect hop limit exceeded")
+        relative = current.lstrip("/") or "."
+        resolved = _route_candidates(root, provider_root, relative)
+        if resolved is None:
+            raise ValueError("redirect destination is missing")
+        resolved_relative = _relative_posix(resolved, Path(root).absolute())
+        if not _is_within_scope(resolved_relative, selected_scope):
+            raise ValueError("redirect destination escapes selected scope")
+
+
 def _resolve_manifest_page(root, provider_root, raw):
     relative, fragment = _route_parts(raw, label="navigation page", allow_fragment=False)
     path = _route_candidates(root, provider_root, relative)
@@ -556,6 +598,9 @@ def _measure_mintlify(root, authority, candidate, provider_root, selected_scope)
             )
         redirects = _parse_redirects(payload)
         _validate_redirect_cycles(redirects)
+        _validate_redirect_destinations(
+            root, provider_root, selected_scope, redirects
+        )
         shared_pages = _load_shared_pages(root, selected_scope)
         shared_set = set(shared_pages)
         visible = []
@@ -589,6 +634,10 @@ def _measure_mintlify(root, authority, candidate, provider_root, selected_scope)
                 )
                 continue
             metadata = _page_metadata(root, resolved)
+            if metadata["status"] == "unresolved" and (
+                set(metadata["unresolved"]) & (FRONTMATTER_NAVIGATION_KEYS | {"frontmatter", "size"})
+            ):
+                raise ValueError("frontmatter metadata is unresolved")
             page_hidden = entry["hidden"] or metadata["values"].get("hidden") is True
             contexts.setdefault(resolved, []).append(
                 {"breadcrumb": list(entry["context"]), "hidden": page_hidden}
@@ -597,6 +646,32 @@ def _measure_mintlify(root, authority, candidate, provider_root, selected_scope)
                 hidden.add(resolved)
             elif resolved not in visible:
                 visible.append(resolved)
+
+        for relative, rows in contexts.items():
+            visibility = {row["hidden"] for row in rows}
+            if len(visibility) > 1:
+                raise ValueError("mixed navigation visibility")
+
+        if not contexts:
+            return _unmeasured(
+                provider="mintlify",
+                scope=selected_scope,
+                authority=authority,
+                manifest_bytes=manifest_bytes,
+                provider_root=provider_root,
+                features=("empty-entry-surface",),
+                classification="empty-mintlify-navigation",
+            )
+
+        orientation = None
+        if (
+            provider_root == "."
+            and selected_scope == "."
+            and (root / "README.md").is_file()
+            and "README.md" not in contexts
+        ):
+            shared_pages = [relative for relative in shared_pages if relative != "README.md"]
+            orientation = {"path": "README.md", "separate": True}
 
         for relative in shared_pages:
             if relative not in contexts:
@@ -608,11 +683,9 @@ def _measure_mintlify(root, authority, candidate, provider_root, selected_scope)
         result["redirects"] = redirects
         result["contexts"] = contexts
         result["findings"] = missing
-        result["orientation"] = (
-            {"path": "README.md", "separate": True}
-            if provider_root != "." and (root / "README.md").is_file()
-            else None
-        )
+        if orientation is None and provider_root != "." and (root / "README.md").is_file():
+            orientation = {"path": "README.md", "separate": True}
+        result["orientation"] = orientation
         result["limits"].update(
             {
                 "observed_pages": len(entries),
@@ -629,6 +702,14 @@ def _measure_mintlify(root, authority, candidate, provider_root, selected_scope)
             if "redirect cycle" in message
             else "redirect-hop-limit"
             if "redirect hop" in message
+            else "redirect-destination"
+            if "redirect destination" in message
+            else "mixed-visibility"
+            if "mixed navigation visibility" in message
+            else "frontmatter-metadata"
+            if "frontmatter metadata" in message
+            else "empty-entry-surface"
+            if "empty entry surface" in message
             else "unsafe-route"
             if any(token in message for token in ("outside", "traversal", "reparse", "escapes"))
             else "navigation-capacity"
@@ -687,7 +768,7 @@ def select_navigation(root, scope="docs", map_path="docs/README.md"):
         result["navigated_pages"] = [map_path]
         result["limits"].update({"observed_pages": 1, "observed_shared_pages": 0, "observed_redirects": 0})
         return result
-    provider_scope = authority.rsplit("/", 1)[0] or "."
+    provider_scope = _relative_posix(candidate.parent, root)
     selected_scope = provider_scope if scope == "." else scope
     if not _is_within_scope(provider_scope, selected_scope) and not _is_within_scope(
         selected_scope, provider_scope
@@ -742,9 +823,9 @@ def resolve_navigation_link(root, navigation, source_relative, raw_target):
                 )
         else:
             target_provider = source_provider
-        if any(part == ".." for part in PurePosixPath(target_provider).parts):
-            return {"status": "outside"}
         target_provider = posixpath.normpath(target_provider)
+        if target_provider == ".." or target_provider.startswith("../"):
+            return {"status": "outside"}
         if target_provider in {"", "."}:
             target_provider = "."
         target_key = _route_key(target_provider)
@@ -793,7 +874,7 @@ def unsupported_navigation_manifest(root, scope, map_path):
     if candidate is None:
         return None
     try:
-        provider_scope = relative.rsplit("/", 1)[0] or "."
+        provider_scope = _relative_posix(candidate.parent, root)
         result = _measure_mintlify(
             root, relative, candidate, provider_scope, provider_scope
         )
@@ -810,6 +891,36 @@ def unsupported_navigation_manifest(root, scope, map_path):
     return relative
 
 
+def canonical_navigation_evidence(root, navigation):
+    """Return the selected surface plus the authority digest for Init binding."""
+    result = copy.deepcopy(navigation)
+    result.setdefault("orientation", None)
+    result["manifest_digest"] = None
+    if navigation.get("provider") != "mintlify":
+        return result
+    authority = navigation.get("authority")
+    try:
+        candidate = safe_path(Path(root).absolute() / authority, Path(root).absolute())
+        if _is_reparse(candidate) or not candidate.is_file():
+            raise ValueError("navigation authority is unsafe")
+        if candidate.stat().st_size > MAX_NAVIGATION_MANIFEST_BYTES:
+            raise ValueError("navigation authority exceeds capacity")
+        result["manifest_digest"] = "sha256:" + hashlib.sha256(
+            candidate.read_bytes()
+        ).hexdigest()
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        boundary = _unmeasured(
+            provider="mintlify",
+            scope=navigation.get("scope", "."),
+            authority=authority,
+            provider_root=navigation.get("provider_root"),
+            features=("unsafe-authority",),
+            classification="unsafe-navigation-manifest",
+        )
+        raise NavigationBoundary(boundary) from exc
+    return result
+
+
 __all__ = (
     "MAX_NAVIGATION_DEPTH",
     "MAX_NAVIGATION_MANIFEST_BYTES",
@@ -818,6 +929,7 @@ __all__ = (
     "MAX_REDIRECT_HOPS",
     "MINTLIFY_SCHEMA_URLS",
     "NavigationBoundary",
+    "canonical_navigation_evidence",
     "resolve_navigation_link",
     "select_navigation",
     "unsupported_navigation_manifest",

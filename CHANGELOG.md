@@ -4,7 +4,9 @@
 
 - Unified `.md`, `.markdown`, and `.mdx` under one inert, vendor-neutral structural policy without executing MDX or component code.
 - Added a bounded, network-free Mintlify `docs.json` navigation provider with deterministic scope, hidden-page, link, fragment, query, redirect, confinement, and fail-closed limit semantics.
+- Hardened provider authority selection against root-manifest filename drift, untracked/reparse manifests, empty or mixed navigation surfaces, unresolved frontmatter, invalid redirect finals, and parent-relative route normalization.
 - Routed Map, Check, Doctor, Audit, and Init through the same selected-surface evidence while keeping deterministic provider facts separate from labeled semantic findings and unresolved candidates.
+- Bound Init preview/apply revalidation to canonical provider evidence, provider findings, and the measured authority digest on Git and non-Git repositories.
 - Added network-free regressions for provider measurement, lifecycle protection, hidden pages, extensionless routes, exact redirects, malformed/ambiguous/unsupported inputs, and adapter parity.
 
 ## 0.1.2 — MDX compatibility and observable verification (2026-07-17)

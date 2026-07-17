@@ -237,6 +237,13 @@ def scan_documents(
     navigation=None,
 ):
     """Inspect selected Markdown content and return findings and measurements."""
+    orientation = navigation.get("orientation") if isinstance(navigation, dict) else None
+    orientation_keys = {
+        _path_identity(orientation["path"])
+        if isinstance(orientation, dict) and isinstance(orientation.get("path"), str)
+        else None
+    }
+    orientation_keys.discard(None)
     tracked_routes = tracked_markdown_scope(root, ".")
     tracked_keys = (
         None
@@ -245,6 +252,8 @@ def scan_documents(
     )
 
     def shared_markdown_route(relative):
+        if _path_identity(relative) in orientation_keys:
+            return False
         return (
             not is_document_path(relative)
             or tracked_keys is None
@@ -444,7 +453,9 @@ def scan_documents(
                         {
                             "kind": "missing-anchor",
                             "path": source_relative,
-                            "target": target + "#" + anchor,
+                            "target": target
+                            if "#" in target
+                            else target + "#" + anchor,
                         }
                     )
 

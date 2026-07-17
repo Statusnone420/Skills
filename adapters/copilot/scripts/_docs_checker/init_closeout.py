@@ -21,7 +21,7 @@ import subprocess
 import threading
 import unicodedata
 
-from .formats import is_document_path
+from .formats import is_document_path, is_navigation_manifest_path
 from .discovery import (
     CorpusValidationError,
     derive_result_corpus,
@@ -94,6 +94,26 @@ _EVIDENCE_FIELDS = _STATE_FIELDS | {
     "approvals",
     "source_changes",
 }
+_NAVIGATION_EVIDENCE_FIELDS = frozenset(
+    {
+        "status",
+        "provider",
+        "scope",
+        "provider_root",
+        "authority",
+        "entry",
+        "navigated_pages",
+        "hidden_pages",
+        "redirects",
+        "unsupported_features",
+        "contexts",
+        "findings",
+        "limits",
+        "orientation",
+        "manifest_digest",
+    }
+)
+MAX_NAVIGATION_EVIDENCE_BYTES = 512 * 1024
 _EVENT_FIELDS = frozenset(
     {
         "kind",
@@ -663,8 +683,131 @@ def _normalize_trust_coverage_v3(value):
     return {"status": expected, "numerator": numerator, "denominator": denominator, "routes": routes}
 
 
+def _normalize_navigation_evidence_v3(value, selected_scope):
+    _require_exact_mapping(value, _NAVIGATION_EVIDENCE_FIELDS, "navigation-evidence")
+    if value["status"] != "measured":
+        _invalid("invalid-navigation-evidence-status")
+    if value["provider"] not in {"markdown-map", "mintlify"}:
+        _invalid("invalid-navigation-evidence-provider")
+    scope = _normalize_shared_path_v3(
+        value["scope"], "navigation-evidence-scope", allow_root=True
+    )
+    if scope != selected_scope:
+        _invalid("navigation-evidence-scope-mismatch")
+    provider_root = value["provider_root"]
+    if value["provider"] == "markdown-map" and provider_root is None:
+        provider_root = None
+    else:
+        provider_root = _normalize_shared_path_v3(
+            provider_root, "navigation-evidence-root", allow_root=True
+        )
+    authority = _normalize_shared_path_v3(
+        value["authority"], "navigation-evidence-authority"
+    )
+    if value["provider"] == "mintlify":
+        if not is_navigation_manifest_path(authority):
+            _invalid("invalid-navigation-evidence-authority")
+    elif not is_document_path(authority):
+        _invalid("invalid-navigation-evidence-authority")
+    entry = value["entry"]
+    if entry is not None:
+        entry = _normalize_shared_path_v3(
+            entry,
+            "navigation-evidence-entry",
+            boundary=selected_scope,
+            markdown=True,
+        )
+
+    def path_list(raw, name):
+        if type(raw) is not list or len(raw) > 10_000:
+            _invalid(f"invalid-{name}")
+        result = []
+        identities = set()
+        for index, item in enumerate(raw):
+            route = _normalize_shared_path_v3(
+                item,
+                f"{name}-{index}",
+                boundary=selected_scope,
+                markdown=True,
+            )
+            identity = _path_identity(route)
+            if identity in identities:
+                _invalid(f"duplicate-{name}")
+            identities.add(identity)
+            result.append(route)
+        return result
+
+    navigated_pages = path_list(value["navigated_pages"], "navigation-evidence-navigated")
+    hidden_pages = path_list(value["hidden_pages"], "navigation-evidence-hidden")
+    if set(map(_path_identity, navigated_pages)) & set(map(_path_identity, hidden_pages)):
+        _invalid("navigation-evidence-visibility-overlap")
+
+    redirects = value["redirects"]
+    if type(redirects) is not list or len(redirects) > 2_048:
+        _invalid("invalid-navigation-evidence-redirects")
+    normalized_redirects = []
+    for index, redirect in enumerate(redirects):
+        name = f"navigation-evidence-redirect-{index}"
+        _require_exact_mapping(redirect, {"source", "destination"}, name)
+        source = _require_string(redirect["source"], f"{name}-source", maximum=16 * 1024)
+        destination = _require_string(
+            redirect["destination"], f"{name}-destination", maximum=16 * 1024
+        )
+        normalized_redirects.append({"source": source, "destination": destination})
+    if normalized_redirects != sorted(
+        normalized_redirects, key=lambda item: (item["source"].casefold(), item["source"])
+    ):
+        _invalid("unsorted-navigation-evidence-redirects")
+
+    unsupported_features = _normalize_sorted_strings(
+        value["unsupported_features"],
+        "navigation-evidence-features",
+        maximum=64,
+    )
+    contexts = value["contexts"]
+    limits = value["limits"]
+    findings = value["findings"]
+    if type(contexts) is not dict or type(limits) is not dict or type(findings) is not list:
+        _invalid("invalid-navigation-evidence-shape")
+    if len(_canonical_bytes({"contexts": contexts, "limits": limits, "findings": findings})) > MAX_NAVIGATION_EVIDENCE_BYTES:
+        _capacity("navigation-evidence-capacity")
+    orientation = value["orientation"]
+    if orientation is not None:
+        _require_exact_mapping(orientation, {"path", "separate"}, "navigation-evidence-orientation")
+        orientation_path = _normalize_shared_path_v3(
+            orientation["path"], "navigation-evidence-orientation-path", markdown=True
+        )
+        if orientation["separate"] is not True:
+            _invalid("invalid-navigation-evidence-orientation")
+        orientation = {"path": orientation_path, "separate": True}
+    manifest_digest = value["manifest_digest"]
+    if manifest_digest is not None:
+        _normalize_digest(manifest_digest, "navigation-evidence-manifest-digest")
+    return {
+        "status": "measured",
+        "provider": value["provider"],
+        "scope": scope,
+        "provider_root": provider_root,
+        "authority": authority,
+        "entry": entry,
+        "navigated_pages": navigated_pages,
+        "hidden_pages": hidden_pages,
+        "redirects": normalized_redirects,
+        "unsupported_features": unsupported_features,
+        "contexts": copy.deepcopy(contexts),
+        "findings": copy.deepcopy(findings),
+        "limits": copy.deepcopy(limits),
+        "orientation": orientation,
+        "manifest_digest": manifest_digest,
+    }
+
+
 def _normalize_evidence_v3(evidence):
-    _require_exact_mapping(evidence, _EVIDENCE_FIELDS, "evidence")
+    if type(evidence) is not dict or set(evidence) not in {
+        _EVIDENCE_FIELDS,
+        _EVIDENCE_FIELDS | {"navigation_evidence"},
+    }:
+        _invalid("invalid-evidence-fields")
     skill_version = evidence["skill_version"]
     if type(skill_version) is not str or _SEMVER.fullmatch(skill_version) is None:
         _invalid("invalid-skill-version")
@@ -875,6 +1018,10 @@ def _normalize_evidence_v3(evidence):
         "source_changes": copy.deepcopy(changes),
     }
     normalized["event"] = _normalize_public_event_v3(evidence["event"], normalized)
+    if "navigation_evidence" in evidence:
+        normalized["navigation_evidence"] = _normalize_navigation_evidence_v3(
+            evidence["navigation_evidence"], selected_scope
+        )
     return normalized
 
 

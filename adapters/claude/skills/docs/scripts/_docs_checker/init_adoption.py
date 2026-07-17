@@ -15,7 +15,11 @@ from .init_closeout import (
     preview_response,
     validate_public_request,
 )
-from .navigation import NavigationBoundary, select_navigation
+from .navigation import (
+    NavigationBoundary,
+    canonical_navigation_evidence,
+    select_navigation,
+)
 from .scan import discover_markdown, scan_documents
 
 
@@ -137,6 +141,7 @@ def build_adoption_request(
         selected_scope,
         _preferred_map_path(selected_scope),
     )
+    navigation_evidence = canonical_navigation_evidence(root, navigation)
     map_path = _map_path(paths, selected_scope)
     if navigation.get("provider") == "mintlify":
         entry = navigation.get("entry")
@@ -194,6 +199,7 @@ def build_adoption_request(
             "routes": [],
         },
         "findings": {"schema_version": 1, "findings": []},
+        "navigation_evidence": navigation_evidence,
         "dispositions": dispositions,
         "local_map": None,
         "event": {
