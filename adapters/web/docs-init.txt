@@ -230,7 +230,7 @@ Doctor treats any missing, noncanonical, stale, duplicated, or cross-object mism
 
 Load only after exact Doctor treatment IDs and full fingerprints are approved. Revalidate selected IDs, full fingerprints, evidence, scope, worktree, and capabilities before any write. A changed fingerprint invalidates the approval and cannot retarget it.
 
-Prefer a safe worktree; use a feature branch only after verifying it excludes unrelated dirty changes.
+If already on a verified clean feature branch, use it. Do not create a worktree or say that one exists. Only report a worktree that was actually created. Otherwise, prefer a safe worktree; use a feature branch only after verifying it excludes unrelated dirty changes.
 
 - Resolve the approved selected repository root. Bind every Git command to it (`git -C <repository-root>` or host equivalent); never rely on ambient CWD or parent-repository discovery.
 - Before `git worktree add`, reject any symlink, junction, or reparse point in the existing destination/boundary chain; stop and re-preview a physical path for separate approval.

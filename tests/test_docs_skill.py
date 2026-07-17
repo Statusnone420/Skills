@@ -570,7 +570,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("changed-path names", doctor)
         self.assertIn("cleanup, migration, and reader goals", doctor)
         self.assertIn("bare `doctor`", doctor)
-        self.assertIn("report every compact checker finding", doctor)
+        self.assertIn("retains every compact checker finding", doctor)
         self.assertIn("goal text narrows diagnosis", doctor)
         self.assertIn("do not suppress related blockers required to complete that goal", doctor)
         self.assertIn("report the excluded scope", doctor)
@@ -585,7 +585,7 @@ class DocsSkillContractTests(unittest.TestCase):
             self.assertIn(phrase, doctor)
         self.assertIn("later writes require exact selected ids", doctor)
         self.assertIn("ordinary approval is insufficient", doctor)
-        self.assertIn("every loaded path", doctor)
+        self.assertIn("per-path ledger", doctor)
         self.assertIn("failed/preflight attempts", doctor)
 
     def test_doctor_preserves_operational_boundaries_and_exact_checker_argv(self):
@@ -715,6 +715,42 @@ class DocsSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(contract, doctor)
 
+    def test_doctor_default_presentation_is_compact_and_details_are_opt_in(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Default presentation", doctor)
+        self.assertIn("$docs doctor --details", doctor)
+        for requirement in (
+            "score receipt",
+            "finding and treatment counts",
+            "one compact treatment card",
+            "ID, priority, plain outcome, affected count, exact files, and risk",
+            "one exact copyable approval",
+        ):
+            self.assertIn(requirement, doctor)
+
+        default, detailed = doctor.split("## Detailed evidence", 1)
+        self.assertNotIn("Fingerprint:", default)
+        self.assertNotIn("Coverage:", default)
+        self.assertIn("Fingerprint:", detailed)
+        self.assertIn("Coverage:", detailed)
+
+    def test_doctor_default_narrates_isolation_and_exclusions_truthfully(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+        isolation = (SKILL / "references" / "isolation.md").read_text(encoding="utf-8")
+        default, detailed = doctor.split("## Detailed evidence", 1)
+
+        self.assertIn("compact count", default)
+        self.assertNotIn("every loaded path", default.lower())
+        self.assertIn("per-path ledger", detailed)
+        self.assertIn("excluded and uninspected; no absence claim", default)
+        for requirement in (
+            "If already on a verified clean feature branch, use it.",
+            "Do not create a worktree or say that one exists.",
+            "Only report a worktree that was actually created.",
+        ):
+            self.assertIn(requirement, isolation)
+
     def test_doctor_approval_names_exact_ids_and_full_fingerprints(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
 
@@ -727,6 +763,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "DOC-A1B2C3D4 fingerprint sha256:<64-hex-fingerprint>",
             doctor,
         )
+        self.assertIn("; receipt sha256:<64-hex-receipt>", doctor)
         self.assertIn("revalidate both every exact ID and its full fingerprint", doctor)
 
     def test_doctor_binds_isolation_to_verified_repository_identity(self):

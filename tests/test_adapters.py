@@ -124,6 +124,7 @@ class AdapterBuilderTests(unittest.TestCase):
                 "lifecycle_io.py",
                 "init_closeout.py",
                 "init_adoption.py",
+                "doctor_closeout.py",
                 "health.py",
             },
         )

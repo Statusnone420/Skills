@@ -18,5 +18,6 @@ __all__ = (
     "lifecycle_io",
     "init_closeout",
     "init_adoption",
+    "doctor_closeout",
     "health",
 )
