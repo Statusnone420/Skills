@@ -5,6 +5,9 @@ from pathlib import Path
 from tools import run_tests
 
 
+ROOT = Path(__file__).parents[1]
+
+
 class TestObservableTestRunner(unittest.TestCase):
     def test_repository_partition_is_complete_and_unique(self):
         groups = run_tests.grouped_test_files()
@@ -35,6 +38,19 @@ class TestObservableTestRunner(unittest.TestCase):
         self.assertEqual(command[1:6], ["-B", "-u", "-m", "unittest", "-v"])
         self.assertIn("--failfast", command)
         self.assertEqual(command[-1], "tests.test_docs_skill")
+
+    def test_ci_exposes_one_stable_gate_for_the_complete_matrix(self):
+        workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("\n  tests_gate:\n", workflow)
+        gate = workflow.split("\n  tests_gate:\n", 1)[1]
+        self.assertIn("    name: Tests\n", gate)
+        self.assertIn("    needs: tests\n", gate)
+        self.assertIn("    if: always()\n", gate)
+        self.assertIn("needs.tests.result", gate)
+        self.assertIn('!= "success"', gate)
 
 
 if __name__ == "__main__":
