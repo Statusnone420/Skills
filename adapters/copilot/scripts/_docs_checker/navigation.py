@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from .formats import is_navigation_manifest_path
+from .formats import is_document_path, is_navigation_manifest_path
 from .paths import _is_reparse, normalize_repo_relative, safe_path
 
 
@@ -69,7 +69,11 @@ def unsupported_navigation_manifest(root, scope, map_path):
         map_candidate = safe_path(root / map_norm, root)
     except ValueError:
         return None
-    if map_candidate.is_file() and not _is_reparse(map_candidate):
+    if (
+        is_document_path(map_norm)
+        and map_candidate.is_file()
+        and not _is_reparse(map_candidate)
+    ):
         return None
     return relative
 

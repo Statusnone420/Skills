@@ -141,6 +141,19 @@ Install the extension and choose a model provider.
         )
         self.assertEqual(payload["findings"], [])
 
+    def test_navigation_manifest_cannot_bypass_missing_document_map(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+
+            result = self._checker(root, map_path="docs/docs.json")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["error"],
+            "unsupported documentation navigation manifest",
+        )
+
     def test_schema_json_manifest_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
