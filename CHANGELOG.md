@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — MDX compatibility and observable verification (2026-07-17)
+
+- Bumped the canonical, marketplace, and generated plugin release identity so synced desktop installations can fetch this repair instead of reusing the `0.1.1` cache.
+- Added generic inert-text `.mdx` support across discovery, scanning, reachability, protection, lifecycle validation, and closeout without executing imports, JSX, JavaScript, or components.
+- Made recognized Mintlify `docs.json` manifests fail closed when their maintained map is unsupported, including root, nested, and ancestor-inherited scopes in both the checker and direct Init adoption.
+- Added an observable cross-platform test runner, pinned Python 3.14 in CI, and proved the 769-test suite on Windows and native-filesystem WSL Ubuntu.
+
 ## 0.1.1 — Init and Doctor closeout repair (2026-07-16)
 
 - Bumped the canonical and generated plugin release identity so marketplaces can fetch the merged repair instead of reusing the `0.1.0` cache.

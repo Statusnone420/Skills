@@ -225,6 +225,67 @@ Install the extension and choose a model provider.
         self.assertEqual(payload["writes"], 0)
         self.assertFalse(receipt_exists)
 
+    def test_descendant_scope_inherits_manifest_for_check_and_init(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repo"
+            root.mkdir()
+            self._write_cline_shaped_fixture(root)
+            subprocess.run(
+                ["git", "config", "user.email", "fixture@example.invalid"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Fixture"],
+                cwd=root,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "commit", "--quiet", "-m", "fixture"],
+                cwd=root,
+                check=True,
+            )
+            scope = "docs/getting-started"
+            checker = self._checker(
+                root,
+                map_path=f"{scope}/README.md",
+                scope=scope,
+            )
+            receipt = base / "init-receipt.json"
+            adoption = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(INIT_CLOSEOUT),
+                    str(root),
+                    "adopt-preview",
+                    "--scope",
+                    scope,
+                    "--receipt-file",
+                    str(receipt),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            receipt_exists = receipt.exists()
+
+        self.assertEqual(checker.returncode, 2, checker.stdout + checker.stderr)
+        self.assertEqual(
+            json.loads(checker.stdout)["error"],
+            "unsupported documentation navigation manifest",
+        )
+        self.assertEqual(adoption.returncode, 2, adoption.stdout + adoption.stderr)
+        adoption_payload = json.loads(adoption.stdout)
+        self.assertEqual(adoption_payload["status"], "waiting")
+        self.assertEqual(
+            adoption_payload["classification"],
+            "unsupported-documentation-navigation-manifest",
+        )
+        self.assertEqual(adoption_payload["writes"], 0)
+        self.assertFalse(receipt_exists)
+
     def test_explicit_mdx_map_is_measured_without_executing_components(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

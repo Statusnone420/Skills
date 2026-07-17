@@ -19,7 +19,7 @@ from .navigation import unsupported_navigation_manifest
 from .scan import discover_markdown, scan_documents
 
 
-SKILL_VERSION = "0.1.1"
+SKILL_VERSION = "0.1.2"
 
 
 def canonical_request_bytes(value):

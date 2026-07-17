@@ -36,19 +36,27 @@ def _recognized_mintlify_manifest(root, relative):
     return isinstance(schema, str) and schema.casefold().rstrip("/") in MINTLIFY_SCHEMA_URLS
 
 
+def _manifest_candidates(scope):
+    if scope == ".":
+        return ("docs.json", "docs/docs.json")
+    parts = scope.split("/")
+    return tuple(
+        [
+            f"{'/'.join(parts[:depth])}/docs.json"
+            for depth in range(len(parts), 0, -1)
+        ]
+        + ["docs.json"]
+    )
+
+
 def unsupported_navigation_manifest(root, scope, map_path):
     """Return a recognized manifest when it exists without the requested map."""
     root = Path(root).absolute()
     scope_norm = normalize_repo_relative(scope, "scope")
-    relatives = (
-        ("docs.json", "docs/docs.json")
-        if scope_norm == "."
-        else (f"{scope_norm}/docs.json",)
-    )
     relative = next(
         (
             candidate
-            for candidate in relatives
+            for candidate in _manifest_candidates(scope_norm)
             if _recognized_mintlify_manifest(root, candidate)
         ),
         None,

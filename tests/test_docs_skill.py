@@ -117,7 +117,7 @@ class DocsSkillContractTests(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
 
-        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.1\"", skill)
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.2\"", skill)
         self.assertIn("Diátaxis Docs v<metadata.version>", commands)
 
     def test_default_help_uses_plain_english_daily_commands(self):
@@ -370,10 +370,10 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_canonical_version_is_strict_semver(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertEqual(build_adapters.canonical_version(skill), "0.1.1")
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.2")
         for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
             with self.subTest(invalid=invalid):
-                malformed = skill.replace('version: "0.1.1"', f'version: "{invalid}"')
+                malformed = skill.replace('version: "0.1.2"', f'version: "{invalid}"')
                 with self.assertRaises(ValueError):
                     build_adapters.canonical_version(malformed)
 
