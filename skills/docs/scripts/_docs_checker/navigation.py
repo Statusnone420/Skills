@@ -296,6 +296,18 @@ def _route_candidates(root, scope, relative):
     return existing[0] if existing else None
 
 
+def _local_asset_candidate(root, provider_root, relative):
+    """Resolve one existing non-document file without treating it as a page."""
+    root = Path(root).absolute()
+    raw_relative = _provider_absolute(provider_root, relative)
+    candidate = safe_path(root / raw_relative, root)
+    if _is_reparse(candidate):
+        raise ValueError("route crosses a symlink or reparse component")
+    if candidate.is_file() and not is_document_path(candidate):
+        return candidate
+    return None
+
+
 def _route_key(relative):
     return "/" if relative == "." else "/" + relative.strip("/")
 
@@ -844,6 +856,18 @@ def resolve_navigation_link(root, navigation, source_relative, raw_target):
         else:
             return {"status": "unsupported", "reason": "redirect-hop-limit"}
         target_provider = target_key.lstrip("/") or "."
+        asset = _local_asset_candidate(root, provider_root, target_provider)
+        if asset is not None:
+            resolved_relative = _relative_posix(asset, Path(root).absolute())
+            if not _is_within_scope(resolved_relative, selected_scope):
+                return {"status": "outside"}
+            return {
+                "status": "resolved",
+                "path": resolved_relative,
+                "fragment": fragment,
+                "query": parsed.query,
+                "asset": True,
+            }
         resolved = _route_candidates(root, provider_root, target_provider)
         if resolved is None:
             return {

@@ -348,6 +348,38 @@ def scan_documents(
                 if resolution["status"] == "external":
                     continue
                 checked_links += 1
+                if resolution.get("asset"):
+                    if resolution["status"] != "resolved":
+                        findings.append(
+                            {
+                                "kind": "missing-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    try:
+                        destination = safe_path(root / resolution["path"], root)
+                    except ValueError:
+                        findings.append(
+                            {
+                                "kind": "outside-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    if not destination.is_file():
+                        findings.append(
+                            {
+                                "kind": "missing-link",
+                                "path": source_relative,
+                                "target": raw_target,
+                            }
+                        )
+                        continue
+                    valid_links += 1
+                    continue
                 anchor = resolution.get("fragment", "")
                 if anchor:
                     checked_anchors += 1

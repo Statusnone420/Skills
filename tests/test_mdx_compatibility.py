@@ -600,6 +600,32 @@ Install the extension and choose a model provider.
             ],
         )
 
+    def test_mintlify_existing_local_asset_link_is_not_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_cline_shaped_fixture(root)
+            docs = root / "docs"
+            asset = docs / "assets" / "guide.pdf"
+            asset.parent.mkdir()
+            asset.write_bytes(b"%PDF-1.7\n")
+            overview = docs / "cline-overview.mdx"
+            overview.write_text(
+                overview.read_text(encoding="utf-8")
+                + "\n[Download the guide](assets/guide.pdf)\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", "docs"], cwd=root, check=True)
+
+            result = self._checker(root, map_path="docs/README.md", scope="docs")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertNotIn("missing-link", [item["kind"] for item in payload["findings"]])
+        self.assertEqual(
+            payload["health"]["categories"]["links"]["raw"],
+            {"valid": 2, "checked": 2},
+        )
+
     def test_duplicate_titles_in_distinct_navigation_contexts_are_not_prioritized(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
