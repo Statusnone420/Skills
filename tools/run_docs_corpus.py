@@ -22,18 +22,24 @@ from _docs_checker.evidence import (  # noqa: E402
     config_probe,
     evidence_value,
     observe_entry_orientation,
+    validate_relative_evidence_path,
 )
 from _docs_checker.health import HEALTH_RUBRIC_VERSION, HEALTH_WEIGHTS, health_summary  # noqa: E402
 from _docs_checker.init_adoption import SKILL_VERSION  # noqa: E402
-from _docs_checker.paths import _assert_no_reparse_components, normalize_repo_relative, safe_path  # noqa: E402
+from _docs_checker.paths import _assert_no_reparse_components, safe_path  # noqa: E402
 from check import check  # noqa: E402
 
 
 DEFAULT_MANIFEST = ROOT / "evals" / "docs-corpus-v1.json"
 DEFAULT_WORKSPACE = ROOT / "evals" / "workspace" / "docs-corpus-v1"
+MAX_MANIFEST_BYTES = 256 * 1024
+MAX_MANIFEST_PATH_BYTES = 512
+MAX_PROBES_PER_REPOSITORY = 64
+MAX_SPARSE_PATHS_PER_REPOSITORY = 128
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _PROVIDERS = frozenset({"mintlify", "custom-mdx", "docusaurus", "vitepress", "mkdocs", "hugo"})
+_SPARSE_PATTERN_SYNTAX = re.compile(r"[*?!\[\]]")
 
 
 def _git(root, *args, allowed=(0,)):
@@ -51,16 +57,23 @@ def _git(root, *args, allowed=(0,)):
 
 
 def _relative(value, name):
-    normalized = normalize_repo_relative(value, name)
-    if normalized != value:
-        raise ValueError(f"{name} must be normalized")
+    normalized = validate_relative_evidence_path(value, name)
+    if len(value.encode("utf-8", "strict")) > MAX_MANIFEST_PATH_BYTES:
+        raise ValueError(f"{name} exceeds capacity")
     return normalized
 
 
 def load_manifest(path=DEFAULT_MANIFEST):
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+        with Path(path).open("rb") as stream:
+            raw = stream.read(MAX_MANIFEST_BYTES + 1)
+    except OSError as exc:
+        raise ValueError("corpus manifest is unavailable or malformed") from exc
+    if len(raw) > MAX_MANIFEST_BYTES:
+        raise ValueError("corpus manifest exceeds capacity")
+    try:
+        value = json.loads(raw.decode("utf-8", "strict"))
+    except (UnicodeError, ValueError, RecursionError) as exc:
         raise ValueError("corpus manifest is unavailable or malformed") from exc
     if not isinstance(value, dict) or set(value) != {"schema_version", "corpus_id", "repositories"}:
         raise ValueError("corpus manifest fields are invalid")
@@ -98,7 +111,7 @@ def load_manifest(path=DEFAULT_MANIFEST):
             raise ValueError(f"{name}.repository_url is invalid")
         if not isinstance(spec["commit"], str) or _SHA.fullmatch(spec["commit"]) is None:
             raise ValueError(f"{name}.commit is invalid")
-        if spec["provider"] not in _PROVIDERS:
+        if not isinstance(spec["provider"], str) or spec["provider"] not in _PROVIDERS:
             raise ValueError(f"{name}.provider is invalid")
         expected_measurement = "supported" if spec["provider"] == "mintlify" else "unsupported"
         if spec["measurement"] != expected_measurement:
@@ -107,10 +120,23 @@ def load_manifest(path=DEFAULT_MANIFEST):
         _relative(spec["entry"], f"{name}.entry")
         for field in ("authority_probes", "config_probes", "sparse_paths"):
             paths = spec[field]
-            if not isinstance(paths, list) or not paths or len(paths) != len(set(paths)):
+            maximum = (
+                MAX_SPARSE_PATHS_PER_REPOSITORY
+                if field == "sparse_paths"
+                else MAX_PROBES_PER_REPOSITORY
+            )
+            if (
+                not isinstance(paths, list)
+                or not paths
+                or len(paths) > maximum
+                or any(not isinstance(path, str) for path in paths)
+                or len(paths) != len(set(paths))
+            ):
                 raise ValueError(f"{name}.{field} is invalid")
             for path_index, path in enumerate(paths):
                 _relative(path, f"{name}.{field}[{path_index}]")
+                if field == "sparse_paths" and _SPARSE_PATTERN_SYNTAX.search(path):
+                    raise ValueError(f"{name}.{field}[{path_index}] contains pattern syntax")
     return value
 
 
@@ -181,6 +207,8 @@ def _unsupported_payload(spec):
 
 
 def run_repository(workspace, spec):
+    for index, relative in enumerate(spec["config_probes"]):
+        _relative(relative, f"{spec['id']}.config_probes[{index}]")
     path, before_raw = verify_checkout(workspace, spec)
     configurations = []
     for relative in spec["config_probes"]:
@@ -300,7 +328,10 @@ def main(argv=None):
         else:
             print(encoded, end="")
         return 0
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, UnicodeError):
+        print(json.dumps({"status": "failed", "error": "corpus runner I/O failed"}))
+        return 2
+    except ValueError as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=True))
         return 2
 

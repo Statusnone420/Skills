@@ -23,6 +23,7 @@ EVIDENCE_STATES = frozenset({"completed", "not_assessed", "unavailable", "failed
 MAX_RECEIPT_BYTES = 512 * 1024
 MAX_TEXT_BYTES = 512
 MAX_FINDINGS = 10_000
+_OMITTED = object()
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -37,8 +38,7 @@ _PRIVATE_POSIX_ABSOLUTE = re.compile(
     re.IGNORECASE,
 )
 _NETWORK_PATH = re.compile(r"(?<![A-Za-z0-9_.\\/-])(?://|\\\\)")
-_URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-_FILE_SCHEME = re.compile(r"(?<![A-Za-z0-9+.-])file:", re.IGNORECASE)
+_URI_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
 _PRIVATE_LOCAL = re.compile(r"(?i)(?<![A-Za-z0-9_.-])\.local(?:[\\/]|$)")
 _WINDOWS_ROOTED = re.compile(r"(?<![A-Za-z0-9_.\\/-])\\(?!\\)[^\s]+")
 _CREDENTIAL_PARAMETER = re.compile(
@@ -46,7 +46,7 @@ _CREDENTIAL_PARAMETER = re.compile(
     re.IGNORECASE,
 )
 _CREDENTIAL_VALUE = re.compile(
-    r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|(?:sk|rk)-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|bearer\s+[A-Za-z0-9._-]{12,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",
+    r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gsk_[A-Za-z0-9_-]{20,}|r8_[A-Za-z0-9_-]{37,}|(?:sk|rk)-[A-Za-z0-9_-]{20,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}|(?:glsa|gldt)_[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|hf_[A-Za-z0-9]{20,}|lin_api_[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9_-]{12,}|SG\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}|(?:shpat|shpca|shppa|shpss)_[A-Za-z0-9_-]{20,}|(?:sq0atp|sq0csp)-[A-Za-z0-9_-]{20,}|dop_v1_[A-Za-z0-9_-]{20,}|(?:vercel|sbp)_[A-Za-z0-9_-]{20,}|bearer\s+[A-Za-z0-9._-]{12,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",
     re.IGNORECASE,
 )
 _CATEGORY_RAW_FIELDS = {
@@ -85,10 +85,15 @@ _RECEIPT_FIELDS = frozenset(
 )
 
 
+def _enum_text(value, allowed, name):
+    if not isinstance(value, str) or value not in allowed:
+        raise ValueError(f"{name} is invalid")
+    return value
+
+
 def evidence_value(status, value=None):
     """Create one explicit evidence value without treating absence as zero."""
-    if status not in EVIDENCE_STATES:
-        raise ValueError("evidence status is invalid")
+    _enum_text(status, EVIDENCE_STATES, "evidence status")
     if status == "completed" and value is None:
         raise ValueError("completed evidence requires a value")
     if status != "completed" and value is not None:
@@ -171,8 +176,7 @@ def _percentage(value, name):
 def _evidence(value, name, *, validator=None):
     value = _exact_keys(value, {"status", "value"}, name)
     status = value["status"]
-    if status not in EVIDENCE_STATES:
-        raise ValueError(f"{name}.status is invalid")
+    _enum_text(status, EVIDENCE_STATES, f"{name}.status")
     current = value["value"]
     if status == "completed":
         if current is None:
@@ -218,10 +222,17 @@ def _relative(value, name):
     return value
 
 
+def validate_relative_evidence_path(value, name="path"):
+    """Validate a repository-relative path before including it in public evidence."""
+    return _relative(value, name)
+
+
 def _route(value, name):
     value = _bounded_text(value, name)
     for current in _decoded_forms(value, name):
-        if _URI_SCHEME.match(current) or _FILE_SCHEME.search(current):
+        candidate = current.strip()
+        before_fragment = candidate.split("#", 1)[0]
+        if _URI_SCHEME.search(before_fragment):
             raise ValueError(f"{name} must be a local route")
         if _CREDENTIAL_PARAMETER.search(current):
             raise ValueError(f"{name} exposes credential-shaped data")
@@ -229,14 +240,19 @@ def _route(value, name):
 
 
 def _reject_forbidden_keys(value, name="receipt"):
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            if not isinstance(key, str) or _FORBIDDEN_KEY.search(key):
-                raise ValueError(f"{name} contains a forbidden field")
-            _reject_forbidden_keys(child, f"{name}.{key}")
-    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        for index, child in enumerate(value):
-            _reject_forbidden_keys(child, f"{name}[{index}]")
+    pending = [(value, name)]
+    while pending:
+        current, current_name = pending.pop()
+        if isinstance(current, Mapping):
+            for key, child in current.items():
+                if not isinstance(key, str) or _FORBIDDEN_KEY.search(key):
+                    raise ValueError(f"{current_name} contains a forbidden field")
+                pending.append((child, f"{current_name}.{key}"))
+        elif isinstance(current, Sequence) and not isinstance(current, (str, bytes, bytearray)):
+            pending.extend(
+                (child, f"{current_name}[{index}]")
+                for index, child in enumerate(current)
+            )
 
 
 def _validate_run(value):
@@ -278,8 +294,7 @@ def _validate_lane(value, name, *, semantic=False):
     if semantic:
         expected.add("evaluator")
     value = _exact_keys(value, expected, name)
-    if value["status"] not in EVIDENCE_STATES:
-        raise ValueError(f"{name}.status is invalid")
+    _enum_text(value["status"], EVIDENCE_STATES, f"{name}.status")
     _validate_findings(value["findings"], f"{name}.findings")
     if value["status"] != "completed" and value["findings"]:
         raise ValueError(f"{name} cannot contain findings when incomplete")
@@ -297,8 +312,7 @@ def _validate_lane(value, name, *, semantic=False):
 
 def _validate_unresolved(value):
     value = _exact_keys(value, {"status", "candidates"}, "evidence.unresolved")
-    if value["status"] not in EVIDENCE_STATES:
-        raise ValueError("evidence.unresolved.status is invalid")
+    _enum_text(value["status"], EVIDENCE_STATES, "evidence.unresolved.status")
     candidates = _sequence(value["candidates"], "evidence.unresolved.candidates")
     if len(candidates) > 1_000:
         raise ValueError("evidence.unresolved.candidates exceeds capacity")
@@ -307,8 +321,21 @@ def _validate_unresolved(value):
             candidate, {"kind", "status"}, f"evidence.unresolved.candidates[{index}]"
         )
         _safe_identifier(candidate["kind"], f"evidence.unresolved.candidates[{index}].kind")
-        if candidate["status"] not in {"not_assessed", "unavailable", "failed"}:
-            raise ValueError("unresolved candidate status is invalid")
+        _enum_text(
+            candidate["status"],
+            {"not_assessed", "unavailable", "failed"},
+            "unresolved candidate status",
+        )
+
+
+def _validate_doctor(value):
+    value = _exact_keys(
+        value, {"status", "treatment_fingerprint", "approval_line_present"}, "doctor"
+    )
+    _enum_text(value["status"], EVIDENCE_STATES, "doctor.status")
+    _evidence(value["treatment_fingerprint"], "doctor.treatment_fingerprint", validator=_digest)
+    _evidence(value["approval_line_present"], "doctor.approval_line_present", validator=_boolean)
+    return value
 
 
 def _validate_categories(value, *, required=False):
@@ -411,8 +438,7 @@ def validate_evidence_receipt(value):
         {"status", "rubric_version", "percentage", "earned_weight", "available_weight", "categories", "score_gates"},
         "health",
     )
-    if health["status"] not in EVIDENCE_STATES:
-        raise ValueError("health.status is invalid")
+    _enum_text(health["status"], EVIDENCE_STATES, "health.status")
     _evidence(health["rubric_version"], "health.rubric_version", validator=_integer)
     _evidence(health["percentage"], "health.percentage", validator=_percentage)
     for field in ("earned_weight", "available_weight"):
@@ -435,19 +461,12 @@ def validate_evidence_receipt(value):
     _validate_lane(evidence["semantic"], "evidence.semantic", semantic=True)
     _validate_unresolved(evidence["unresolved"])
 
-    doctor = _exact_keys(
-        value["doctor"], {"status", "treatment_fingerprint", "approval_line_present"}, "doctor"
-    )
-    if doctor["status"] not in EVIDENCE_STATES:
-        raise ValueError("doctor.status is invalid")
-    _evidence(doctor["treatment_fingerprint"], "doctor.treatment_fingerprint", validator=_digest)
-    _evidence(doctor["approval_line_present"], "doctor.approval_line_present", validator=_boolean)
+    _validate_doctor(value["doctor"])
 
     write_audit = _exact_keys(
         value["write_audit"], {"status", "writes_attempted", "writes_observed"}, "write_audit"
     )
-    if write_audit["status"] not in EVIDENCE_STATES:
-        raise ValueError("write_audit.status is invalid")
+    _enum_text(write_audit["status"], EVIDENCE_STATES, "write_audit.status")
     _evidence(write_audit["writes_attempted"], "write_audit.writes_attempted", validator=_integer)
     _evidence(write_audit["writes_observed"], "write_audit.writes_observed", validator=_integer)
 
@@ -609,7 +628,7 @@ def build_evidence_receipt(
     orientation,
     semantic,
     unresolved=(),
-    doctor=None,
+    doctor=_OMITTED,
     writes_attempted=0,
     writes_observed=0,
     git_before="clean",
@@ -617,7 +636,33 @@ def build_evidence_receipt(
 ):
     """Build one receipt from existing deterministic checker evidence."""
     checker_payload = _mapping(checker_payload, "checker payload")
-    navigation = checker_payload.get("navigation", {})
+    navigation = _mapping(checker_payload.get("navigation", {}), "checker payload.navigation")
+    _validate_run(run)
+    run = dict(run)
+    orientation = _exact_keys(
+        orientation,
+        {"literal_h1", "frontmatter_title", "provider_rendered_title"},
+        "orientation",
+    )
+    _evidence(orientation["literal_h1"], "orientation.literal_h1", validator=_boolean)
+    _evidence(orientation["frontmatter_title"], "orientation.frontmatter_title", validator=_boolean)
+    _evidence(
+        orientation["provider_rendered_title"],
+        "orientation.provider_rendered_title",
+        validator=_boolean,
+    )
+    semantic = _exact_keys(semantic, {"status", "evaluator", "findings"}, "semantic")
+    _validate_lane(semantic, "semantic", semantic=True)
+    unresolved = list(_sequence(unresolved, "unresolved"))
+    _validate_unresolved({"status": "completed", "candidates": unresolved})
+    if doctor is _OMITTED:
+        doctor = {
+            "status": "not_assessed",
+            "treatment_fingerprint": evidence_value("not_assessed"),
+            "approval_line_present": evidence_value("not_assessed"),
+        }
+    else:
+        doctor = dict(_validate_doctor(doctor))
     health = health_receipt(checker_payload.get("health"))
     measured = isinstance(checker_payload.get("health"), Mapping)
     counts = {
@@ -650,20 +695,10 @@ def build_evidence_receipt(
         target = raw.get("target") if isinstance(raw.get("target"), str) else None
         findings.append(finding_receipt(raw["kind"], path=path, line=line, target=target))
 
-    semantic = _mapping(semantic, "semantic")
-    evaluator = semantic.get("evaluator", {})
     semantic_lane = {
         "status": semantic["status"],
-        "evaluator": {
-            field: evaluator.get(field, evidence_value("not_assessed"))
-            for field in ("provider", "model", "version")
-        },
-        "findings": list(semantic.get("findings", ())),
-    }
-    doctor = doctor or {
-        "status": "not_assessed",
-        "treatment_fingerprint": evidence_value("not_assessed"),
-        "approval_line_present": evidence_value("not_assessed"),
+        "evaluator": dict(semantic["evaluator"]),
+        "findings": list(semantic["findings"]),
     }
     receipt = {
         "schema_version": EVIDENCE_RECEIPT_VERSION,
@@ -675,7 +710,7 @@ def build_evidence_receipt(
             else evidence_value("unavailable"),
         },
         "checker": {"name": "diataxis-docs", "version": checker_version},
-        "run": dict(run),
+        "run": run,
         "surface": {
             "provider": navigation.get("provider", "unknown"),
             "authority": evidence_value("completed", navigation["authority"])

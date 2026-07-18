@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from _docs_checker.evidence import (
+    MAX_RECEIPT_BYTES,
     build_evidence_receipt,
     canonical_receipt_bytes,
     observe_entry_orientation,
@@ -46,8 +47,15 @@ def _status(root):
 
 def _metadata(path):
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+        with Path(path).open("rb") as stream:
+            raw = stream.read(MAX_RECEIPT_BYTES + 1)
+    except OSError as exc:
+        raise ValueError("metadata file is unavailable or malformed") from exc
+    if len(raw) > MAX_RECEIPT_BYTES:
+        raise ValueError("metadata file exceeds capacity")
+    try:
+        value = json.loads(raw.decode("utf-8", "strict"))
+    except (UnicodeError, ValueError, RecursionError) as exc:
         raise ValueError("metadata file is unavailable or malformed") from exc
     expected = {"receipt_id", "repository_identifier", "run", "semantic", "unresolved", "doctor"}
     if not isinstance(value, dict) or set(value) != expected:
@@ -103,7 +111,14 @@ def main(argv=None):
         )
         sys.stdout.buffer.write(canonical_receipt_bytes(receipt))
         return 0
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, UnicodeError, RecursionError):
+        print(
+            json.dumps(
+                {"status": "failed", "error": "evidence receipt I/O failed", "receipt": None}
+            )
+        )
+        return 2
+    except ValueError as exc:
         print(
             json.dumps(
                 {"status": "failed", "error": str(exc), "receipt": None},

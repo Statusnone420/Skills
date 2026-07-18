@@ -1,4 +1,6 @@
 import copy
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -6,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from urllib.parse import quote
 
 
@@ -19,6 +22,7 @@ from _docs_checker import evidence
 from _docs_checker.health import HEALTH_RUBRIC_VERSION, HEALTH_WEIGHTS
 import prepare_docs_corpus
 import run_docs_corpus
+import evidence_receipt as evidence_receipt_cli
 
 
 DOGFOOD = ROOT / "evals" / "dogfood" / "cline-0.1.3.json"
@@ -137,13 +141,17 @@ class EvidenceReceiptTests(unittest.TestCase):
             }
             with self.subTest(target=target), self.assertRaises(ValueError):
                 evidence.validate_evidence_receipt(value)
+            with self.subTest(target=f"canonical-{target}"), self.assertRaises(ValueError):
+                evidence.canonical_receipt_bytes(value)
 
-        value = copy.deepcopy(self.receipt)
-        value["evidence"]["deterministic"]["findings"][0]["target"] = {
-            "status": "completed",
-            "value": "/docs/safe-guide#api:v1",
-        }
-        evidence.validate_evidence_receipt(value)
+        for target in ("/docs/safe-guide#api:v1", "/docs/safe-guide#file:v1"):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"]["deterministic"]["findings"][0]["target"] = {
+                "status": "completed",
+                "value": target,
+            }
+            with self.subTest(target=target):
+                evidence.validate_evidence_receipt(value)
 
         for credential in (
             "sk-proj-synthetic012345678901234567890",
@@ -151,6 +159,21 @@ class EvidenceReceiptTests(unittest.TestCase):
             "npm_012345678901234567890123456789012345",
             "pypi-synthetic012345678901234567890",
             "eyJsynthetic01.eyJsynthetic02.synthetic-signature",
+            "".join(("sk", "_live_", "synthetic012345678901234567890")),
+            "".join(("rk", "_live_", "synthetic012345678901234567890")),
+            "lin_api_synthetic012345678901234567890",
+            "ya29.synthetic012345678901234567890",
+            "SG.synthetic012345.synthetic01234567890",
+            "hf_synthetic012345678901234567890",
+            "sk-ant-synthetic012345678901234567890",
+            "gsk_synthetic0123456789012345678901234567890",
+            "r8_0123456789012345678901234567890123456",
+            "shpat_synthetic012345678901234567890",
+            "sq0atp-synthetic012345678901234567890",
+            "dop_v1_synthetic012345678901234567890",
+            "vercel_synthetic012345678901234567890",
+            "sbp_synthetic012345678901234567890",
+            "ASIA0123456789ABCDEF",
         ):
             value = copy.deepcopy(self.receipt)
             value["run"]["model"] = credential
@@ -158,6 +181,10 @@ class EvidenceReceiptTests(unittest.TestCase):
                 ValueError, "credential-shaped"
             ):
                 evidence.validate_evidence_receipt(value)
+            with self.subTest(credential=f"canonical-{credential}"), self.assertRaisesRegex(
+                ValueError, "credential-shaped"
+            ):
+                evidence.canonical_receipt_bytes(value)
 
         for private_path in (
             ".local/private.md",
@@ -186,6 +213,26 @@ class EvidenceReceiptTests(unittest.TestCase):
             }
             with self.subTest(target=target), self.assertRaises(ValueError):
                 evidence.validate_evidence_receipt(value)
+
+        for target in (
+            "<mailto:private@example.invalid>",
+            "<data:text/plain,private>",
+            " <https://example.invalid/private> ",
+            '<data:text/plain;base64,U1VQRVJTRUNSRVQ=> "title"',
+            '<mailto:private@example.invalid> "contact"',
+            "<<data:text/plain,private>>",
+            "title data:text/plain,private",
+            "docs/(data:text/plain,private)",
+        ):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"]["deterministic"]["findings"][0]["target"] = {
+                "status": "completed",
+                "value": target,
+            }
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
+            with self.subTest(target=f"canonical-{target}"), self.assertRaises(ValueError):
+                evidence.canonical_receipt_bytes(value)
 
     def test_completed_health_requires_every_category(self):
         value = copy.deepcopy(self.receipt)
@@ -233,16 +280,44 @@ class EvidenceReceiptTests(unittest.TestCase):
             navigation = copy.deepcopy(measurements["navigation"])
             navigation["navigated_pages"] = ["docs/README.md", "docs/guide.md"]
             navigation["hidden_pages"] = ["docs/guide.md"]
-            receipt = evidence.build_evidence_receipt(
-                receipt_id="page-count-regression",
-                repository_identifier="example.invalid/docs/page-count",
-                commit="0" * 40,
-                checker_version="0.1.4",
-                run=copy.deepcopy(self.receipt["run"]),
-                checker_payload={"navigation": navigation, "health": health, "findings": findings},
-                orientation=copy.deepcopy(self.receipt["orientation"]),
-                semantic=run_docs_corpus._semantic_not_assessed(),
-            )
+            builder = {
+                "receipt_id": "page-count-regression",
+                "repository_identifier": "example.invalid/docs/page-count",
+                "commit": "0" * 40,
+                "checker_version": "0.1.4",
+                "run": copy.deepcopy(self.receipt["run"]),
+                "checker_payload": {
+                    "navigation": navigation,
+                    "health": health,
+                    "findings": findings,
+                },
+                "orientation": copy.deepcopy(self.receipt["orientation"]),
+                "semantic": run_docs_corpus._semantic_not_assessed(),
+            }
+            receipt = evidence.build_evidence_receipt(**builder)
+
+            for field, malformed in (
+                ("run", None),
+                ("semantic", {}),
+                (
+                    "semantic",
+                    {"status": "not_assessed", "evaluator": None, "findings": []},
+                ),
+                (
+                    "semantic",
+                    {
+                        "status": "not_assessed",
+                        "evaluator": run_docs_corpus._semantic_not_assessed()["evaluator"],
+                        "findings": None,
+                    },
+                ),
+                ("unresolved", None),
+                ("doctor", None),
+                ("doctor", {}),
+            ):
+                malformed_builder = {**builder, field: malformed}
+                with self.subTest(field=field, malformed=malformed), self.assertRaises(ValueError):
+                    evidence.build_evidence_receipt(**malformed_builder)
         self.assertEqual(receipt["counts"]["pages"], {"status": "completed", "value": 2})
         self.assertEqual(receipt["counts"]["hidden_pages"], {"status": "completed", "value": 1})
 
@@ -253,6 +328,24 @@ class EvidenceReceiptTests(unittest.TestCase):
         value["unavailable_evidence"] = []
         with self.assertRaisesRegex(ValueError, "unavailable_evidence"):
             evidence.validate_evidence_receipt(value)
+
+    def test_deep_receipt_input_fails_with_controlled_validation_error(self):
+        deeply_nested = []
+        current = deeply_nested
+        for _ in range(1_100):
+            child = []
+            current.append(child)
+            current = child
+        value = copy.deepcopy(self.receipt)
+        value["evidence"]["semantic"]["findings"] = deeply_nested
+        with self.assertRaises(ValueError):
+            evidence.validate_evidence_receipt(value)
+
+        for field, malformed in (("semantic", []), ("unresolved", {})):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"][field]["status"] = malformed
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
 
     def test_orientation_is_inert_and_does_not_change_rubric(self):
         with tempfile.TemporaryDirectory() as td:
@@ -332,6 +425,53 @@ class EvidenceReceiptTests(unittest.TestCase):
         self.assertEqual(receipt["health"]["status"], "completed")
         self.assertEqual(receipt["write_audit"]["writes_observed"]["value"], 0)
 
+    def test_metadata_input_is_bounded_before_json_parse(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            metadata = root / "oversized.json"
+            metadata.write_bytes(b" " * (evidence.MAX_RECEIPT_BYTES + 1))
+            with self.assertRaisesRegex(ValueError, "exceeds capacity"):
+                evidence_receipt_cli._metadata(metadata)
+
+            deeply_nested = root / "deeply-nested.json"
+            deeply_nested.write_text("[" * 2_000 + "]" * 2_000, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                evidence_receipt_cli._metadata(deeply_nested)
+
+    def test_receipt_cli_io_failure_does_not_expose_private_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            metadata = root / "metadata.json"
+            metadata.write_text(
+                json.dumps(
+                    {
+                        "receipt_id": "io-failure",
+                        "repository_identifier": "example.invalid/docs/io-failure",
+                        "run": copy.deepcopy(self.receipt["run"]),
+                        "semantic": run_docs_corpus._semantic_not_assessed(),
+                        "unresolved": [],
+                        "doctor": copy.deepcopy(self.receipt["doctor"]),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            private = Path(r"C:\Users\Synthetic\private-repo\docs\README.md")
+            output = io.StringIO()
+            with mock.patch.object(evidence_receipt_cli, "_git", return_value=""), mock.patch.object(
+                evidence_receipt_cli,
+                "check",
+                side_effect=OSError(13, "access denied", str(private)),
+            ), contextlib.redirect_stdout(output):
+                self.assertEqual(
+                    evidence_receipt_cli.main([str(root), "--metadata-file", str(metadata)]),
+                    2,
+                )
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"status": "failed", "error": "evidence receipt I/O failed", "receipt": None},
+        )
+        self.assertNotIn(str(private), output.getvalue())
+
 
 class CorpusHarnessTests(unittest.TestCase):
     def test_manifest_has_six_exact_immutable_pins(self):
@@ -346,6 +486,87 @@ class CorpusHarnessTests(unittest.TestCase):
             self.assertTrue(row["authority_probes"])
             self.assertTrue(row["config_probes"])
             self.assertTrue(row["sparse_paths"])
+
+    def test_manifest_input_is_bounded_before_parse_and_iteration(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            oversized = root / "oversized.json"
+            oversized.write_bytes(b" " * (run_docs_corpus.MAX_MANIFEST_BYTES + 1))
+            with self.assertRaisesRegex(ValueError, "exceeds capacity"):
+                run_docs_corpus.load_manifest(oversized)
+
+            deeply_nested = root / "deeply-nested.json"
+            deeply_nested.write_text("[" * 2_000 + "]" * 2_000, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                run_docs_corpus.load_manifest(deeply_nested)
+
+            for malformed in ({}, ["nested"], 42, None):
+                manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+                manifest["repositories"][0]["config_probes"] = [malformed]
+                malformed_path = root / f"malformed-{type(malformed).__name__}.json"
+                malformed_path.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.subTest(malformed=malformed), self.assertRaisesRegex(
+                    ValueError, "config_probes is invalid"
+                ):
+                    run_docs_corpus.load_manifest(malformed_path)
+
+            manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+            manifest["repositories"][0]["provider"] = {}
+            malformed_provider = root / "malformed-provider.json"
+            malformed_provider.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "provider is invalid"):
+                run_docs_corpus.load_manifest(malformed_provider)
+
+            for control_path in ("docs\n/*", "docs\r\n!/*", "docs\tprivate", "docs\x00private"):
+                manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+                manifest["repositories"][0]["sparse_paths"] = [control_path]
+                control_manifest = root / f"control-{len(control_path)}.json"
+                control_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.subTest(control_path=control_path), self.assertRaisesRegex(
+                    ValueError, "control characters"
+                ):
+                    run_docs_corpus.load_manifest(control_manifest)
+
+            for pattern_path in ("*", "docs/**", "docs/[ab]", "!docs/private"):
+                manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+                manifest["repositories"][0]["sparse_paths"] = [pattern_path]
+                pattern_manifest = root / f"pattern-{len(pattern_path)}.json"
+                pattern_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.subTest(pattern_path=pattern_path), self.assertRaisesRegex(
+                    ValueError, "contains pattern syntax"
+                ):
+                    run_docs_corpus.load_manifest(pattern_manifest)
+
+            for private_path in (
+                ".local/private-config.json",
+                "docs/sk-live-abcdefghijklmnop.json",
+                "docs/%252elocal/private-config.json",
+            ):
+                manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+                manifest["repositories"][0]["config_probes"] = [private_path]
+                private_manifest = root / f"private-{len(private_path)}.json"
+                private_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.subTest(private_path=private_path), self.assertRaises(ValueError):
+                    run_docs_corpus.load_manifest(private_manifest)
+
+            manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+            manifest["repositories"][0]["config_probes"] = [
+                f"docs/config-{index}.json"
+                for index in range(run_docs_corpus.MAX_PROBES_PER_REPOSITORY + 1)
+            ]
+            too_many = root / "too-many.json"
+            too_many.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "config_probes is invalid"):
+                run_docs_corpus.load_manifest(too_many)
+
+            manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+            manifest["repositories"][0]["entry"] = (
+                "docs/" + "x" * run_docs_corpus.MAX_MANIFEST_PATH_BYTES
+            )
+            long_path = root / "long-path.json"
+            long_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exceeds capacity"):
+                run_docs_corpus.load_manifest(long_path)
 
     def test_checked_in_baseline_separates_supported_and_unavailable_evidence(self):
         baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
@@ -396,6 +617,33 @@ class CorpusHarnessTests(unittest.TestCase):
         self.assertEqual(result["receipt"]["counts"]["pages"]["status"], "not_assessed")
         self.assertEqual(result["configurations"][0]["status"], "completed")
         self.assertTrue(result["configurations"][0]["sha256"].startswith("sha256:"))
+
+    def test_configuration_paths_are_sanitized_before_outer_corpus_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            workspace = Path(td)
+            spec = {
+                "id": "vite",
+                "repository_url": "https://github.com/vitejs/vite.git",
+                "commit": "0" * 40,
+                "provider": "vitepress",
+                "measurement": "unsupported",
+                "scope": "docs",
+                "entry": "docs/index.md",
+                "authority_probes": ["docs/.vitepress/config.ts"],
+                "config_probes": ["docs/sk-live-abcdefghijklmnop.json"],
+                "sparse_paths": ["docs"],
+            }
+            _fixture_checkout(
+                workspace,
+                spec,
+                {
+                    "docs/index.md": "# Vite\n",
+                    "docs/.vitepress/config.ts": "export default {}\n",
+                    spec["config_probes"][0]: "inert\n",
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "credential-shaped"):
+                run_docs_corpus.run_repository(workspace, spec)
 
     def test_checkout_verification_rejects_branch_dirty_and_wrong_commit(self):
         with tempfile.TemporaryDirectory() as td:
@@ -451,6 +699,85 @@ class CorpusHarnessTests(unittest.TestCase):
                 self.assertEqual((unowned / "keep.txt").read_text(encoding="utf-8"), "keep\n")
             finally:
                 prepare_docs_corpus.WORKSPACE_ROOT = original
+
+    def test_prepare_manifest_and_marker_reads_are_bounded(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            original = prepare_docs_corpus.WORKSPACE_ROOT
+            prepare_docs_corpus.WORKSPACE_ROOT = base
+            try:
+                oversized_manifest = base / "oversized-manifest.json"
+                oversized_manifest.write_bytes(b" " * (run_docs_corpus.MAX_MANIFEST_BYTES + 1))
+                with self.assertRaisesRegex(ValueError, "manifest exceeds capacity"):
+                    prepare_docs_corpus._workspace(
+                        base / "manifest-workspace",
+                        oversized_manifest,
+                        "docs-corpus-v1",
+                    )
+
+                marker_workspace = base / "marker-workspace"
+                marker_workspace.mkdir()
+                (marker_workspace / prepare_docs_corpus.MARKER).write_bytes(
+                    b" " * (prepare_docs_corpus.MAX_MARKER_BYTES + 1)
+                )
+                with self.assertRaises(ValueError):
+                    prepare_docs_corpus._workspace(
+                        marker_workspace,
+                        CORPUS,
+                        "docs-corpus-v1",
+                    )
+
+                deep_marker_workspace = base / "deep-marker-workspace"
+                deep_marker_workspace.mkdir()
+                (deep_marker_workspace / prepare_docs_corpus.MARKER).write_text(
+                    "[" * 2_000 + "]" * 2_000,
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    prepare_docs_corpus._workspace(
+                        deep_marker_workspace,
+                        CORPUS,
+                        "docs-corpus-v1",
+                    )
+            finally:
+                prepare_docs_corpus.WORKSPACE_ROOT = original
+
+    def test_prepare_command_failure_does_not_expose_checkout_path(self):
+        private = Path(r"C:\Users\Synthetic\private\docs-corpus")
+        failed = mock.Mock(returncode=1)
+        with mock.patch.object(prepare_docs_corpus.subprocess, "run", return_value=failed):
+            with self.assertRaisesRegex(ValueError, "initialize repository") as raised:
+                prepare_docs_corpus._run(
+                    ["git", "init", str(private)],
+                    operation="initialize repository",
+                )
+        self.assertNotIn(str(private), str(raised.exception))
+
+        output = io.StringIO()
+        with mock.patch.object(
+            prepare_docs_corpus,
+            "prepare",
+            side_effect=OSError(f"access denied: {private}"),
+        ), contextlib.redirect_stdout(output):
+            self.assertEqual(prepare_docs_corpus.main([]), 2)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"status": "failed", "error": "corpus preparation I/O failed"},
+        )
+        self.assertNotIn(str(private), output.getvalue())
+
+        output = io.StringIO()
+        with mock.patch.object(
+            run_docs_corpus,
+            "run_corpus",
+            side_effect=OSError(f"access denied: {private}"),
+        ), contextlib.redirect_stdout(output):
+            self.assertEqual(run_docs_corpus.main([]), 2)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {"status": "failed", "error": "corpus runner I/O failed"},
+        )
+        self.assertNotIn(str(private), output.getvalue())
 
     def test_runner_output_cannot_write_into_workspace_or_through_reparse(self):
         with tempfile.TemporaryDirectory() as td:

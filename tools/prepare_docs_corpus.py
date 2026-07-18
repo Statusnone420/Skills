@@ -13,6 +13,7 @@ from pathlib import Path
 from run_docs_corpus import (
     DEFAULT_MANIFEST,
     DEFAULT_WORKSPACE,
+    MAX_MANIFEST_BYTES,
     ROOT,
     _assert_no_reparse_components,
     load_manifest,
@@ -23,9 +24,21 @@ from run_docs_corpus import (
 
 WORKSPACE_ROOT = ROOT / "evals" / "workspace"
 MARKER = ".docs-corpus-owner.json"
+MAX_MARKER_BYTES = 4 * 1024
 
 
-def _run(command, *, input_text=None):
+def _bounded_bytes(path, maximum, name):
+    try:
+        with Path(path).open("rb") as stream:
+            raw = stream.read(maximum + 1)
+    except OSError as exc:
+        raise ValueError(f"{name} is unavailable") from exc
+    if len(raw) > maximum:
+        raise ValueError(f"{name} exceeds capacity")
+    return raw
+
+
+def _run(command, *, operation, input_text=None):
     completed = subprocess.run(
         command,
         input=input_text,
@@ -36,7 +49,7 @@ def _run(command, *, input_text=None):
         check=False,
     )
     if completed.returncode:
-        raise ValueError(f"corpus acquisition failed: {' '.join(command[:4])}")
+        raise ValueError(f"corpus acquisition failed: {operation}")
     return completed
 
 
@@ -58,12 +71,15 @@ def _workspace(path, manifest_path, corpus_id):
     workspace.mkdir(parents=True, exist_ok=True)
     workspace = safe_path(workspace, root)
     marker = safe_path(workspace / MARKER, workspace)
-    digest = hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest()
+    digest = hashlib.sha256(
+        _bounded_bytes(manifest_path, MAX_MANIFEST_BYTES, "corpus manifest")
+    ).hexdigest()
     expected = {"corpus_id": corpus_id, "manifest_sha256": f"sha256:{digest}"}
     if marker.exists():
         try:
-            current = json.loads(marker.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError) as exc:
+            marker_raw = _bounded_bytes(marker, MAX_MARKER_BYTES, "corpus workspace marker")
+            current = json.loads(marker_raw.decode("utf-8", "strict"))
+        except (UnicodeError, ValueError, RecursionError) as exc:
             raise ValueError("corpus workspace marker is malformed") from exc
         if current != expected:
             raise ValueError("corpus workspace marker does not match")
@@ -92,11 +108,18 @@ def prepare(manifest=DEFAULT_MANIFEST, workspace=DEFAULT_WORKSPACE, repository_i
         target = safe_path(workspace / spec["id"], workspace)
         if target.exists():
             raise ValueError(f"refusing to update or reuse corpus repository: {spec['id']}")
-        _run(["git", "init", str(target)])
-        _run(["git", "-C", str(target), "remote", "add", "origin", spec["repository_url"]])
-        _run(["git", "-C", str(target), "sparse-checkout", "init", "--no-cone"])
+        _run(["git", "init", str(target)], operation="initialize repository")
+        _run(
+            ["git", "-C", str(target), "remote", "add", "origin", spec["repository_url"]],
+            operation="configure repository remote",
+        )
+        _run(
+            ["git", "-C", str(target), "sparse-checkout", "init", "--no-cone"],
+            operation="initialize sparse checkout",
+        )
         _run(
             ["git", "-C", str(target), "sparse-checkout", "set", "--no-cone", "--stdin"],
+            operation="configure sparse checkout",
             input_text="\n".join(spec["sparse_paths"]) + "\n",
         )
         _run(
@@ -109,9 +132,13 @@ def prepare(manifest=DEFAULT_MANIFEST, workspace=DEFAULT_WORKSPACE, repository_i
                 "--filter=blob:none",
                 "origin",
                 spec["commit"],
-            ]
+            ],
+            operation="fetch pinned commit",
         )
-        _run(["git", "-C", str(target), "checkout", "--detach", "FETCH_HEAD"])
+        _run(
+            ["git", "-C", str(target), "checkout", "--detach", "FETCH_HEAD"],
+            operation="checkout pinned commit",
+        )
         verify_checkout(workspace, spec)
         rows.append({"id": spec["id"], "commit": spec["commit"], "status": "prepared"})
     return {"status": "completed", "corpus_id": manifest_value["corpus_id"], "repositories": rows}
@@ -133,7 +160,10 @@ def main(argv=None):
             )
         )
         return 0
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, UnicodeError):
+        print(json.dumps({"status": "failed", "error": "corpus preparation I/O failed"}))
+        return 2
+    except ValueError as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=True))
         return 2
 
