@@ -525,6 +525,62 @@ def finding_receipt(kind, *, path=None, line=None, target=None, fingerprint=None
     }
 
 
+def _markdown_body_lines(text):
+    """Return body lines after bounded frontmatter, or None when its boundary is unresolved."""
+    lines = text.removeprefix("\ufeff").splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return lines
+    region_bytes = 0
+    for index, line in enumerate(lines):
+        region_bytes += len(line.encode("utf-8", "strict"))
+        if region_bytes > MAX_FRONTMATTER_BYTES:
+            return None
+        delimiter = line.rstrip("\r\n")
+        if (
+            index
+            and not delimiter.startswith((" ", "\t"))
+            and delimiter.rstrip(" \t") in {"---", "..."}
+        ):
+            return lines[index + 1 :]
+    return None
+
+
+def _after_leading_comments(line, in_html_comment, in_mdx_comment):
+    """Skip lines occupied by leading HTML/MDX comments and preserve their state."""
+    current = line.lstrip()
+    if in_html_comment:
+        return "", "-->" not in current, in_mdx_comment
+    if in_mdx_comment:
+        return "", in_html_comment, "*/}" not in current
+    if current.startswith("<!--"):
+        return "", "-->" not in current[4:], in_mdx_comment
+    if current.startswith("{/*"):
+        return "", in_html_comment, "*/}" not in current[3:]
+    return current, in_html_comment, in_mdx_comment
+
+
+def _fence_marker(line):
+    """Return a CommonMark-style fence marker and suffix for up to three spaces."""
+    match = re.match(r"^( {0,3})(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+    if match is None:
+        return None
+    marker = match.group(2)
+    return marker[0], len(marker), match.group(3)
+
+
+def _leading_indent_columns(line):
+    """Count leading Markdown indentation columns with four-column tab stops."""
+    columns = 0
+    for char in line:
+        if char == " ":
+            columns += 1
+        elif char == "\t":
+            columns += 4 - (columns % 4)
+        else:
+            break
+    return columns
+
+
 def observe_entry_orientation(root, entry):
     """Read bounded inert text evidence; never evaluate provider or MDX code."""
     if entry is None:
@@ -546,22 +602,53 @@ def observe_entry_orientation(root, entry):
             "frontmatter_title": evidence_value("unavailable"),
             "provider_rendered_title": evidence_value("unavailable"),
         }
-    lines = text.removeprefix("\ufeff").splitlines()
-    in_fence = False
-    literal_h1 = False
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith(("```", "~~~")):
-            in_fence = not in_fence
-            continue
-        if not in_fence and re.match(r"^#(?:\s+|$)", stripped):
-            literal_h1 = True
-            break
+    body_lines = _markdown_body_lines(text)
+    literal_h1 = None
+    if body_lines is not None:
+        fence = None
+        in_html_comment = False
+        in_mdx_comment = False
+        literal_h1 = False
+        for line in body_lines:
+            marker = _fence_marker(line)
+            if fence is not None:
+                if (
+                    marker is not None
+                    and marker[0] == fence[0]
+                    and marker[1] >= fence[1]
+                    and not marker[2].strip()
+                ):
+                    fence = None
+                continue
+            indented_code = _leading_indent_columns(line) >= 4
+            if indented_code and not (in_html_comment or in_mdx_comment):
+                continue
+            stripped, in_html_comment, in_mdx_comment = _after_leading_comments(
+                line, in_html_comment, in_mdx_comment
+            )
+            if not stripped:
+                continue
+            if marker is not None:
+                if marker[0] != "`" or "`" not in marker[2]:
+                    fence = (marker[0], marker[1])
+                continue
+            if re.match(r"^#(?:\s+|$)", stripped):
+                literal_h1 = True
+                break
     metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
     title = metadata.get("values", {}).get("title")
+    unresolved_metadata = set(metadata.get("unresolved", ()))
+    if isinstance(title, str) and "title" not in unresolved_metadata:
+        frontmatter_title = evidence_value("completed", bool(title.strip()))
+    elif metadata.get("status") in {"absent", "measured"}:
+        frontmatter_title = evidence_value("completed", False)
+    else:
+        frontmatter_title = evidence_value("unavailable")
     return {
-        "literal_h1": evidence_value("completed", literal_h1),
-        "frontmatter_title": evidence_value("completed", isinstance(title, str) and bool(title.strip())),
+        "literal_h1": evidence_value("completed", literal_h1)
+        if literal_h1 is not None
+        else evidence_value("unavailable"),
+        "frontmatter_title": frontmatter_title,
         "provider_rendered_title": evidence_value("unavailable"),
     }
 

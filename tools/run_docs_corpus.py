@@ -137,6 +137,10 @@ def load_manifest(path=DEFAULT_MANIFEST):
                 _relative(path, f"{name}.{field}[{path_index}]")
                 if field == "sparse_paths" and _SPARSE_PATTERN_SYNTAX.search(path):
                     raise ValueError(f"{name}.{field}[{path_index}] contains pattern syntax")
+                if field == "sparse_paths" and path != path.rstrip():
+                    raise ValueError(f"{name}.{field}[{path_index}] contains trailing whitespace")
+                if field == "sparse_paths" and path == ".":
+                    raise ValueError(f"{name}.{field}[{path_index}] must be below the root")
     return value
 
 

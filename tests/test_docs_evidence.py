@@ -366,6 +366,102 @@ class EvidenceReceiptTests(unittest.TestCase):
             {"entry": 20, "path_safety": 15, "links": 20, "anchors": 10, "reachability": 25, "titles": 10},
         )
 
+    def test_orientation_skips_heading_shaped_frontmatter(self):
+        scenarios = {
+            "comment": "---\n# not a Markdown H1\ntitle: Guide\n---\n\n## Start\n",
+            "block-scalar": "---\ntitle: |\n  ---\n  # not a Markdown H1\n---\n\n## Start\n",
+            "body-h1": "---\n# still frontmatter\ntitle: Guide\n---\n\n# Actual H1\n",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for name, source in scenarios.items():
+                entry = root / f"{name}.md"
+                entry.write_text(source, encoding="utf-8")
+                observed = evidence.observe_entry_orientation(root, entry.name)
+                with self.subTest(name=name):
+                    self.assertEqual(
+                        observed["literal_h1"],
+                        {"status": "completed", "value": name == "body-h1"},
+                    )
+                    self.assertEqual(
+                        observed["frontmatter_title"]["status"],
+                        "unavailable" if name == "block-scalar" else "completed",
+                    )
+
+            unresolved = root / "unresolved.md"
+            unresolved.write_text("---\ntitle: Guide\n# unresolved frontmatter\n", encoding="utf-8")
+            observed = evidence.observe_entry_orientation(root, unresolved.name)
+            self.assertEqual(observed["literal_h1"], {"status": "unavailable", "value": None})
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
+            oversized = root / "oversized.md"
+            oversized.write_text(
+                "---\ntitle: Guide\n" + "x" * evidence.MAX_FRONTMATTER_BYTES,
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, oversized.name)
+            self.assertEqual(observed["literal_h1"], {"status": "unavailable", "value": None})
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
+            mixed = root / "mixed.md"
+            mixed.write_text(
+                "---\ntitle: Proven title\ntags: [one, two]\n---\n\n## Start\n",
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, mixed.name)
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "completed", "value": True}
+            )
+
+            duplicate = root / "duplicate.md"
+            duplicate.write_text(
+                "---\ntitle: First\ntitle: Second\n---\n\n## Start\n",
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, duplicate.name)
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
+    def test_orientation_ignores_comments_and_indented_code(self):
+        scenarios = {
+            "html-comment": "<!--\n# not a heading\n-->\n## Start\n",
+            "mdx-comment": "{/*\n# not a heading\n*/}\n## Start\n",
+            "space-code": "    # not a heading\n## Start\n",
+            "tab-code": "\t# not a heading\n## Start\n",
+            "mixed-tab-code": "   \t# not a heading\n## Start\n",
+            "html-inline": "<!-- note --> # not a heading\n",
+            "html-close": "<!--\nnote\n--> # not a heading\n",
+            "mdx-inline": "{/* note */} # not a heading\n",
+            "four-backticks": "````\n```\n# not a heading\n````\n",
+            "mixed-fence": "```\n~~~\n# not a heading\n```\n",
+            "actual-h1": "# Actual H1\n",
+            "indented-html-opener": "    <!--\n# Actual H1\n",
+            "tab-html-opener": "\t<!--\n# Actual H1\n",
+            "indented-mdx-opener": "    {/*\n# Actual H1\n",
+        }
+        expected_h1 = {
+            "actual-h1",
+            "indented-html-opener",
+            "tab-html-opener",
+            "indented-mdx-opener",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for name, source in scenarios.items():
+                entry = root / f"{name}.mdx"
+                entry.write_text(source, encoding="utf-8")
+                observed = evidence.observe_entry_orientation(root, entry.name)
+                with self.subTest(name=name):
+                    self.assertEqual(
+                        observed["literal_h1"],
+                        {"status": "completed", "value": name in expected_h1},
+                    )
+
     def test_stdout_receipt_entrypoint_combines_one_checker_run(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
@@ -474,6 +570,53 @@ class EvidenceReceiptTests(unittest.TestCase):
 
 
 class CorpusHarnessTests(unittest.TestCase):
+    def test_prepare_sparse_patterns_are_repository_rooted(self):
+        self.assertEqual(
+            prepare_docs_corpus._rooted_sparse_patterns(
+                ["docs", "apps/docs/content", "mkdocs.yml"]
+            ),
+            "/docs\n/apps/docs/content\n/mkdocs.yml\n",
+        )
+        with self.assertRaisesRegex(ValueError, "trailing whitespace"):
+            prepare_docs_corpus._rooted_sparse_patterns(["config "])
+        with self.assertRaisesRegex(ValueError, "below the repository root"):
+            prepare_docs_corpus._rooted_sparse_patterns(["."])
+
+    def test_rooted_sparse_patterns_exclude_nested_name_collisions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source"
+            source.mkdir()
+            _git(source, "init")
+            _git(source, "config", "user.email", "sparse@example.invalid")
+            _git(source, "config", "user.name", "Sparse Fixture")
+            files = {
+                "docs/keep.md": "# Keep\n",
+                "config": "root config\n",
+                "nested/docs/skip.md": "# Skip\n",
+                "nested/config": "nested config\n",
+            }
+            for relative, content in files.items():
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+            _git(source, "add", ".")
+            _git(source, "commit", "-m", "fixture")
+
+            checkout = root / "checkout"
+            _git(root, "clone", "--no-checkout", str(source), str(checkout))
+            prepare_docs_corpus._run(
+                ["git", "-C", str(checkout), "sparse-checkout", "set", "--no-cone", "--stdin"],
+                operation="configure sparse checkout fixture",
+                input_text=prepare_docs_corpus._rooted_sparse_patterns(["docs", "config"]),
+            )
+            _git(checkout, "checkout", "--detach", "HEAD")
+
+            self.assertTrue((checkout / "docs" / "keep.md").is_file())
+            self.assertTrue((checkout / "config").is_file())
+            self.assertFalse((checkout / "nested" / "docs" / "skip.md").exists())
+            self.assertFalse((checkout / "nested" / "config").exists())
+
     def test_manifest_has_six_exact_immutable_pins(self):
         manifest = run_docs_corpus.load_manifest(CORPUS)
         self.assertEqual({row["id"]: row["commit"] for row in manifest["repositories"]}, PINS)
@@ -536,6 +679,23 @@ class CorpusHarnessTests(unittest.TestCase):
                     ValueError, "contains pattern syntax"
                 ):
                     run_docs_corpus.load_manifest(pattern_manifest)
+
+            for trailing_path in ("docs ", "config\u00a0"):
+                manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+                manifest["repositories"][0]["sparse_paths"] = [trailing_path]
+                trailing_manifest = root / f"trailing-{len(trailing_path)}.json"
+                trailing_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.subTest(trailing_path=trailing_path), self.assertRaisesRegex(
+                    ValueError, "trailing whitespace"
+                ):
+                    run_docs_corpus.load_manifest(trailing_manifest)
+
+            manifest = json.loads(CORPUS.read_text(encoding="utf-8"))
+            manifest["repositories"][0]["sparse_paths"] = ["."]
+            root_manifest = root / "root-sparse.json"
+            root_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be below the root"):
+                run_docs_corpus.load_manifest(root_manifest)
 
             for private_path in (
                 ".local/private-config.json",

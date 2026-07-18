@@ -53,6 +53,15 @@ def _run(command, *, operation, input_text=None):
     return completed
 
 
+def _rooted_sparse_patterns(paths):
+    """Encode validated literal paths as repository-rooted non-cone patterns."""
+    if any(path != path.rstrip() for path in paths):
+        raise ValueError("sparse checkout paths must not contain trailing whitespace")
+    if any(path == "." for path in paths):
+        raise ValueError("sparse checkout paths must be below the repository root")
+    return "".join(f"/{path}\n" for path in paths)
+
+
 def _workspace(path, manifest_path, corpus_id):
     root = WORKSPACE_ROOT.absolute()
     workspace_candidate = Path(path).absolute()
@@ -120,7 +129,7 @@ def prepare(manifest=DEFAULT_MANIFEST, workspace=DEFAULT_WORKSPACE, repository_i
         _run(
             ["git", "-C", str(target), "sparse-checkout", "set", "--no-cone", "--stdin"],
             operation="configure sparse checkout",
-            input_text="\n".join(spec["sparse_paths"]) + "\n",
+            input_text=_rooted_sparse_patterns(spec["sparse_paths"]),
         )
         _run(
             [
