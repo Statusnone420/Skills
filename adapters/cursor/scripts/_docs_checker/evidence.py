@@ -759,7 +759,7 @@ def _is_safe_single_line_js_string(value):
     return True
 
 
-def _is_single_line_mdx_esm(line):
+def _simple_mdx_esm_info(line):
     stripped = line.strip()
     simple_import = re.fullmatch(
         r"import(?:\s+(?P<import_binding>[A-Za-z_$][A-Za-z0-9_$]*)\s+from)?\s+"
@@ -782,11 +782,23 @@ def _is_single_line_mdx_esm(line):
         binding = simple_export.group("export_binding")
         value = simple_export.group("export_value")
     else:
-        return False
+        return None
+    if (
+        binding is not None
+        and binding in _JS_RESERVED_BINDINGS
+        or not _is_safe_single_line_js_string(value)
+    ):
+        return None
     return (
-        (binding is None or binding not in _JS_RESERVED_BINDINGS)
-        and _is_safe_single_line_js_string(value)
+        "import" if simple_import is not None else "export",
+        stripped.endswith(";"),
     )
+
+
+def _starts_mdx_esm(line):
+    return re.match(
+        r"^(?:import|export)(?![A-Za-z0-9_$])", line
+    ) is not None
 
 
 _JS_RESERVED_BINDINGS = frozenset(
@@ -841,6 +853,27 @@ def _is_ascii_blank_line(line):
     return not line.rstrip("\r\n").strip(" \t")
 
 
+def _is_definite_markdown_after_simple_esm(line, esm_info):
+    markdown_stripped = line.lstrip(" \t")
+    if re.match(r"^#{1,6}(?:[ \t]+|$)", markdown_stripped):
+        return True
+    kind, explicitly_terminated = esm_info
+    if explicitly_terminated:
+        return True
+    js_stripped = re.sub(r"^[\s\ufeff]+", "", line)
+    if kind == "import":
+        if js_stripped.startswith(("//", "/*")):
+            return False
+        return re.match(
+            r"^(?:assert|with)(?![A-Za-z0-9_$])", js_stripped
+        ) is None
+    return re.match(
+        r"^(?:[!+\-*/%<>=&|^?.\[(`,]|in(?![A-Za-z0-9_$])|"
+        r"instanceof(?![A-Za-z0-9_$]))",
+        js_stripped,
+    ) is None
+
+
 def observe_entry_orientation(root, entry):
     """Read bounded inert text evidence; never evaluate provider or MDX code."""
     if entry is None:
@@ -877,7 +910,7 @@ def observe_entry_orientation(root, entry):
         raw_html_terminator = None
         raw_html_until_blank = False
         in_mdx_esm = False
-        simple_mdx_esm_pending = False
+        simple_mdx_esm_pending = None
         in_mdx_expression = False
         uncertain = False
         literal_h1 = False
@@ -885,21 +918,26 @@ def observe_entry_orientation(root, entry):
             line = raw_line.rstrip("\r\n")
             if simple_mdx_esm_pending:
                 if _is_ascii_blank_line(line):
-                    simple_mdx_esm_pending = False
+                    simple_mdx_esm_pending = None
                     continue
-                if re.match(
-                    r"^(?:import|export)(?:\s|\{|$)", line
-                ) and _is_single_line_mdx_esm(line):
+                next_esm = None
+                js_line = re.sub(r"^[\s\ufeff]+", "", line)
+                if _starts_mdx_esm(js_line):
+                    next_esm = _simple_mdx_esm_info(js_line)
+                    if next_esm is None:
+                        uncertain = True
+                        in_mdx_esm = True
+                        continue
+                if next_esm is not None:
+                    simple_mdx_esm_pending = next_esm
                     continue
-                heading = line.lstrip(" \t")
-                if not (
-                    _leading_indent_columns(line) < 4
-                    and re.match(r"^#{1,6}(?:[ \t]+|$)", heading)
+                if not _is_definite_markdown_after_simple_esm(
+                    line, simple_mdx_esm_pending
                 ):
                     uncertain = True
                     in_mdx_esm = True
                     continue
-                simple_mdx_esm_pending = False
+                simple_mdx_esm_pending = None
             if in_html_comment:
                 if not html_comment_block and (
                     _is_ascii_blank_line(line)
@@ -993,7 +1031,7 @@ def observe_entry_orientation(root, entry):
                         component_document
                         and (
                             interrupt.startswith("{")
-                            or re.match(r"^(?:import|export)(?:\s|\{|$)", interrupt)
+                            or _starts_mdx_esm(interrupt)
                         )
                     )
                 ):
@@ -1005,11 +1043,10 @@ def observe_entry_orientation(root, entry):
             if inline_code_length == 0 and _leading_indent_columns(line) >= 4:
                 continue
             pre_stripped = line.lstrip(" \t")
-            if component_document and re.match(
-                r"^(?:import|export)(?:\s|\{|$)", pre_stripped
-            ):
-                if _is_single_line_mdx_esm(pre_stripped):
-                    simple_mdx_esm_pending = True
+            if component_document and _starts_mdx_esm(pre_stripped):
+                esm_info = _simple_mdx_esm_info(pre_stripped)
+                if esm_info is not None:
+                    simple_mdx_esm_pending = esm_info
                 else:
                     uncertain = True
                     in_mdx_esm = True

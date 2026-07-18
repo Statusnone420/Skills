@@ -715,6 +715,34 @@ class EvidenceReceiptTests(unittest.TestCase):
                 "import One from './one'\nimport Two from './two'\n# Actual H1\n",
                 {"status": "completed", "value": True},
             ),
+            "esm-consecutive-safe-esm-form-feed.mdx": (
+                'export const one = "safe"\n\fexport const two = "safe"\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "esm-consecutive-unsafe-esm-form-feed.mdx": (
+                'export const one = "safe"\n\fexport const two = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-consecutive-unsafe-esm-nbsp.mdx": (
+                'import One from "./one"\n\u00a0export const two = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-consecutive-unsafe-esm-bom.mdx": (
+                'import One from "./one"\n\ufeffexport const two = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-initial-export-comment-boundary.mdx": (
+                'export/*continued\n# not a heading\n*/ const marker = "safe"\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-pending-export-comment-boundary.mdx": (
+                'import One from "./one"\nexport/*continued\n# not a heading\n*/ const marker = "safe"\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-pending-import-comment-boundary.mdx": (
+                'export const one = "safe"\nimport/*continued\n# not a heading\n*/ Two from "./two"\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
             "esm-export-immediate-no-h1.mdx": (
                 'export const marker = "safe"\n## Start\n',
                 {"status": "completed", "value": False},
@@ -722,6 +750,74 @@ class EvidenceReceiptTests(unittest.TestCase):
             "esm-import-ambiguous-continuation.mdx": (
                 "import Example from './example'\nwith { type: 'json' }\n# Actual H1\n",
                 {"status": "unavailable", "value": None},
+            ),
+            "esm-import-commented-attribute-continuation.mdx": (
+                "import Example from './example'\nwith/*continued\n# not a heading\n*/ { type: 'json' }\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-pre-keyword-block-comment.mdx": (
+                "import Example from './example'\n/*continued\n# not a heading\n*/ with { type: 'json' }\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-pre-keyword-line-comment.mdx": (
+                "import Example from './example'\n// continued\nwith { type: 'json' }\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-nbsp-before-attribute.mdx": (
+                "import Example from './example'\n\u00a0with/*continued\n# not a heading\n*/ { type: 'json' }\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-bom-before-attribute.mdx": (
+                "import Example from './example'\n\ufeffwith/*continued\n# not a heading\n*/ { type: 'json' }\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-immediate-paragraph-h1.mdx": (
+                "import Example from './example'\nIntro\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-immediate-paragraph-h1.mdx": (
+                'export const marker = "safe"\nIntro text.\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-immediate-paragraph-no-h1.mdx": (
+                'export const marker = "safe"\nIntro text.\n## Start\n',
+                {"status": "completed", "value": False},
+            ),
+            "esm-export-operator-continuation.mdx": (
+                'export const marker = "safe"\nin object\n# Actual H1\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-punctuation-continuation.mdx": (
+                'export const marker = "safe"\n+ `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-not-equal-continuation.mdx": (
+                'export const marker = "safe"\n!= `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-instanceof-comment-continuation.mdx": (
+                'export const marker = "safe"\ninstanceof/*continued\n# not a heading\n*/ Object\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-in-comment-continuation.mdx": (
+                'export const marker = "safe"\nin/*continued\n# not a heading\n*/ Object\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-form-feed-in-continuation.mdx": (
+                'export const marker = "safe"\n\fin/*continued\n# not a heading\n*/ Object\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-export-form-feed-plus-continuation.mdx": (
+                'export const marker = "safe"\n\f+ `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-import-immediate-list-h1.mdx": (
+                "import Example from './example'\n- Intro\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-unicode-paragraph-h1.mdx": (
+                'export const marker = "safe"\nRésumé.\n# Actual H1\n',
+                {"status": "completed", "value": True},
             ),
             "esm-reserved-import-binding.mdx": (
                 "import for from './components'\n\n# Actual H1\n",
