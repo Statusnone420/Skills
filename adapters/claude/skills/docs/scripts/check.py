@@ -197,7 +197,7 @@ from _docs_checker.surfaces import (
 # may probe the filesystem while constructing help text; that work is outside
 # Init discovery so the bounded metadata budget measures repository evidence
 # only.
-_PARSER = argparse.ArgumentParser()
+_PARSER = argparse.ArgumentParser(allow_abbrev=False)
 _PARSER.add_argument("root")
 _PARSER.add_argument("--json", action="store_true")
 _PARSER.add_argument("--agent", action="store_true")

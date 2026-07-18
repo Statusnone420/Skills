@@ -48,7 +48,7 @@ def frontmatter(text):
 
 
 class CommandSkillDistributionTests(unittest.TestCase):
-    def _run_doctor_baseline(self, files, *extra):
+    def _run_doctor_baseline_raw(self, files, *extra):
         with tempfile.TemporaryDirectory() as td:
             repository = Path(td) / "repo"
             repository.mkdir()
@@ -86,7 +86,11 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 text=True,
                 check=True,
             ).stdout
-            return result, json.loads(result.stdout), before, after
+            return result, before, after
+
+    def _run_doctor_baseline(self, files, *extra):
+        result, before, after = self._run_doctor_baseline_raw(files, *extra)
+        return result, json.loads(result.stdout), before, after
 
     def test_codex_marketplace_routes_to_the_named_plugin_package(self):
         marketplace_path = ROOT / ".agents" / "plugins" / "marketplace.json"
@@ -318,6 +322,24 @@ class CommandSkillDistributionTests(unittest.TestCase):
                     payload["error"],
                     "--doctor-baseline does not accept --scope, --map, --hot, or --continuation",
                 )
+
+    def test_engine_rejects_abbreviated_baseline_overrides(self):
+        for option in (
+            ("--sc", "docs"),
+            ("--ma=README.md",),
+            ("--ho", "docs/guide.md"),
+            ("--cont=opaque",),
+        ):
+            with self.subTest(option=option):
+                result, before, after = self._run_doctor_baseline_raw(
+                    {"README.md": "# Project\n", "docs/guide.md": "# Guide\n"},
+                    *option,
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(before, after)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("unrecognized arguments:", result.stderr)
+                self.assertIn(option[0], result.stderr)
 
     def test_engine_accepts_content_batch_limited_root_fallback(self):
         files = {"README.md": "# Project\n"}
