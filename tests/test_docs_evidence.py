@@ -703,13 +703,25 @@ class EvidenceReceiptTests(unittest.TestCase):
                 'export const marker = "safe"\n\n## Start\n',
                 {"status": "completed", "value": False},
             ),
-            "esm-import-no-boundary.mdx": (
-                "import Example from './example'\n# Not body Markdown\n",
-                {"status": "unavailable", "value": None},
+            "esm-import-immediate-h1.mdx": (
+                "import Example from './example'\n# Actual H1\n",
+                {"status": "completed", "value": True},
             ),
             "esm-consecutive-imports.mdx": (
                 "import One from './one'\nimport Two from './two'\n\n# Actual H1\n",
                 {"status": "completed", "value": True},
+            ),
+            "esm-consecutive-imports-immediate-h1.mdx": (
+                "import One from './one'\nimport Two from './two'\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-immediate-no-h1.mdx": (
+                'export const marker = "safe"\n## Start\n',
+                {"status": "completed", "value": False},
+            ),
+            "esm-import-ambiguous-continuation.mdx": (
+                "import Example from './example'\nwith { type: 'json' }\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
             ),
             "esm-reserved-import-binding.mdx": (
                 "import for from './components'\n\n# Actual H1\n",

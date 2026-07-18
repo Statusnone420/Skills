@@ -891,9 +891,15 @@ def observe_entry_orientation(root, entry):
                     r"^(?:import|export)(?:\s|\{|$)", line
                 ) and _is_single_line_mdx_esm(line):
                     continue
-                uncertain = True
-                in_mdx_esm = True
-                continue
+                heading = line.lstrip(" \t")
+                if not (
+                    _leading_indent_columns(line) < 4
+                    and re.match(r"^#{1,6}(?:[ \t]+|$)", heading)
+                ):
+                    uncertain = True
+                    in_mdx_esm = True
+                    continue
+                simple_mdx_esm_pending = False
             if in_html_comment:
                 if not html_comment_block and (
                     _is_ascii_blank_line(line)
