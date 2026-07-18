@@ -14,7 +14,9 @@ from run_docs_corpus import (
     DEFAULT_MANIFEST,
     DEFAULT_WORKSPACE,
     ROOT,
+    _assert_no_reparse_components,
     load_manifest,
+    safe_path,
     verify_checkout,
 )
 
@@ -40,20 +42,22 @@ def _run(command, *, input_text=None):
 
 def _workspace(path, manifest_path, corpus_id):
     root = WORKSPACE_ROOT.absolute()
-    workspace = Path(path).absolute()
-    if Path(root, "sentinel").parent != root:
-        raise ValueError("workspace root is invalid")
+    workspace_candidate = Path(path).absolute()
     try:
-        workspace.relative_to(root)
+        workspace_candidate.relative_to(root)
     except ValueError as exc:
         raise ValueError("corpus workspace must remain under evals/workspace") from exc
-    if workspace == root:
+    if workspace_candidate == root:
         raise ValueError("corpus workspace must be a named child")
+    _assert_no_reparse_components(root)
     root.mkdir(parents=True, exist_ok=True)
+    _assert_no_reparse_components(root)
+    workspace = safe_path(workspace_candidate, root)
     if workspace.exists() and not workspace.is_dir():
         raise ValueError("corpus workspace is not a directory")
     workspace.mkdir(parents=True, exist_ok=True)
-    marker = workspace / MARKER
+    workspace = safe_path(workspace, root)
+    marker = safe_path(workspace / MARKER, workspace)
     digest = hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest()
     expected = {"corpus_id": corpus_id, "manifest_sha256": f"sha256:{digest}"}
     if marker.exists():
@@ -85,7 +89,7 @@ def prepare(manifest=DEFAULT_MANIFEST, workspace=DEFAULT_WORKSPACE, repository_i
     for spec in manifest_value["repositories"]:
         if selected and spec["id"] not in selected:
             continue
-        target = workspace / spec["id"]
+        target = safe_path(workspace / spec["id"], workspace)
         if target.exists():
             raise ValueError(f"refusing to update or reuse corpus repository: {spec['id']}")
         _run(["git", "init", str(target)])

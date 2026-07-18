@@ -44,6 +44,20 @@ def _git(root, *args):
     return completed.stdout.strip()
 
 
+def _directory_reparse(link, target):
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode:
+            raise AssertionError(f"junction creation failed: {completed.stderr.strip()}")
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
 def _fixture_checkout(workspace, spec, files):
     root = workspace / spec["id"]
     root.mkdir()
@@ -101,6 +115,56 @@ class EvidenceReceiptTests(unittest.TestCase):
             "value": r"C:\private\notes.md",
         }
         with self.assertRaises(ValueError):
+            evidence.validate_evidence_receipt(value)
+
+        for target in (
+            "/tmp/private/secret.txt",
+            "/root/.ssh/id_rsa",
+            r"\\server\private\secret.txt",
+            "see /tmp/private/secret.txt",
+            "file:///etc/passwd",
+            "guide.md?token=SUPERSECRET",
+            "guide.md?access_token=SUPERSECRET",
+            "%2Froot%2F.ssh%2Fid_rsa",
+            "guide.md?%74oken=SUPERSECRET",
+        ):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"]["deterministic"]["findings"][0]["target"] = {
+                "status": "completed",
+                "value": target,
+            }
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
+
+        value = copy.deepcopy(self.receipt)
+        value["evidence"]["deterministic"]["findings"][0]["target"] = {
+            "status": "completed",
+            "value": "/docs/safe-guide#setup",
+        }
+        evidence.validate_evidence_receipt(value)
+
+        value = copy.deepcopy(self.receipt)
+        value["run"]["model"] = "sk-proj-synthetic012345678901234567890"
+        with self.assertRaisesRegex(ValueError, "credential-shaped"):
+            evidence.validate_evidence_receipt(value)
+
+    def test_completed_health_requires_every_category(self):
+        value = copy.deepcopy(self.receipt)
+        del value["health"]["categories"]["titles"]
+        with self.assertRaisesRegex(ValueError, "every category"):
+            evidence.validate_evidence_receipt(value)
+
+        value = copy.deepcopy(self.receipt)
+        value["health"]["percentage"] = {"status": "completed", "value": 101}
+        with self.assertRaisesRegex(ValueError, "exceed 100"):
+            evidence.validate_evidence_receipt(value)
+
+        value = copy.deepcopy(self.receipt)
+        value["health"]["categories"]["entry"]["earned"] = {
+            "status": "completed",
+            "value": 21,
+        }
+        with self.assertRaisesRegex(ValueError, "exceeds available"):
             evidence.validate_evidence_receipt(value)
 
     def test_unavailable_is_not_zero_and_must_match_index(self):
@@ -214,6 +278,8 @@ class CorpusHarnessTests(unittest.TestCase):
             evidence.validate_evidence_receipt(row["receipt"])
             self.assertTrue(all(item["status"] == "completed" for item in row["configurations"]))
         self.assertEqual(rows["cline"]["receipt"]["health"]["percentage"]["value"], 29)
+        self.assertEqual(rows["cline"]["receipt"]["counts"]["pages"]["value"], 107)
+        self.assertEqual(rows["cline"]["receipt"]["counts"]["hidden_pages"]["value"], 3)
         for repository_id in set(rows) - {"cline"}:
             health = rows[repository_id]["receipt"]["health"]
             self.assertEqual(health["status"], "not_assessed")
@@ -285,6 +351,14 @@ class CorpusHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not detached"):
                 run_docs_corpus.verify_checkout(workspace, spec)
 
+    def test_missing_checkout_error_is_sanitized(self):
+        with tempfile.TemporaryDirectory() as td:
+            workspace = Path(td)
+            spec = copy.deepcopy(run_docs_corpus.load_manifest(CORPUS)["repositories"][0])
+            with self.assertRaisesRegex(ValueError, r"^corpus repository is missing: cline$") as raised:
+                run_docs_corpus.verify_checkout(workspace, spec)
+            self.assertNotIn(str(workspace), str(raised.exception))
+
     def test_prepare_refuses_unowned_or_existing_workspace(self):
         with tempfile.TemporaryDirectory() as td:
             original = prepare_docs_corpus.WORKSPACE_ROOT
@@ -296,6 +370,44 @@ class CorpusHarnessTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "unowned"):
                     prepare_docs_corpus._workspace(unowned, CORPUS, "docs-corpus-v1")
                 self.assertEqual((unowned / "keep.txt").read_text(encoding="utf-8"), "keep\n")
+            finally:
+                prepare_docs_corpus.WORKSPACE_ROOT = original
+
+    def test_runner_output_cannot_write_into_workspace_or_through_reparse(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            target_output = workspace / "cline" / "receipt.json"
+            with self.assertRaisesRegex(ValueError, "outside the corpus workspace"):
+                run_docs_corpus._output_path(target_output, workspace)
+            self.assertFalse(target_output.exists())
+
+            outside = root / "outside"
+            outside.mkdir()
+            alias = root / "alias"
+            _directory_reparse(alias, outside)
+            with self.assertRaisesRegex(ValueError, "symlink|reparse"):
+                run_docs_corpus._output_path(alias / "receipt.json", workspace)
+
+    def test_prepare_reparse_workspace_cannot_write_outside(self):
+        with tempfile.TemporaryDirectory() as td:
+            original = prepare_docs_corpus.WORKSPACE_ROOT
+            base = Path(td)
+            root = base / "owned"
+            root.mkdir()
+            outside = base / "outside"
+            outside.mkdir()
+            sentinel = outside / "sentinel.txt"
+            sentinel.write_text("keep\n", encoding="utf-8")
+            workspace = root / "docs-corpus-v1"
+            _directory_reparse(workspace, outside)
+            try:
+                prepare_docs_corpus.WORKSPACE_ROOT = root
+                with self.assertRaisesRegex(ValueError, "symlink|reparse"):
+                    prepare_docs_corpus._workspace(workspace, CORPUS, "docs-corpus-v1")
+                self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
+                self.assertFalse((outside / prepare_docs_corpus.MARKER).exists())
             finally:
                 prepare_docs_corpus.WORKSPACE_ROOT = original
 

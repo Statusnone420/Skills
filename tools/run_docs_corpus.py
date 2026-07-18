@@ -119,9 +119,9 @@ def _repo_path(workspace, repository_id):
     _assert_no_reparse_components(workspace)
     candidate = safe_path(workspace / repository_id, workspace)
     _assert_no_reparse_components(candidate)
-    if candidate.is_symlink() or (
-        os.name == "nt"
-        and getattr(candidate.lstat(), "st_file_attributes", 0) & 0x400
+    if candidate.exists() and (
+        candidate.is_symlink()
+        or (os.name == "nt" and getattr(candidate.lstat(), "st_file_attributes", 0) & 0x400)
     ):
         raise ValueError("corpus repository cannot be a reparse point")
     return candidate
@@ -271,6 +271,19 @@ def run_corpus(manifest=DEFAULT_MANIFEST, workspace=DEFAULT_WORKSPACE):
     }
 
 
+def _output_path(value, workspace):
+    """Reject output paths that could write into a corpus checkout or through a reparse point."""
+    workspace = Path(workspace).absolute()
+    output = Path(value).absolute()
+    _assert_no_reparse_components(workspace)
+    _assert_no_reparse_components(output)
+    try:
+        output.relative_to(workspace)
+    except ValueError:
+        return output
+    raise ValueError("corpus output must remain outside the corpus workspace")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
@@ -278,10 +291,12 @@ def main(argv=None):
     parser.add_argument("--output")
     namespace = parser.parse_args(argv)
     try:
+        output = _output_path(namespace.output, namespace.workspace) if namespace.output else None
         result = run_corpus(namespace.manifest, namespace.workspace)
         encoded = json.dumps(result, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
-        if namespace.output:
-            Path(namespace.output).write_text(encoded, encoding="utf-8", newline="\n")
+        if output:
+            _assert_no_reparse_components(output)
+            output.write_text(encoded, encoding="utf-8", newline="\n")
         else:
             print(encoded, end="")
         return 0

@@ -12,6 +12,7 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from urllib.parse import unquote
 
 from .formats import MAX_FRONTMATTER_BYTES, parse_frontmatter_scalars
 from .paths import normalize_repo_relative, safe_path
@@ -30,7 +31,21 @@ _FORBIDDEN_KEY = re.compile(
     r"(?:api[_-]?key|authorization|credential|hidden[_-]?reasoning|password|private[_-]?path|raw[_-]?transcript|screenshot|secret|token)",
     re.IGNORECASE,
 )
-_WINDOWS_ABSOLUTE = re.compile(r"^[A-Za-z]:[\\/]")
+_WINDOWS_ABSOLUTE = re.compile(r"(?<![A-Za-z0-9_.\\/-])[A-Za-z]:[\\/]")
+_PRIVATE_POSIX_ABSOLUTE = re.compile(
+    r"(?<![A-Za-z0-9_./-])/(?:home|root|etc|var|tmp|private|mnt|media|opt|usr|bin|sbin|dev|proc|sys|run|srv|boot|Users|Volumes|Applications|System|Library)(?:/|$)",
+    re.IGNORECASE,
+)
+_NETWORK_PATH = re.compile(r"(?<![A-Za-z0-9_.\\/-])(?://|\\\\)")
+_URI_SCHEME = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:")
+_CREDENTIAL_PARAMETER = re.compile(
+    r"(?:^|[?&#;])[^=&#;]*(?:api[_-]?key|authorization|credential|password|secret|token)[^=&#;]*=",
+    re.IGNORECASE,
+)
+_CREDENTIAL_VALUE = re.compile(
+    r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",
+    re.IGNORECASE,
+)
 _CATEGORY_RAW_FIELDS = {
     "entry": (
         "map_exists",
@@ -104,8 +119,20 @@ def _bounded_text(value, name, *, pattern=None, allow_empty=False):
         raise ValueError(f"{name} exceeds capacity")
     if any(ord(char) < 32 for char in value):
         raise ValueError(f"{name} contains control characters")
-    if _WINDOWS_ABSOLUTE.match(value) or value.startswith(("/home/", "/Users/")):
-        raise ValueError(f"{name} exposes an absolute path")
+    current = value
+    for _ in range(4):
+        if (
+            _WINDOWS_ABSOLUTE.search(current)
+            or _PRIVATE_POSIX_ABSOLUTE.search(current)
+            or _NETWORK_PATH.search(current)
+        ):
+            raise ValueError(f"{name} exposes an absolute or private path")
+        if _CREDENTIAL_VALUE.search(current):
+            raise ValueError(f"{name} exposes credential-shaped data")
+        decoded = unquote(current)
+        if decoded == current:
+            break
+        current = decoded
     if pattern is not None and pattern.fullmatch(value) is None:
         raise ValueError(f"{name} is invalid")
     return value
@@ -120,6 +147,13 @@ def _nonnegative_number(value, name):
         raise ValueError(f"{name} must be numeric")
     if not math.isfinite(value) or value < 0:
         raise ValueError(f"{name} must be finite and nonnegative")
+    return value
+
+
+def _percentage(value, name):
+    value = _nonnegative_number(value, name)
+    if value > 100:
+        raise ValueError(f"{name} must not exceed 100")
     return value
 
 
@@ -172,8 +206,16 @@ def _relative(value, name):
 
 def _route(value, name):
     value = _bounded_text(value, name)
-    if value.startswith(("http://", "https://", "file:")):
-        raise ValueError(f"{name} must be a local route")
+    current = value
+    for _ in range(4):
+        if _URI_SCHEME.search(current):
+            raise ValueError(f"{name} must be a local route")
+        if _CREDENTIAL_PARAMETER.search(current):
+            raise ValueError(f"{name} exposes credential-shaped data")
+        decoded = unquote(current)
+        if decoded == current:
+            break
+        current = decoded
     return value
 
 
@@ -260,10 +302,12 @@ def _validate_unresolved(value):
             raise ValueError("unresolved candidate status is invalid")
 
 
-def _validate_categories(value):
+def _validate_categories(value, *, required=False):
     value = _mapping(value, "health.categories")
     if set(value) - set(_CATEGORY_RAW_FIELDS):
         raise ValueError("health.categories contains an unknown category")
+    if required and set(value) != set(_CATEGORY_RAW_FIELDS):
+        raise ValueError("completed health requires every category")
     for category, fields in _CATEGORY_RAW_FIELDS.items():
         if category not in value:
             continue
@@ -283,6 +327,12 @@ def _validate_categories(value):
             _evidence(evidence, f"health.categories.{category}.raw.{field}", validator=validator)
         _evidence(row["earned"], f"health.categories.{category}.earned", validator=_nonnegative_number)
         _evidence(row["available"], f"health.categories.{category}.available", validator=_nonnegative_number)
+        if (
+            row["earned"]["status"] == "completed"
+            and row["available"]["status"] == "completed"
+            and row["earned"]["value"] > row["available"]["value"]
+        ):
+            raise ValueError(f"health.categories.{category}.earned exceeds available")
 
 
 def _collect_unavailable(value, path=""):
@@ -355,9 +405,16 @@ def validate_evidence_receipt(value):
     if health["status"] not in EVIDENCE_STATES:
         raise ValueError("health.status is invalid")
     _evidence(health["rubric_version"], "health.rubric_version", validator=_integer)
-    for field in ("percentage", "earned_weight", "available_weight"):
+    _evidence(health["percentage"], "health.percentage", validator=_percentage)
+    for field in ("earned_weight", "available_weight"):
         _evidence(health[field], f"health.{field}", validator=_nonnegative_number)
-    _validate_categories(health["categories"])
+    if (
+        health["earned_weight"]["status"] == "completed"
+        and health["available_weight"]["status"] == "completed"
+        and health["earned_weight"]["value"] > health["available_weight"]["value"]
+    ):
+        raise ValueError("health.earned_weight exceeds available_weight")
+    _validate_categories(health["categories"], required=health["status"] == "completed")
     gates = _exact_keys(health["score_gates"], {"map_has_h1", "useful_entry"}, "health.score_gates")
     for field in gates:
         _evidence(gates[field], f"health.score_gates.{field}", validator=_boolean)
@@ -555,7 +612,7 @@ def build_evidence_receipt(
     health = health_receipt(checker_payload.get("health"))
     measured = isinstance(checker_payload.get("health"), Mapping)
     counts = {
-        "pages": len(navigation.get("navigated_pages", ())) + len(navigation.get("hidden_pages", ())),
+        "pages": len(navigation.get("navigated_pages", ())),
         "hidden_pages": len(navigation.get("hidden_pages", ())),
         "redirects": len(navigation.get("redirects", ())),
     }
