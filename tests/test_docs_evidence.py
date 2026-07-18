@@ -748,6 +748,22 @@ class EvidenceReceiptTests(unittest.TestCase):
                 'import One from "./one"\n\ufeffexport const two = `continued\n# not a heading\n`\n## Start\n',
                 {"status": "unavailable", "value": None},
             ),
+            "esm-initial-unsafe-esm-nbsp.mdx": (
+                '\u00a0export const data = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-initial-unsafe-esm-form-feed.mdx": (
+                '\fexport const data = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-initial-unsafe-esm-em-space.mdx": (
+                '\u2003export const data = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-initial-unsafe-esm-bom.mdx": (
+                '\ufeffexport const data = `continued\n# not a heading\n`\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
             "esm-initial-export-comment-boundary.mdx": (
                 'export/*continued\n# not a heading\n*/ const marker = "safe"\n## Start\n',
                 {"status": "unavailable", "value": None},

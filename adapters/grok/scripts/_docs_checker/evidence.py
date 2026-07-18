@@ -1050,8 +1050,9 @@ def observe_entry_orientation(root, entry):
             if inline_code_length == 0 and _leading_indent_columns(line) >= 4:
                 continue
             pre_stripped = line.lstrip(" \t")
-            if component_document and _starts_mdx_esm(pre_stripped):
-                esm_info = _simple_mdx_esm_info(pre_stripped)
+            js_pre_stripped = re.sub(r"^[\s\ufeff]+", "", line)
+            if component_document and _starts_mdx_esm(js_pre_stripped):
+                esm_info = _simple_mdx_esm_info(js_pre_stripped)
                 if esm_info is not None:
                     simple_mdx_esm_pending = esm_info
                 else:
