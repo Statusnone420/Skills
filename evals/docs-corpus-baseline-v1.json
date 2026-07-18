@@ -391,8 +391,8 @@
             "value": true
           },
           "literal_h1": {
-            "status": "completed",
-            "value": false
+            "status": "unavailable",
+            "value": null
           },
           "provider_rendered_title": {
             "status": "unavailable",
@@ -459,6 +459,7 @@
           "evidence.semantic.evaluator.model",
           "evidence.semantic.evaluator.provider",
           "evidence.semantic.evaluator.version",
+          "orientation.literal_h1",
           "orientation.provider_rendered_title",
           "run.duration_seconds"
         ],
@@ -619,8 +620,8 @@
             "value": true
           },
           "literal_h1": {
-            "status": "completed",
-            "value": false
+            "status": "unavailable",
+            "value": null
           },
           "provider_rendered_title": {
             "status": "unavailable",
@@ -688,6 +689,7 @@
           "health.rubric_version",
           "health.score_gates.map_has_h1",
           "health.score_gates.useful_entry",
+          "orientation.literal_h1",
           "orientation.provider_rendered_title",
           "run.duration_seconds"
         ],
@@ -1077,8 +1079,8 @@
             "value": true
           },
           "literal_h1": {
-            "status": "completed",
-            "value": false
+            "status": "unavailable",
+            "value": null
           },
           "provider_rendered_title": {
             "status": "unavailable",
@@ -1146,6 +1148,7 @@
           "health.rubric_version",
           "health.score_gates.map_has_h1",
           "health.score_gates.useful_entry",
+          "orientation.literal_h1",
           "orientation.provider_rendered_title",
           "run.duration_seconds"
         ],

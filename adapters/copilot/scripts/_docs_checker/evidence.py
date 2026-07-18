@@ -39,6 +39,7 @@ _PRIVATE_POSIX_ABSOLUTE = re.compile(
 )
 _NETWORK_PATH = re.compile(r"(?<![A-Za-z0-9_.\\/-])(?://|\\\\)")
 _URI_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
+_ABSOLUTE_IDENTIFIER = re.compile(r"(?:^|[^A-Za-z0-9])/")
 _PRIVATE_LOCAL = re.compile(r"(?i)(?<![A-Za-z0-9_.-])\.local(?:[\\/]|$)")
 _WINDOWS_ROOTED = re.compile(r"(?<![A-Za-z0-9_.\\/-])\\(?!\\)[^\s]+")
 _CREDENTIAL_PARAMETER = re.compile(
@@ -155,7 +156,11 @@ def _bounded_text(value, name, *, pattern=None, allow_empty=False):
 
 
 def _safe_identifier(value, name):
-    return _bounded_text(value, name, pattern=_SAFE_ID)
+    value = _bounded_text(value, name, pattern=_SAFE_ID)
+    for current in _decoded_forms(value, name):
+        if _ABSOLUTE_IDENTIFIER.search(current):
+            raise ValueError(f"{name} exposes an absolute or private path")
+    return value
 
 
 def _nonnegative_number(value, name):
@@ -527,7 +532,14 @@ def finding_receipt(kind, *, path=None, line=None, target=None, fingerprint=None
 
 def _markdown_body_lines(text):
     """Return body lines after bounded frontmatter, or None when its boundary is unresolved."""
-    lines = text.removeprefix("\ufeff").splitlines(keepends=True)
+    source = text.removeprefix("\ufeff")
+    lines = []
+    start = 0
+    for match in re.finditer(r"\r\n|\r|\n", source):
+        lines.append(source[start : match.end()])
+        start = match.end()
+    if start < len(source):
+        lines.append(source[start:])
     if not lines or lines[0].strip() != "---":
         return lines
     region_bytes = 0
@@ -545,21 +557,160 @@ def _markdown_body_lines(text):
     return None
 
 
-def _comment_remains_open(line, opening, closing):
-    start = line.find(opening)
-    return start >= 0 and line.find(closing, start + len(opening)) < 0
+def _comment_remains_open(line, opening, closing, already_open=False):
+    position = 0
+    if already_open:
+        end = line.find(closing)
+        if end < 0:
+            return True
+        position = end + len(closing)
+    while True:
+        start = _find_unescaped(line, opening, position)
+        if start < 0:
+            return False
+        if opening == "<!--":
+            if line.startswith("<!--->", start):
+                position = start + len("<!--->")
+                continue
+            if (
+                start > len(line) - len(line.lstrip(" \t"))
+                and line.startswith("<!-->", start)
+            ):
+                position = start + len("<!-->")
+                continue
+        end = line.find(closing, start + len(opening))
+        if end < 0:
+            return True
+        position = end + len(closing)
 
 
-def _toggle_unescaped_backticks(line, open_state):
+def _comment_close_end(line, start, opening, closing):
+    if opening == "<!--":
+        if line.startswith("<!--->", start):
+            return start + len("<!--->")
+        if start > len(line) - len(line.lstrip(" \t")) and line.startswith("<!-->", start):
+            return start + len("<!-->")
+    end = line.find(closing, start + len(opening))
+    return -1 if end < 0 else end + len(closing)
+
+
+def _tag_close_end(line, start):
+    quote = None
     escaped = False
-    for char in line:
-        if char == "\\":
-            escaped = not escaped
+    for index in range(start, len(line)):
+        char = line[index]
+        if quote is not None:
+            if char == "\\" and not escaped:
+                escaped = True
+                continue
+            if char == quote and not escaped:
+                quote = None
+            escaped = False
             continue
-        if char == "`" and not escaped:
-            open_state = not open_state
-        escaped = False
-    return open_state
+        if char in {'"', "'"}:
+            quote = char
+        elif char == "{":
+            return -1
+        elif char == ">":
+            return index + 1
+    return -1
+
+
+def _find_unescaped(value, token, start=0):
+    position = start
+    while True:
+        position = value.find(token, position)
+        if position < 0:
+            return -1
+        slashes = 0
+        cursor = position - 1
+        while cursor >= 0 and value[cursor] == "\\":
+            slashes += 1
+            cursor -= 1
+        if slashes % 2 == 0:
+            return position
+        position += len(token)
+
+
+def _find_tick_run(value, length, start=0):
+    marker = "`" * length
+    position = start
+    while True:
+        position = value.find(marker, position)
+        if position < 0:
+            return -1
+        before = position > 0 and value[position - 1] == "`"
+        after_position = position + length
+        after = after_position < len(value) and value[after_position] == "`"
+        if not before and not after:
+            return position
+        position = after_position
+
+
+def _without_inline_code_spans(line, open_length=0):
+    """Mask CommonMark backtick spans on one line and return multiline state."""
+    masked = list(line)
+    index = 0
+    if open_length:
+        close = _find_tick_run(line, open_length)
+        if close < 0:
+            for position, char in enumerate(masked):
+                if char not in "\r\n":
+                    masked[position] = "x"
+            return "".join(masked), open_length
+        for position in range(close + open_length):
+            if masked[position] not in "\r\n":
+                masked[position] = "x"
+        index = close + open_length
+    while index < len(line):
+        start = _find_unescaped(line, "`", index)
+        if start < 0:
+            break
+        index = start
+        if line[index] != "`":
+            index += 1
+            continue
+        while index < len(line) and line[index] == "`":
+            index += 1
+        length = index - start
+        close = _find_tick_run(line, length, index)
+        if close < 0:
+            for position in range(start, len(masked)):
+                if masked[position] not in "\r\n":
+                    masked[position] = "x"
+            return "".join(masked), length
+        for position in range(start, close + length):
+            if masked[position] not in "\r\n":
+                masked[position] = "x"
+        index = close + length
+    return "".join(masked), 0
+
+
+def _is_single_line_mdx_esm(line):
+    stripped = line.strip()
+    simple_import = re.fullmatch(
+        r"import(?:\s+[A-Za-z_$][A-Za-z0-9_$]*\s+from)?\s+(['\"])[^'\"\r\n]+\1\s*;?",
+        stripped,
+    )
+    simple_export = re.fullmatch(
+        r"export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(['\"])(?:\\.|(?!\1).)*\1\s*;?",
+        stripped,
+    )
+    return simple_import is not None or simple_export is not None
+
+
+_RAW_HTML_BLANK_TAGS = frozenset(
+    {
+        "address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center",
+        "col", "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt",
+        "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset",
+        "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr", "html",
+        "iframe", "legend", "li", "link", "main", "menu", "menuitem", "nav",
+        "noframes", "ol", "optgroup", "option", "p", "param", "search", "section",
+        "summary", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr",
+        "track", "ul",
+    }
+)
 
 
 def _fence_marker(line):
@@ -584,6 +735,10 @@ def _leading_indent_columns(line):
     return columns
 
 
+def _is_ascii_blank_line(line):
+    return not line.rstrip("\r\n").strip(" \t")
+
+
 def observe_entry_orientation(root, entry):
     """Read bounded inert text evidence; never evaluate provider or MDX code."""
     if entry is None:
@@ -598,7 +753,8 @@ def observe_entry_orientation(root, entry):
     try:
         if path.stat().st_size > 2 * 1024 * 1024:
             raise ValueError("entry exceeds capacity")
-        text = path.read_text(encoding="utf-8")
+        with path.open("r", encoding="utf-8", newline="") as stream:
+            text = stream.read()
     except (OSError, UnicodeError, ValueError):
         return {
             "literal_h1": evidence_value("unavailable"),
@@ -610,74 +766,293 @@ def observe_entry_orientation(root, entry):
     if body_lines is not None:
         component_document = Path(relative).suffix.casefold() == ".mdx"
         fence = None
+        inline_code_length = 0
         in_html_comment = False
+        html_comment_block = False
         in_mdx_comment = False
         raw_html_tag = None
+        raw_html_terminator = None
+        raw_html_until_blank = False
         in_mdx_esm = False
-        mdx_esm_template = False
+        in_mdx_expression = False
         uncertain = False
         literal_h1 = False
-        for line in body_lines:
+        for raw_line in body_lines:
+            line = raw_line.rstrip("\r\n")
             if in_html_comment:
-                if "-->" in line:
+                if not html_comment_block and (
+                    _is_ascii_blank_line(line)
+                    or (
+                        _leading_indent_columns(line) < 4
+                        and re.match(
+                            r"^#(?:[ \t]+|$)", line.lstrip(" \t")
+                        )
+                    )
+                ):
                     in_html_comment = False
-                continue
+                    html_comment_block = False
+                    if _is_ascii_blank_line(line):
+                        continue
+                else:
+                    in_html_comment = _comment_remains_open(
+                        line, "<!--", "-->", True
+                    )
+                    if not in_html_comment:
+                        html_comment_block = False
+                    continue
             if in_mdx_comment:
-                if "*/}" in line:
-                    in_mdx_comment = False
+                in_mdx_comment = _comment_remains_open(line, "{/*", "*/}", True)
                 continue
             if raw_html_tag is not None:
-                if re.search(rf"</{re.escape(raw_html_tag)}\s*>", line, re.IGNORECASE):
+                if re.search(
+                    r"</(?:pre|script|style|textarea)[ \t]*>", line, re.IGNORECASE
+                ):
                     raw_html_tag = None
                 continue
-            if in_mdx_esm:
-                mdx_esm_template = _toggle_unescaped_backticks(line, mdx_esm_template)
-                if not line.strip() and not mdx_esm_template:
-                    in_mdx_esm = False
+            if raw_html_terminator is not None:
+                if raw_html_terminator in line:
+                    raw_html_terminator = None
                 continue
+            if raw_html_until_blank:
+                if _is_ascii_blank_line(line):
+                    raw_html_until_blank = False
+                continue
+            if in_mdx_esm or in_mdx_expression:
+                continue
+            list_item = re.match(
+                r"^ {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+(.*)$",
+                line.rstrip("\r\n"),
+            )
+            if list_item is not None:
+                nested = list_item.group(1)
+                nested_fence = _fence_marker(nested)
+                nested_raw = re.match(
+                    r"^<(?:pre|script|style|textarea)(?:[ \t]|>|$)",
+                    nested,
+                    re.IGNORECASE,
+                ) or re.match(
+                    r"^</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t]|/?>|$)", nested
+                )
+                if (
+                    nested_fence is not None
+                    and (
+                        nested_fence[0] != "`" or "`" not in nested_fence[2]
+                    )
+                ) or nested_raw is not None:
+                    uncertain = True
+                    break
             marker = _fence_marker(line)
             if fence is not None:
                 if (
                     marker is not None
                     and marker[0] == fence[0]
                     and marker[1] >= fence[1]
-                    and not marker[2].strip()
+                    and not marker[2].strip(" \t")
                 ):
                     fence = None
                 continue
-            indented_code = _leading_indent_columns(line) >= 4
-            if indented_code:
-                continue
-            stripped = line.lstrip()
-            if not stripped:
-                continue
-            if marker is not None:
+            if inline_code_length:
+                interrupt = line.lstrip(" \t")
+                interrupt_marker = _fence_marker(line)
+                if _is_ascii_blank_line(line):
+                    inline_code_length = 0
+                    continue
+                if (
+                    re.match(r"^#(?:[ \t]+|$)", interrupt)
+                    or (
+                        interrupt_marker is not None
+                        and (
+                            interrupt_marker[0] != "`"
+                            or "`" not in interrupt_marker[2]
+                        )
+                    )
+                    or re.match(r"^</?[A-Za-z]", interrupt)
+                    or interrupt.startswith(("<!--", "<?", "<![CDATA["))
+                    or (
+                        component_document
+                        and (
+                            interrupt.startswith("{")
+                            or re.match(r"^(?:import|export)(?:\s|\{|$)", interrupt)
+                        )
+                    )
+                ):
+                    inline_code_length = 0
+            if inline_code_length == 0 and marker is not None:
                 if marker[0] != "`" or "`" not in marker[2]:
                     fence = (marker[0], marker[1])
                 continue
-            if re.match(r"^#(?:\s+|$)", stripped):
-                literal_h1 = True
-                break
-            if "<!--" in line:
-                in_html_comment = _comment_remains_open(line, "<!--", "-->")
+            if inline_code_length == 0 and _leading_indent_columns(line) >= 4:
                 continue
-            if component_document and "{/*" in line:
-                in_mdx_comment = _comment_remains_open(line, "{/*", "*/}")
+            pre_stripped = line.lstrip(" \t")
+            if component_document and re.match(
+                r"^(?:import|export)(?:\s|\{|$)", pre_stripped
+            ):
+                uncertain = True
+                in_mdx_esm = not _is_single_line_mdx_esm(pre_stripped)
+                continue
+            jsx_match = re.match(
+                r"^</?([A-Za-z][A-Za-z0-9._-]*)(?:[ \t]|/?>|$)", pre_stripped
+            )
+            if component_document and jsx_match is not None:
+                jsx_end = _tag_close_end(pre_stripped, 0)
+                if jsx_end < 0 or pre_stripped[jsx_end:].strip(" \t\r\n"):
+                    uncertain = True
+                    in_mdx_expression = True
                 continue
             raw_match = re.match(
-                r"^<(pre|script|style|textarea)(?:\s|>|$)", stripped, re.IGNORECASE
+                r"^<(pre|script|style|textarea)(?:[ \t]|>|$)",
+                pre_stripped,
+                re.IGNORECASE,
             )
             if raw_match is not None:
-                tag = raw_match.group(1)
-                if re.search(rf"</{re.escape(tag)}\s*>", stripped, re.IGNORECASE) is None:
-                    raw_html_tag = tag
+                if re.search(
+                    r"</(?:pre|script|style|textarea)[ \t]*>",
+                    pre_stripped,
+                    re.IGNORECASE,
+                ) is None:
+                    raw_html_tag = raw_match.group(1)
                 continue
-            if component_document and re.match(r"^(?:import|export)(?:\s|\{|$)", stripped):
+            if pre_stripped.startswith("<?"):
+                if "?>" not in pre_stripped[2:]:
+                    raw_html_terminator = "?>"
+                continue
+            if pre_stripped.startswith("<![CDATA["):
+                if "]]>" not in pre_stripped[9:]:
+                    raw_html_terminator = "]]>"
+                continue
+            if re.match(r"^<![A-Za-z]", pre_stripped):
+                if ">" not in pre_stripped[2:]:
+                    raw_html_terminator = ">"
+                continue
+            block_match = re.match(
+                r"^</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t]|/?>|$)", pre_stripped
+            )
+            if (
+                block_match is not None
+                and block_match.group(1).casefold() in _RAW_HTML_BLANK_TAGS
+                and not (
+                    component_document and block_match.group(1)[0].isupper()
+                )
+            ):
+                raw_html_until_blank = True
+                continue
+            if component_document and block_match is not None:
+                jsx_end = _tag_close_end(pre_stripped, 0)
+                if jsx_end < 0 or pre_stripped[jsx_end:].strip(" \t\r\n"):
+                    uncertain = True
+                    in_mdx_expression = True
+                continue
+            if not component_document and block_match is not None:
                 uncertain = True
-                in_mdx_esm = True
-                mdx_esm_template = _toggle_unescaped_backticks(line, False)
+                raw_html_until_blank = True
                 continue
-        if literal_h1 is False and (uncertain or in_mdx_esm):
+            leading = len(line) - len(line.lstrip(" \t"))
+            html_comment = _find_unescaped(line, "<!--")
+            if html_comment == leading:
+                in_html_comment = _comment_remains_open(line, "<!--", "-->")
+                html_comment_block = in_html_comment
+                comment_end = _comment_close_end(line, html_comment, "<!--", "-->")
+                remainder = line[comment_end:] if comment_end >= 0 else ""
+                if (
+                    not in_html_comment
+                    and component_document
+                    and (
+                        _find_unescaped(remainder, "{") >= 0
+                        or re.search(r"</?[A-Za-z]", remainder) is not None
+                    )
+                ):
+                    uncertain = True
+                    in_mdx_expression = component_document
+                continue
+            mdx_comment = _find_unescaped(line, "{/*") if component_document else -1
+            if mdx_comment == leading:
+                in_mdx_comment = _comment_remains_open(line, "{/*", "*/}")
+                comment_end = _comment_close_end(line, mdx_comment, "{/*", "*/}")
+                remainder = line[comment_end:] if comment_end >= 0 else ""
+                if (
+                    not in_mdx_comment
+                    and (
+                        _find_unescaped(remainder, "{") >= 0
+                        or _find_unescaped(remainder, "<!--") >= 0
+                        or re.search(r"</?[A-Za-z]", remainder) is not None
+                    )
+                ):
+                    uncertain = True
+                    in_mdx_expression = True
+                continue
+            if component_document and _find_unescaped(pre_stripped, "{") == 0:
+                uncertain = True
+                in_mdx_expression = True
+                continue
+            visible_line, inline_code_length = _without_inline_code_spans(
+                line, inline_code_length
+            )
+            stripped = visible_line.lstrip(" \t")
+            if not stripped:
+                continue
+            if re.match(r"^#(?:[ \t]+|$)", stripped):
+                literal_h1 = True
+                break
+            scan_line = visible_line
+            while True:
+                inline_tag = re.search(
+                    r"</?[A-Za-z][A-Za-z0-9._-]*(?:[ \t]|/?>|$)", scan_line
+                )
+                html_comment = _find_unescaped(scan_line, "<!--")
+                mdx_comment = (
+                    _find_unescaped(scan_line, "{/*") if component_document else -1
+                )
+                brace = _find_unescaped(scan_line, "{") if component_document else -1
+                candidates = [
+                    (position, priority, kind)
+                    for position, priority, kind in (
+                        (html_comment, 0, "html-comment"),
+                        (mdx_comment, 0, "mdx-comment"),
+                        (inline_tag.start() if inline_tag is not None else -1, 1, "tag"),
+                        (brace, 2, "expression"),
+                    )
+                    if position >= 0
+                ]
+                if not candidates:
+                    break
+                position, _, kind = min(candidates)
+                if kind == "tag":
+                    end = _tag_close_end(scan_line, position)
+                    if end < 0:
+                        uncertain = True
+                        in_mdx_expression = component_document
+                        break
+                    scan_line = (
+                        scan_line[:position]
+                        + "x" * (end - position)
+                        + scan_line[end:]
+                    )
+                    continue
+                if kind == "html-comment":
+                    end = _comment_close_end(scan_line, position, "<!--", "-->")
+                    if end < 0:
+                        in_html_comment = True
+                        html_comment_block = False
+                        break
+                    scan_line = (
+                        scan_line[:position] + "x" * (end - position) + scan_line[end:]
+                    )
+                    continue
+                if kind == "mdx-comment":
+                    end = _comment_close_end(scan_line, position, "{/*", "*/}")
+                    if end < 0:
+                        in_mdx_comment = True
+                        break
+                    scan_line = (
+                        scan_line[:position] + "x" * (end - position) + scan_line[end:]
+                    )
+                    continue
+                uncertain = True
+                in_mdx_expression = True
+                break
+        if literal_h1 is False and (
+            uncertain or in_mdx_esm or in_mdx_expression or inline_code_length
+        ):
             literal_h1 = None
     metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
     title = metadata.get("values", {}).get("title")

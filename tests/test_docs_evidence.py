@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -198,6 +199,18 @@ class EvidenceReceiptTests(unittest.TestCase):
                 "value": private_path,
             }
             with self.subTest(private_path=private_path), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
+
+        for identifier in (
+            "/nix/store/private-checkout",
+            "model:/workspace/Skills/private",
+            "model@/workspace/Skills/private",
+            "model+/workspace/Skills/private",
+            "model_/workspace/Skills/private",
+        ):
+            value = copy.deepcopy(self.receipt)
+            value["run"]["model"] = identifier
+            with self.subTest(identifier=identifier), self.assertRaises(ValueError):
                 evidence.validate_evidence_receipt(value)
 
         deeply_encoded_target = "/tmp/private/secret.txt"
@@ -407,6 +420,18 @@ class EvidenceReceiptTests(unittest.TestCase):
                 observed["frontmatter_title"], {"status": "unavailable", "value": None}
             )
 
+            crlf_oversized = root / "crlf-oversized.md"
+            crlf_oversized.write_bytes(
+                b"---\r\n" + b"#\r\n" * 25_000 + b"---\r\n# Actual H1\r\n"
+            )
+            observed = evidence.observe_entry_orientation(root, crlf_oversized.name)
+            self.assertEqual(
+                observed["literal_h1"], {"status": "unavailable", "value": None}
+            )
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
             mixed = root / "mixed.md"
             mixed.write_text(
                 "---\ntitle: Proven title\ntags: [one, two]\n---\n\n## Start\n",
@@ -449,6 +474,9 @@ class EvidenceReceiptTests(unittest.TestCase):
             "mdx-inline": "{/* note */} # not a heading\n",
             "four-backticks": "````\n```\n# not a heading\n````\n",
             "mixed-fence": "```\n~~~\n# not a heading\n```\n",
+            "fence-inline-ticks": "```text\nsome ``` inline\n# not a heading\n```\n## Start\n",
+            "fence-indented-ticks": "```text\n    ```\n# not a heading\n```\n## Start\n",
+            "fence-nbsp-close": "```text\n# not a heading\n```\u00a0\n# still not a heading\n```\n## Start\n",
             "actual-h1": "# Actual H1\n",
             "indented-html-opener": "    <!--\n# Actual H1\n",
             "tab-html-opener": "\t<!--\n# Actual H1\n",
@@ -480,10 +508,26 @@ class EvidenceReceiptTests(unittest.TestCase):
             ),
             "midline-html.mdx": (
                 "prefix <!--\n# not a heading\n-->\n## Start\n",
-                {"status": "completed", "value": False},
+                {"status": "completed", "value": True},
             ),
             "midline-mdx.mdx": (
                 "prefix {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "chained-html-comments.md": (
+                "<!-- one --> <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "reopened-html-comment.md": (
+                "<!--\n--> prefix <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "chained-mdx-comments.mdx": (
+                "{/* one */} {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "reopened-mdx-comment.mdx": (
+                "{/*\n*/} prefix {/*\n# not a heading\n*/}\n## Start\n",
                 {"status": "completed", "value": False},
             ),
             "raw-pre.md": (
@@ -492,7 +536,111 @@ class EvidenceReceiptTests(unittest.TestCase):
             ),
             "raw-script.mdx": (
                 "<script>\n# not a heading\n</script>\n## Start\n",
+                {"status": "completed", "value": True},
+            ),
+            "nbsp-div-boundary.md": (
+                "<div\u00a0x>\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "nbsp-script-boundary.md": (
+                "<script\u00a0>\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "nbsp-script-close.md": (
+                "<script>\n</script\u00a0>\n# not a heading\n</script>\n## Start\n",
                 {"status": "completed", "value": False},
+            ),
+            "raw-with-comment.md": (
+                "<pre><!--\n-->\n# not a heading\n</pre>\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-div.md": (
+                "<div>\n# not a heading\n</div>\n\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-div-nbsp-line.md": (
+                "<div>\n\u00a0\n# not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-table.mdx": (
+                "<table>\n# not a heading\n</table>\n\n## Start\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-lowercase-pre.mdx": (
+                "<pre>\n# Actual H1\n</pre>\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-lowercase-style.mdx": (
+                "<style>\n# Actual H1\n</style>\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-lowercase-textarea.mdx": (
+                "<textarea>\n# Actual H1\n</textarea>\n",
+                {"status": "completed", "value": True},
+            ),
+            "raw-base.md": (
+                "<base>\n# not a heading\n\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-basefont.md": (
+                "<basefont>\n# not a heading\n\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-processing.md": (
+                "<?target\n# not a heading\n?>\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-cdata.md": (
+                "<![CDATA[\n# not a heading\n]]>\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-custom.md": (
+                "<custom>\n# not a heading\n\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "raw-invalid-custom.md": (
+                "<x-card foo==bar>\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "mdx-component-child.mdx": (
+                "<Custom>\n# Actual H1\n</Custom>\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-capitalized-table.mdx": (
+                "<Table>\n# Actual H1\n</Table>\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-capitalized-script.mdx": (
+                "<Script>\n# Actual H1\n</Script>\n",
+                {"status": "completed", "value": True},
+            ),
+            "mdx-jsx-html-string.mdx": (
+                '<Custom marker="<!--" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "mdx-jsx-comment-string.mdx": (
+                '<Custom marker="{/*" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "mdx-lowercase-jsx-string.mdx": (
+                '<span marker="<!--" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "mdx-midline-jsx-string.mdx": (
+                'prefix <Custom marker="{/*" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "mdx-jsx-quoted-html-marker.mdx": (
+                'prefix <Custom label="> <!--" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "mdx-jsx-quoted-mdx-marker.mdx": (
+                'prefix <Custom label="> {/*" />\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "markdown-quoted-tag-marker.md": (
+                'prefix <span title="> <!--">x</span>\n# Actual H1\n',
+                {"status": "completed", "value": True},
             ),
             "esm-template.mdx": (
                 "export const example = `\n# not a heading\n`\n",
@@ -501,6 +649,214 @@ class EvidenceReceiptTests(unittest.TestCase):
             "esm-then-heading.mdx": (
                 "import Example from './example'\n\n# Actual H1\n",
                 {"status": "completed", "value": True},
+            ),
+            "esm-import-comment-text.mdx": (
+                "import Example from './<!--example-->'\n\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-html-text.mdx": (
+                'export const marker = "<!--"\n\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "esm-export-mdx-text.mdx": (
+                'export const marker = "{/*"\n\n# Actual H1\n',
+                {"status": "completed", "value": True},
+            ),
+            "multiline-esm-template.mdx": (
+                "export const data = {\n\n  sample: `\n# not a heading\n`,\n}\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "inline-html-marker.md": (
+                "`<!--`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "inline-mdx-marker.mdx": (
+                "`{/*`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "inline-raw-marker.md": (
+                "`<pre>`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "inline-esm-marker.mdx": (
+                "`export const data = {`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "inline-code-before-hash.md": (
+                "`code` # not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "nbsp-before-hash.md": (
+                "\u00a0# not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "em-space-before-hash.md": (
+                "\u2003# not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "narrow-nbsp-before-hash.md": (
+                "\u202f# not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "form-feed-before-hash.md": (
+                "\f# not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "nbsp-after-hash.md": (
+                "#\u00a0not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "em-space-after-hash.md": (
+                "#\u2003not a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "form-feed-after-hash.md": (
+                "#\fnot a heading\n",
+                {"status": "completed", "value": False},
+            ),
+            "multiline-code-html.md": (
+                "`<!--\ninside code`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "multiline-code-mdx.mdx": (
+                "`{/*\ninside code`\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "unclosed-code-before-heading.md": (
+                "`unclosed\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "unclosed-code-before-blank-heading.md": (
+                "`unclosed\n\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "paired-code-across-heading.md": (
+                "`foo\n# Actual H1\nbar`\n",
+                {"status": "completed", "value": True},
+            ),
+            "escaped-backticks.md": (
+                "\\`\n# Actual H1\n\\`\n",
+                {"status": "completed", "value": True},
+            ),
+            "raw-backtick-boundary.md": (
+                "<pre>`\n</pre>\n# Actual H1\n`\n",
+                {"status": "completed", "value": True},
+            ),
+            "list-backtick-fence.md": (
+                "- ```\n  # not a heading\n  ```\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "list-tilde-fence.md": (
+                "- ~~~\n  # not a heading\n  ~~~\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "list-raw-div.md": (
+                "- <div>\n  # not a heading\n\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "list-raw-pre.md": (
+                "- <pre>\n  # not a heading\n  </pre>\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "ordered-list-fence.md": (
+                "1. ```\n   # not a heading\n   ```\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "plus-list-raw.md": (
+                "+ <div>\n  # not a heading\n\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "list-then-heading.md": (
+                "- ordinary item\n\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "list-nested-heading.md": (
+                "- ordinary item\n  # Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "escaped-html-comment.md": (
+                "\\<!--\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "escaped-mdx-comment.mdx": (
+                "\\{/*\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "short-inline-html.md": (
+                "prefix <!-->\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "short-inline-html-dash.md": (
+                "prefix <!--->\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "short-block-html-dash.md": (
+                "<!--->\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "multiline-mdx-expression.mdx": (
+                "{`\n# not a heading\n`}\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "midline-mdx-expression.mdx": (
+                "prefix {<span>\n# not a heading\n</span>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "tag-then-html-comment.md": (
+                "prefix <span> <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "completed", "value": True},
+            ),
+            "jsx-then-mdx-comment.mdx": (
+                "prefix <Custom /> {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "leading-jsx-then-mdx-comment.mdx": (
+                "<Custom /> {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-jsx-then-html-comment.mdx": (
+                "<Custom /> <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-lower-jsx-then-mdx-comment.mdx": (
+                "<span /> {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-lower-jsx-then-html-comment.mdx": (
+                "<span /> <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-lower-jsx-then-expression.mdx": (
+                "<span /> {<Custom>\n# not a heading\n</Custom>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-custom-element-then-comment.mdx": (
+                "<x-card /> {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-quoted-lower-jsx-then-comment.mdx": (
+                '<span label=">" /> {/*\n# not a heading\n*/}\n## Start\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "html-comment-then-expression.mdx": (
+                "prefix <!-- closed --> {<span>\n# not a heading\n</span>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "mdx-comment-then-expression.mdx": (
+                "prefix {/* closed */} {<span>\n# not a heading\n</span>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-html-comment-then-expression.mdx": (
+                "<!-- closed --> {<span>\n# not a heading\n</span>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-mdx-comment-then-expression.mdx": (
+                "{/* closed */} {<span>\n# not a heading\n</span>}\n## Start\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "leading-mdx-then-html-comment.mdx": (
+                "{/* closed */} <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "unavailable", "value": None},
             ),
         }
         with tempfile.TemporaryDirectory() as td:
@@ -511,6 +867,32 @@ class EvidenceReceiptTests(unittest.TestCase):
                 observed = evidence.observe_entry_orientation(root, entry.name)
                 with self.subTest(name=name):
                     self.assertEqual(observed["literal_h1"], expected)
+
+    def test_orientation_structural_lines_are_newline_style_independent(self):
+        scenarios = {
+            "empty-h1.md": ("#", {"status": "completed", "value": True}),
+            "type-one-raw.md": (
+                "<script\n# hidden\n</script>",
+                {"status": "completed", "value": False},
+            ),
+            "type-six-raw.md": (
+                "<div\n# hidden\n\n## Start",
+                {"status": "completed", "value": False},
+            ),
+            "incomplete-component.mdx": (
+                "<Component\n# unresolved",
+                {"status": "unavailable", "value": None},
+            ),
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for newline in ("\n", "\r\n", "\r"):
+                for name, (source, expected) in scenarios.items():
+                    entry = root / name
+                    entry.write_bytes(source.replace("\n", newline).encode("utf-8"))
+                    observed = evidence.observe_entry_orientation(root, entry.name)
+                    with self.subTest(name=name, newline=repr(newline)):
+                        self.assertEqual(observed["literal_h1"], expected)
 
     def test_stdout_receipt_entrypoint_combines_one_checker_run(self):
         with tempfile.TemporaryDirectory() as td:
@@ -570,6 +952,39 @@ class EvidenceReceiptTests(unittest.TestCase):
         evidence.validate_evidence_receipt(receipt)
         self.assertEqual(receipt["health"]["status"], "completed")
         self.assertEqual(receipt["write_audit"]["writes_observed"]["value"], 0)
+
+    def test_receipt_entrypoint_disables_bytecode_before_checker_imports(self):
+        with tempfile.TemporaryDirectory() as td:
+            copied_scripts = Path(td) / "scripts"
+            shutil.copytree(SCRIPTS, copied_scripts)
+            for cache in copied_scripts.rglob("__pycache__"):
+                shutil.rmtree(cache)
+            child_env = os.environ.copy()
+            child_env.pop("PYTHONDONTWRITEBYTECODE", None)
+            cli = subprocess.run(
+                [sys.executable, str(copied_scripts / "evidence_receipt.py"), "--help"],
+                cwd=copied_scripts,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+            cli_caches = list(copied_scripts.rglob("__pycache__"))
+            imported = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.path.insert(0, '.'); import evidence_receipt; "
+                    "print(sys.dont_write_bytecode)",
+                ],
+                cwd=copied_scripts,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertEqual(cli_caches, [])
+        self.assertEqual(imported.returncode, 0, imported.stdout + imported.stderr)
+        self.assertEqual(imported.stdout.strip(), "False")
 
     def test_metadata_input_is_bounded_before_json_parse(self):
         with tempfile.TemporaryDirectory() as td:

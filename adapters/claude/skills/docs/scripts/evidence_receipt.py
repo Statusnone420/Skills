@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import sys
+
+_previous_dont_write_bytecode = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+
 import argparse
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from _docs_checker.evidence import (
@@ -18,6 +22,9 @@ from _docs_checker.evidence import (
 from _docs_checker.health import health_summary
 from _docs_checker.init_adoption import SKILL_VERSION
 from check import check
+
+sys.dont_write_bytecode = _previous_dont_write_bytecode
+del _previous_dont_write_bytecode
 
 
 _PARSER = argparse.ArgumentParser()
