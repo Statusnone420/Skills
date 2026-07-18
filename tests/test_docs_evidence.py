@@ -427,6 +427,16 @@ class EvidenceReceiptTests(unittest.TestCase):
                 observed["frontmatter_title"], {"status": "unavailable", "value": None}
             )
 
+            malformed_quote = root / "malformed-quote.md"
+            malformed_quote.write_text(
+                "---\ntitle: 'Guide\n---\n\n## Start\n",
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, malformed_quote.name)
+            self.assertEqual(
+                observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
     def test_orientation_ignores_comments_and_indented_code(self):
         scenarios = {
             "html-comment": "<!--\n# not a heading\n-->\n## Start\n",
@@ -461,6 +471,46 @@ class EvidenceReceiptTests(unittest.TestCase):
                         observed["literal_h1"],
                         {"status": "completed", "value": name in expected_h1},
                     )
+
+    def test_orientation_respects_markdown_and_mdx_contexts(self):
+        scenarios = {
+            "plain-md-mdx-syntax.md": (
+                "{/*\n# Actual H1\n*/}\n",
+                {"status": "completed", "value": True},
+            ),
+            "midline-html.mdx": (
+                "prefix <!--\n# not a heading\n-->\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "midline-mdx.mdx": (
+                "prefix {/*\n# not a heading\n*/}\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-pre.md": (
+                "<pre>\n# not a heading\n</pre>\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "raw-script.mdx": (
+                "<script>\n# not a heading\n</script>\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "esm-template.mdx": (
+                "export const example = `\n# not a heading\n`\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-then-heading.mdx": (
+                "import Example from './example'\n\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for name, (source, expected) in scenarios.items():
+                entry = root / name
+                entry.write_text(source, encoding="utf-8")
+                observed = evidence.observe_entry_orientation(root, entry.name)
+                with self.subTest(name=name):
+                    self.assertEqual(observed["literal_h1"], expected)
 
     def test_stdout_receipt_entrypoint_combines_one_checker_run(self):
         with tempfile.TemporaryDirectory() as td:

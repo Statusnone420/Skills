@@ -545,18 +545,21 @@ def _markdown_body_lines(text):
     return None
 
 
-def _after_leading_comments(line, in_html_comment, in_mdx_comment):
-    """Skip lines occupied by leading HTML/MDX comments and preserve their state."""
-    current = line.lstrip()
-    if in_html_comment:
-        return "", "-->" not in current, in_mdx_comment
-    if in_mdx_comment:
-        return "", in_html_comment, "*/}" not in current
-    if current.startswith("<!--"):
-        return "", "-->" not in current[4:], in_mdx_comment
-    if current.startswith("{/*"):
-        return "", in_html_comment, "*/}" not in current[3:]
-    return current, in_html_comment, in_mdx_comment
+def _comment_remains_open(line, opening, closing):
+    start = line.find(opening)
+    return start >= 0 and line.find(closing, start + len(opening)) < 0
+
+
+def _toggle_unescaped_backticks(line, open_state):
+    escaped = False
+    for char in line:
+        if char == "\\":
+            escaped = not escaped
+            continue
+        if char == "`" and not escaped:
+            open_state = not open_state
+        escaped = False
+    return open_state
 
 
 def _fence_marker(line):
@@ -605,11 +608,33 @@ def observe_entry_orientation(root, entry):
     body_lines = _markdown_body_lines(text)
     literal_h1 = None
     if body_lines is not None:
+        component_document = Path(relative).suffix.casefold() == ".mdx"
         fence = None
         in_html_comment = False
         in_mdx_comment = False
+        raw_html_tag = None
+        in_mdx_esm = False
+        mdx_esm_template = False
+        uncertain = False
         literal_h1 = False
         for line in body_lines:
+            if in_html_comment:
+                if "-->" in line:
+                    in_html_comment = False
+                continue
+            if in_mdx_comment:
+                if "*/}" in line:
+                    in_mdx_comment = False
+                continue
+            if raw_html_tag is not None:
+                if re.search(rf"</{re.escape(raw_html_tag)}\s*>", line, re.IGNORECASE):
+                    raw_html_tag = None
+                continue
+            if in_mdx_esm:
+                mdx_esm_template = _toggle_unescaped_backticks(line, mdx_esm_template)
+                if not line.strip() and not mdx_esm_template:
+                    in_mdx_esm = False
+                continue
             marker = _fence_marker(line)
             if fence is not None:
                 if (
@@ -621,11 +646,9 @@ def observe_entry_orientation(root, entry):
                     fence = None
                 continue
             indented_code = _leading_indent_columns(line) >= 4
-            if indented_code and not (in_html_comment or in_mdx_comment):
+            if indented_code:
                 continue
-            stripped, in_html_comment, in_mdx_comment = _after_leading_comments(
-                line, in_html_comment, in_mdx_comment
-            )
+            stripped = line.lstrip()
             if not stripped:
                 continue
             if marker is not None:
@@ -635,6 +658,27 @@ def observe_entry_orientation(root, entry):
             if re.match(r"^#(?:\s+|$)", stripped):
                 literal_h1 = True
                 break
+            if "<!--" in line:
+                in_html_comment = _comment_remains_open(line, "<!--", "-->")
+                continue
+            if component_document and "{/*" in line:
+                in_mdx_comment = _comment_remains_open(line, "{/*", "*/}")
+                continue
+            raw_match = re.match(
+                r"^<(pre|script|style|textarea)(?:\s|>|$)", stripped, re.IGNORECASE
+            )
+            if raw_match is not None:
+                tag = raw_match.group(1)
+                if re.search(rf"</{re.escape(tag)}\s*>", stripped, re.IGNORECASE) is None:
+                    raw_html_tag = tag
+                continue
+            if component_document and re.match(r"^(?:import|export)(?:\s|\{|$)", stripped):
+                uncertain = True
+                in_mdx_esm = True
+                mdx_esm_template = _toggle_unescaped_backticks(line, False)
+                continue
+        if literal_h1 is False and (uncertain or in_mdx_esm):
+            literal_h1 = None
     metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
     title = metadata.get("values", {}).get("title")
     unresolved_metadata = set(metadata.get("unresolved", ()))

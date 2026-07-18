@@ -83,7 +83,10 @@ def parse_frontmatter_scalars(text):
                 unresolved.append(key)
                 continue
             value = decoded
-        elif value.startswith("'") and value.endswith("'") and len(value) >= 2:
+        elif value.startswith("'"):
+            if not value.endswith("'") or len(value) < 2:
+                unresolved.append(key)
+                continue
             value = value[1:-1].replace("''", "'")
         elif value.casefold() in {"true", "false"}:
             value = value.casefold() == "true"
