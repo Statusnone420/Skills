@@ -2,7 +2,21 @@
 
 Diátaxis Docs is a public alpha. Install from a revision you trust, review proposed changes before approval, and use normal Git safeguards.
 
-In the ChatGPT desktop app, Codex CLI, and supported IDE integrations, user skills are available from `$HOME/.agents/skills`. From a clone of this repository, install the canonical `skills/docs` directory without overwriting an existing destination.
+## Codex marketplace
+
+Diátaxis Docs 0.1.5 publishes as a Codex repository marketplace plugin. Add the marketplace, install the plugin, and verify that Codex reports it:
+
+```text
+codex plugin marketplace add Statusnone420/Skills
+codex plugin add diataxis-docs@statusnone-skills
+codex plugin list
+```
+
+Start a new task after installation so the task catalog loads the plugin's skills. Use `$docs-help` or `$docs-doctor` directly, or keep using the compatible umbrella form `$docs help` and `$docs doctor`. The plugin exposes the umbrella plus 13 focused `$docs-*` skills in the marketplace.
+
+## Manual skill fallback
+
+In the ChatGPT desktop app, Codex CLI, and supported IDE integrations, user skills are also available from `$HOME/.agents/skills`. From a clone of this repository, install the canonical `skills/docs` directory without overwriting an existing destination.
 
 PowerShell (Windows 11):
 
@@ -29,7 +43,7 @@ test -f "$dest/SKILL.md" && printf '%s\n' "Installed: $dest/SKILL.md"
 
 The exact layout check is `$HOME/.agents/skills/docs/SKILL.md`. Restart the host or start a new task if the skill list is cached, then run `$docs help` and confirm it returns the command list.
 
-The canonical OpenAI references are [Skills](https://developers.openai.com/codex/skills) and [Plugins](https://developers.openai.com/codex/plugins/build). The checked-in Codex plugin bundle remains a preview; installing the canonical skill directory is the supported Codex path during alpha.
+The canonical OpenAI references are [Skills](https://developers.openai.com/codex/skills) and [Plugins](https://developers.openai.com/codex/plugins/build). The checked-in Codex package is generated from `skills/docs`; the manual copy remains a compatibility fallback, not a separate edition.
 
 ## Claude
 
@@ -48,6 +62,8 @@ In a Claude Code terminal, verify the namespaced skill:
 
 ```text
 /diataxis-docs:docs help
+/diataxis-docs:docs-doctor
+/diataxis-docs:docs-help
 ```
 
 Claude's built-in `/documentation` command remains separate. Use Diátaxis Docs when you want its repository map, bounded memory, evidence rules, health checks, or approval-gated Doctor workflow. Marketplace sync and Claude Desktop picker invocation are live-tested; the Claude Code terminal form remains structurally tested but has not completed a live terminal pilot.

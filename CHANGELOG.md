@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5 — Native command skills and first-run Doctor (2026-07-18)
+
+- Added a genuine Codex repository marketplace package with aligned `diataxis-docs` marketplace, folder, and manifest identities.
+- Exposed Doctor, Init, Context, Write, Update, Audit, Fix, Map, Classify, Migrate, Check, Cleanup, and Help as individual explicit skills while preserving the existing umbrella invocation.
+- Preserved the Claude package and generated the equivalent `/diataxis-docs:docs-*` command skills from the same canonical contracts.
+- Guaranteed the Help command tree across hosts.
+- Added a zero-write, explicitly provisional root-README orientation baseline for fresh no-map repositories when bounded discovery is complete and no provider or safety boundary blocks measurement.
+- Added generator parity and distribution regressions for the real marketplace package, focused skills, explicit invocation policy, Help tree, and no-map Doctor contract.
+
 ## 0.1.4 — Evidence and calibration foundation (2026-07-17)
 
 - Added a strict sanitized evidence receipt that preserves category-level rubric inputs, score gates, deterministic findings, semantic findings, unresolved candidates, Doctor evidence, Git/write state, and explicit unavailable values.

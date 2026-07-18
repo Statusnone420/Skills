@@ -1,12 +1,27 @@
 #!/usr/bin/env python3
 """Build and validate deterministic cross-harness bundles from skills/docs."""
 from __future__ import annotations
-import argparse, json, os, re, shutil, stat, sys
+import argparse, json, os, re, shutil, stat, sys, tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills" / "docs"
 COMMANDS = ("doctor", "init", "context", "write", "update", "audit", "fix", "map", "classify", "migrate", "check", "cleanup", "help")
+COMMAND_SPECS = {
+    "doctor": ("Docs Doctor", "Diagnose documentation health and prescribe bounded repairs."),
+    "init": ("Docs Init", "Preview safe repository documentation adoption before approval."),
+    "context": ("Docs Context", "Find the repository knowledge relevant to the current task."),
+    "write": ("Docs Write", "Create focused documentation after verifying its claims."),
+    "update": ("Docs Update", "Update documentation for a verified repository change."),
+    "audit": ("Docs Audit", "Audit documentation and return prioritized evidence-backed findings."),
+    "fix": ("Docs Fix", "Revalidate and repair only the selected documentation findings."),
+    "map": ("Docs Map", "Explain the bounded documentation topology without editing files."),
+    "classify": ("Docs Classify", "Choose the appropriate Diátaxis documentation type."),
+    "migrate": ("Docs Migrate", "Preview exact documentation moves before separate approval."),
+    "check": ("Docs Check", "Report the deterministic structural documentation score only."),
+    "cleanup": ("Docs Cleanup", "Preview documentation consolidation and cleanup before approval."),
+    "help": ("Docs Help", "Show the Diátaxis Docs command tree without repository access."),
+}
 REFERENCE_FILES = ("commands.md", "init.md", "doctor.md", "isolation.md", "memory.md", "principles.md")
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 CHECKER_FILES = (
@@ -35,6 +50,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/init_closeout.py",
     "scripts/_docs_checker/init_adoption.py",
     "scripts/_docs_checker/doctor_closeout.py",
+    "scripts/_docs_checker/doctor_baseline.py",
     "scripts/_docs_checker/health.py",
     "scripts/_docs_checker/navigation.py",
 )
@@ -46,13 +62,15 @@ CANONICAL_RESOURCE_FILES = (
 )
 MARKER_NAME = ".statusnone-adapters-output"
 MARKER_TEXT = "statusnone-adapters-v1\n"
+PLUGIN_MARKER_NAME = ".statusnone-generated-plugin"
+PLUGIN_MARKER_TEXT = "statusnone-codex-plugin-v1\n"
 PROTECTED_ROOTS = tuple(ROOT / name for name in (".git", ".github", ".superpowers", "docs", "evals", "skills", "tests", "tools"))
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 # This is a packaging regression guard, not a product limit or health rule.  It was selected
 # after measuring the command-specific compositions (see ``prompt_measurements``) and leaves
 # substantial room for ordinary contract growth.  The retired 16,000-byte concatenation ceiling
 # is intentionally not used here.
-PROMPT_REGRESSION_GUARD_BYTES = 40_000
+PROMPT_REGRESSION_GUARD_BYTES = 42_000
 CLAUDE_PLUGIN_MANIFEST_BASE = {
     "name": "diataxis-docs",
     "description": "Bounded repository memory. Evidence-backed documentation.",
@@ -63,20 +81,20 @@ CLAUDE_PLUGIN_MANIFEST_BASE = {
     "keywords": ["documentation", "diataxis", "repository-memory", "coding-agents"],
 }
 CODEX_PLUGIN_MANIFEST_BASE = {
-    "name": "statusnone-skills",
-    "description": "Statusnone repository documentation skill",
-    "author": {"name": "Statusnone", "url": "https://github.com/Statusnone420/skills"},
+    "name": "diataxis-docs",
+    "description": "Bounded repository memory. Evidence-backed documentation.",
+    "author": {"name": "Statusnone", "url": "https://github.com/Statusnone420/Skills"},
     "license": "Apache-2.0",
-    "repository": "https://github.com/Statusnone420/skills",
+    "repository": "https://github.com/Statusnone420/Skills",
     "skills": "./skills/",
     "interface": {
-        "displayName": "Statusnone Skills",
+        "displayName": "Diátaxis Docs",
         "developerName": "Statusnone",
-        "shortDescription": "Bounded repository documentation",
+        "shortDescription": "Bounded repository memory and documentation",
         "longDescription": "Evidence-backed Diátaxis documentation assistance for repositories.",
-        "category": "Productivity",
+        "category": "Developer Tools",
         "capabilities": ["Read", "Write"],
-        "defaultPrompt": ["$docs doctor"],
+        "defaultPrompt": ["Run $docs-doctor on this repository", "Show $docs-help"],
         "brandColor": "#6657E8",
         "composerIcon": "./assets/bounded-compass.png",
         "logo": "./assets/bounded-compass.png",
@@ -175,6 +193,52 @@ def slash_skill(text: str) -> str:
     if len(parts) != 3: raise ValueError("canonical frontmatter required")
     if parts[1] != expected_header: raise ValueError("frontmatter must match canonical source exactly")
     return "---" + parts[1].rstrip() + "\nuser-invocable: true\ndisable-model-invocation: true\n---" + parts[2]
+
+def command_skill(command: str, vendor: str = "codex") -> str:
+    """Build one thin explicit command route without duplicating the shared engine."""
+    if command not in COMMAND_SPECS:
+        raise ValueError(f"unsupported command skill: {command}")
+    if vendor not in {"codex", "claude"}:
+        raise ValueError(f"unsupported command skill vendor: {vendor}")
+    display_name, description = COMMAND_SPECS[command]
+    invocation = ""
+    if vendor == "claude":
+        invocation = "user-invocable: true\ndisable-model-invocation: true\n"
+    direct_reference = {
+        "doctor": " Also follow the [Doctor playbook](../docs/references/doctor.md).",
+        "init": " Also follow the [Init contract](../docs/references/init.md).",
+    }.get(command, "")
+    return (
+        "---\n"
+        f"name: docs-{command}\n"
+        f"description: {json.dumps(description, ensure_ascii=False)}\n"
+        f"{invocation}"
+        "---\n\n"
+        f"# {display_name}\n\n"
+        f"This is the explicit thin route for the fixed command `{command}`. Treat all trailing "
+        "text as that command's raw trailing text; never reinterpret it as another command.\n\n"
+        "Load and follow the sibling [Diátaxis Docs skill](../docs/SKILL.md), including its shared "
+        "safety, evidence, health, and result contracts. Follow the selected command contract in "
+        f"[commands.md](../docs/references/commands.md).{direct_reference} Do not load unrelated "
+        "command playbooks. If a required shared resource is unavailable, stop and report that "
+        "the command could not be executed; do not invent a fallback.\n"
+    )
+
+def command_agent_metadata(command: str) -> str:
+    if command not in COMMAND_SPECS:
+        raise ValueError(f"unsupported command skill: {command}")
+    display_name, description = COMMAND_SPECS[command]
+    return (
+        "interface:\n"
+        f"  display_name: {json.dumps(display_name, ensure_ascii=False)}\n"
+        f"  short_description: {json.dumps(description, ensure_ascii=False)}\n"
+        '  icon_small: "./assets/bounded-compass-small.svg"\n'
+        '  icon_large: "./assets/bounded-compass.png"\n'
+        '  brand_color: "#6657E8"\n'
+        f'  default_prompt: "Use $docs-{command} on this repository."\n'
+        "policy:\n"
+        "  allow_implicit_invocation: false\n"
+    )
 
 def _markdown_section(text: str, heading: str) -> str:
     """Return one level-two Markdown section without loading unrelated sections."""
@@ -296,6 +360,133 @@ def adapter_skill_root(output: Path, vendor: str) -> Path:
         return output / vendor / "skills" / "docs"
     return output / vendor
 
+def _write_focused_skill(skills_root: Path, command: str, vendor: str) -> None:
+    skill_root = skills_root / f"docs-{command}"
+    (skill_root / "agents").mkdir(parents=True)
+    (skill_root / "assets").mkdir()
+    (skill_root / "SKILL.md").write_text(
+        command_skill(command, vendor), encoding="utf-8", newline="\n"
+    )
+    (skill_root / "agents" / "openai.yaml").write_text(
+        command_agent_metadata(command), encoding="utf-8", newline="\n"
+    )
+    for asset in ASSETS:
+        shutil.copy2(SOURCE / "assets" / asset, skill_root / "assets" / asset)
+
+def _plugin_tree_files(root: Path) -> dict[str, Path]:
+    return {
+        path.relative_to(root).as_posix(): path
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+def _plugin_tree_parity(source: Path, destination: Path) -> list[str]:
+    source_files = _plugin_tree_files(source)
+    destination_files = _plugin_tree_files(destination)
+    errors = []
+    if set(source_files) != set(destination_files):
+        errors.append("file set")
+    for relative in sorted(set(source_files) & set(destination_files)):
+        if source_files[relative].read_bytes() != destination_files[relative].read_bytes():
+            errors.append(f"file bytes {relative}")
+    return errors
+
+def _remove_owned_plugin_temp(path: Path, parent: Path) -> None:
+    if not os.path.lexists(path):
+        return
+    if _lexical(path.parent) != _lexical(parent) or not path.name.startswith(
+        ".diataxis-docs-"
+    ):
+        raise ValueError("refusing to remove an unexpected Codex staging path")
+    marker = path / PLUGIN_MARKER_NAME
+    if (
+        _is_reparse(path)
+        or not marker.is_file()
+        or _is_reparse(marker)
+        or marker.read_text(encoding="utf-8") != PLUGIN_MARKER_TEXT
+    ):
+        raise ValueError("refusing to remove an unowned Codex staging path")
+    shutil.rmtree(path)
+
+def _sync_codex_distribution(output: Path) -> None:
+    """Publish the generated Codex package into the repo marketplace layout."""
+    source = output / "plugin"
+    destination = _lexical(ROOT / "plugins" / "diataxis-docs")
+    expected_destination = _lexical(ROOT / "plugins" / "diataxis-docs")
+    if destination != expected_destination:
+        raise ValueError("Codex distribution target is not the owned plugin path")
+    if not (source / PLUGIN_MARKER_NAME).is_file():
+        raise ValueError("generated Codex plugin ownership marker is missing")
+    current = _lexical(ROOT)
+    for part in Path("plugins/diataxis-docs").parts:
+        current /= part
+        if os.path.lexists(current) and _is_reparse(current):
+            raise ValueError("Codex distribution path must not contain a reparse point")
+    destination_exists = destination.exists()
+    if destination_exists:
+        marker = destination / PLUGIN_MARKER_NAME
+        if (
+            not marker.is_file()
+            or _is_reparse(marker)
+            or marker.read_text(encoding="utf-8") != PLUGIN_MARKER_TEXT
+        ):
+            raise ValueError("refusing to replace an unowned Codex distribution")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=".diataxis-docs-stage-", dir=destination.parent)
+    )
+    (staging / PLUGIN_MARKER_NAME).write_text(
+        PLUGIN_MARKER_TEXT, encoding="utf-8", newline="\n"
+    )
+    backup = None
+    try:
+        shutil.copytree(source, staging, dirs_exist_ok=True)
+        parity_errors = _plugin_tree_parity(source, staging)
+        if parity_errors:
+            raise ValueError(
+                "staged Codex distribution parity failed: "
+                + ", ".join(parity_errors)
+            )
+        if destination_exists:
+            backup = Path(
+                tempfile.mkdtemp(
+                    prefix=".diataxis-docs-backup-", dir=destination.parent
+                )
+            )
+            (backup / PLUGIN_MARKER_NAME).write_text(
+                PLUGIN_MARKER_TEXT, encoding="utf-8", newline="\n"
+            )
+            destination.replace(backup / "previous")
+        try:
+            staging.replace(destination)
+        except OSError:
+            previous = None if backup is None else backup / "previous"
+            if previous is not None and previous.exists() and not destination.exists():
+                previous.replace(destination)
+            raise
+        if backup is not None:
+            _remove_owned_plugin_temp(backup, destination.parent)
+            backup = None
+    finally:
+        _remove_owned_plugin_temp(staging, destination.parent)
+        if backup is not None and not (backup / "previous").exists():
+            _remove_owned_plugin_temp(backup, destination.parent)
+
+def _validate_codex_distribution(output: Path) -> list[str]:
+    source = output / "plugin"
+    destination = ROOT / "plugins" / "diataxis-docs"
+    current = _lexical(ROOT)
+    for part in Path("plugins/diataxis-docs").parts:
+        current /= part
+        if os.path.lexists(current) and _is_reparse(current):
+            return ["Codex marketplace distribution reparse path"]
+    if not destination.is_dir():
+        return ["Codex marketplace distribution missing"]
+    errors = []
+    for error in _plugin_tree_parity(source, destination):
+        errors.append(f"Codex marketplace distribution {error}")
+    return errors
+
 def generate(output: Path) -> None:
     source_text = (SOURCE / "SKILL.md").read_text(encoding="utf-8")
     version = canonical_version(source_text)
@@ -314,6 +505,8 @@ def generate(output: Path) -> None:
                 encoding="utf-8",
                 newline="\n",
             )
+            for command in COMMANDS:
+                _write_focused_skill(d / "skills", command, "claude")
     wrapper = command_wrapper(version)
     for vendor in ("gemini", "opencode"):
         d = output / vendor; d.mkdir(); (d / "docs.md").write_text(wrapper, encoding="utf-8", newline="\n")
@@ -323,11 +516,16 @@ def generate(output: Path) -> None:
     plugin = output / "plugin"; (plugin / ".codex-plugin").mkdir(parents=True); (plugin / "skills" / "docs").mkdir(parents=True)
     manifest = _versioned_manifest(CODEX_PLUGIN_MANIFEST_BASE, version)
     (plugin / ".codex-plugin" / "plugin.json").write_text(json.dumps(manifest, sort_keys=True, indent=2)+"\n", encoding="utf-8", newline="\n")
+    (plugin / PLUGIN_MARKER_NAME).write_text(
+        PLUGIN_MARKER_TEXT, encoding="utf-8", newline="\n"
+    )
     (plugin / "skills" / "docs" / "SKILL.md").write_text(source_text, encoding="utf-8", newline="\n")
     for resource in ("references", "agents", "scripts", "assets"):
         shutil.copytree(SOURCE / resource, plugin / "skills" / "docs" / resource, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (plugin / "assets").mkdir()
     shutil.copy2(SOURCE / "assets" / "bounded-compass.png", plugin / "assets" / "bounded-compass.png")
+    for command in COMMANDS:
+        _write_focused_skill(plugin / "skills", command, "codex")
 
 def validate(output: Path) -> list[str]:
     errors=[]; canonical=(SOURCE/"SKILL.md").read_text(encoding="utf-8")
@@ -376,6 +574,21 @@ def validate(output: Path) -> list[str]:
         errors.append("claude plugin manifest")
     else:
         if claude_manifest != _versioned_manifest(CLAUDE_PLUGIN_MANIFEST_BASE, version): errors.append("claude plugin manifest parity")
+    for c in COMMANDS:
+        for vendor in ("claude", "codex"):
+            base = output / "claude" / "skills" if vendor == "claude" else output / "plugin" / "skills"
+            skill_root = base / f"docs-{c}"
+            skill_path = skill_root / "SKILL.md"
+            agent_path = skill_root / "agents" / "openai.yaml"
+            expected_skill = command_skill(c, vendor)
+            if not skill_path.is_file() or skill_path.read_text(encoding="utf-8") != expected_skill:
+                errors.append(f"focused skill parity {vendor}/{c}")
+            if not agent_path.is_file() or agent_path.read_text(encoding="utf-8") != command_agent_metadata(c):
+                errors.append(f"focused agent metadata parity {vendor}/{c}")
+            for asset in ASSETS:
+                target = skill_root / "assets" / asset
+                if not target.is_file() or target.read_bytes() != (SOURCE / "assets" / asset).read_bytes():
+                    errors.append(f"focused asset parity {vendor}/{c}/{asset}")
     for v in ("gemini","opencode"):
         wrapper = (output/v/"docs.md").read_text(encoding="utf-8")
         if wrapper != command_wrapper(version): errors.append(f"wrapper parity {v}")
@@ -409,7 +622,17 @@ def validate(output: Path) -> list[str]:
             f"{prefix}/{rel}"
             for rel in CANONICAL_RESOURCE_FILES
         )
-    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | adapter_files | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", "plugin/skills/docs/SKILL.md", *(f"plugin/skills/docs/{rel}" for rel in CANONICAL_RESOURCE_FILES), "plugin/assets/bounded-compass.png"}
+    focused_files = {
+        relative
+        for vendor, prefix in (("claude", "claude/skills"), ("codex", "plugin/skills"))
+        for c in COMMANDS
+        for relative in (
+            f"{prefix}/docs-{c}/SKILL.md",
+            f"{prefix}/docs-{c}/agents/openai.yaml",
+            *(f"{prefix}/docs-{c}/assets/{asset}" for asset in ASSETS),
+        )
+    }
+    expected = {MARKER_NAME, "claude/.claude-plugin/plugin.json"} | adapter_files | focused_files | {f"{v}/docs.md" for v in ("gemini","opencode")} | {f"web/docs-{c}.txt" for c in COMMANDS} | {"plugin/.codex-plugin/plugin.json", f"plugin/{PLUGIN_MARKER_NAME}", "plugin/skills/docs/SKILL.md", *(f"plugin/skills/docs/{rel}" for rel in CANONICAL_RESOURCE_FILES), "plugin/assets/bounded-compass.png"}
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()}
     marker = output / MARKER_NAME
     if not marker.is_file() or marker.read_text(encoding="utf-8") != MARKER_TEXT: errors.append("output ownership marker")
@@ -436,8 +659,16 @@ def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument("mode", nargs="?", choices=("generate",), default="generate"); ap.add_argument("--check", action="store_true"); ap.add_argument("--output", type=Path, default=ROOT/"adapters")
     ns=ap.parse_args(argv)
     try:
-        if ns.check: errors=validate(ns.output)
-        else: generate(ns.output); errors=validate(ns.output)
+        if ns.check:
+            errors=validate(ns.output)
+            if _lexical(ns.output) == _lexical(ROOT / "adapters"):
+                errors.extend(_validate_codex_distribution(ns.output))
+        else:
+            generate(ns.output)
+            errors=validate(ns.output)
+            if not errors and _lexical(ns.output) == _lexical(ROOT / "adapters"):
+                _sync_codex_distribution(ns.output)
+                errors.extend(_validate_codex_distribution(ns.output))
     except (OSError, ValueError, UnicodeError) as exc: print(f"error: {exc}", file=sys.stderr); return 2
     if errors:
         print("\n".join(errors), file=sys.stderr); return 1

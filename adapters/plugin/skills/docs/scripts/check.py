@@ -15,6 +15,9 @@ _SAFE_PUBLIC_CLI_ERRORS = frozenset(
         "--doctor-recovery-preview and --doctor-recovery-apply are mutually exclusive",
         "Doctor recovery cannot be combined with --init-discovery",
         "--init-discovery requires --json --agent",
+        "--doctor-baseline requires --json --agent",
+        "--doctor-baseline cannot be combined with --init-discovery or Doctor recovery",
+        "--doctor-baseline does not accept --scope, --map, --hot, or --continuation",
         "--continuation requires --init-discovery --json --agent",
         "content continuation token is invalid",
         "path traversal is not allowed",
@@ -55,6 +58,7 @@ from _docs_checker.discovery import (
     scan_selected_document_corpus,
     validate_corpus_coverage,
 )
+from _docs_checker.doctor_baseline import doctor_orientation_baseline
 from _docs_checker.init_closeout import inspect_initialization_preflight
 from _docs_checker.continuation import decode_continuation_token
 from _docs_checker.identity import (
@@ -198,6 +202,7 @@ _PARSER.add_argument("root")
 _PARSER.add_argument("--json", action="store_true")
 _PARSER.add_argument("--agent", action="store_true")
 _PARSER.add_argument("--init-discovery", action="store_true")
+_PARSER.add_argument("--doctor-baseline", action="store_true")
 _PARSER.add_argument("--doctor-recovery-preview", action="store_true")
 _PARSER.add_argument("--doctor-recovery-apply", default=None, metavar="APPROVAL")
 _PARSER.add_argument("--continuation", default=None)
@@ -216,12 +221,17 @@ def check(
     scope="docs",
     *,
     _measurements=False,
+    _navigation=None,
 ):
     root = Path(root).absolute()
     _assert_no_reparse_components(root)
     map_norm = normalize_repo_relative(map_path, "map")
     scope_norm = normalize_repo_relative(scope, "scope")
-    navigation = select_navigation(root, scope_norm, map_norm)
+    navigation = (
+        select_navigation(root, scope_norm, map_norm)
+        if _navigation is None
+        else _navigation
+    )
     scan_scope = (
         navigation["scope"] if navigation["provider"] == "mintlify" else scope_norm
     )
@@ -317,6 +327,7 @@ def main(argv=None):
             "--json",
             "--doctor-recovery-preview",
             "--doctor-recovery-apply",
+            "--doctor-baseline",
         )
     )
     if machine_output and not positional:
@@ -336,6 +347,7 @@ def main(argv=None):
         namespace.doctor_recovery_preview
         or namespace.doctor_recovery_apply is not None
     )
+    baseline_mode = namespace.doctor_baseline
     try:
         if namespace.agent and not namespace.json:
             raise ValueError("--agent requires --json")
@@ -348,6 +360,20 @@ def main(argv=None):
             )
         if recovery_mode and namespace.init_discovery:
             raise ValueError("Doctor recovery cannot be combined with --init-discovery")
+        if baseline_mode and (namespace.init_discovery or recovery_mode):
+            raise ValueError(
+                "--doctor-baseline cannot be combined with --init-discovery or Doctor recovery"
+            )
+        if baseline_mode and not (namespace.json and namespace.agent):
+            raise ValueError("--doctor-baseline requires --json --agent")
+        if baseline_mode and any(
+            arg == option or arg.startswith(option + "=")
+            for arg in argv
+            for option in ("--scope", "--map", "--hot", "--continuation")
+        ):
+            raise ValueError(
+                "--doctor-baseline does not accept --scope, --map, --hot, or --continuation"
+            )
         if namespace.init_discovery and not (
             namespace.json and namespace.agent
         ):
@@ -380,6 +406,11 @@ def main(argv=None):
                     verification=None,
                 )
             )
+        elif baseline_mode:
+            _assert_no_reparse_components(raw)
+            if _is_reparse(raw) or not raw.is_dir():
+                raise ValueError("root must be a real directory")
+            baseline_response = doctor_orientation_baseline(safe_path(raw, raw), check)
         elif namespace.init_discovery:
             discovery_state, discovery = prepare_init_discovery(
                 raw,
@@ -501,6 +532,17 @@ def main(argv=None):
             "approval-required",
             "recovered",
         } else 2
+    if baseline_mode:
+        print(
+            json.dumps(
+                baseline_response,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        )
+        return 0 if baseline_response.get("doctor_baseline", {}).get("status") == "measured" else 2
     if namespace.init_discovery:
         print(json.dumps(discovery, ensure_ascii=True))
         return 2 if discovery.get("status") == "state-conflict" else 0

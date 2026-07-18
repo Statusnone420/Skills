@@ -1,0 +1,9 @@
+interface:
+  display_name: "Docs Migrate"
+  short_description: "Preview exact documentation moves before separate approval."
+  icon_small: "./assets/bounded-compass-small.svg"
+  icon_large: "./assets/bounded-compass.png"
+  brand_color: "#6657E8"
+  default_prompt: "Use $docs-migrate on this repository."
+policy:
+  allow_implicit_invocation: false

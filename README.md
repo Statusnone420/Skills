@@ -76,7 +76,7 @@ flowchart TD
 
 ## Install and compatibility
 
-Codex is the primary tested path and invokes the skill explicitly as `$docs …`. The core follows the Agent Skills structure. Claude can install the same product through the repository's thin marketplace shim; generated adapters also exist for Grok, Copilot, Cursor, Gemini, OpenCode, generic web prompts, and a Codex plugin preview.
+Codex is the primary tested path. Its marketplace package exposes `$docs-doctor`, `$docs-map`, `$docs-check`, and the other focused commands as individual skills while preserving the `$docs …` umbrella. Claude exposes the same set through `/diataxis-docs:docs-*`. The core follows the Agent Skills structure; generated adapters also exist for Grok, Copilot, Cursor, Gemini, OpenCode, and generic web prompts.
 
 Compatibility is evidence-tiered—not universal. Static adapter validation is not the same as a live harness test. See the dated [compatibility matrix](COMPATIBILITY.md) before relying on a preview adapter.
 
@@ -92,7 +92,7 @@ Compatibility is evidence-tiered—not universal. Static adapter validation is n
 
 Every finding has a content-derived `DOC-*` identity and full fingerprint. Line movement and timestamps do not retarget it; changed semantic identity does. Approved structural transformations carry exact ID/fingerprint pairs, protected-surface evidence, recovery boundaries, and a complete disposition manifest. Failed verification is a state conflict, never a successful closeout.
 
-The generic web bundles now use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,484 to 24,679 bytes; the 40,000-byte packaging guard is a documented regression check with 15,321 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
+The generic web bundles use command-specific progressive disclosure. Measured UTF-8 prompt sizes range from 3,396 to 30,855 bytes; the 42,000-byte packaging guard is a documented regression check with 11,145 bytes of headroom, not a product or health threshold. The separate repository hot-path byte telemetry remains provisional and informational.
 
 ## Benchmark status
 

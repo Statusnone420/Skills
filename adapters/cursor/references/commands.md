@@ -41,13 +41,34 @@ For `context`, `map`, and `check`, orient from existing map/current-state files;
 `migrate`: preview exact moves and the resulting tree without moving, writing, or deleting; later, separate user message must accept the exact preview and revalidate evidence, proposal, and worktree.
 `check`: make no edits. Report the deterministic structural score only. No advice and no edits. Orient from the map and named current-state hot path; execute the bundled checker once as `<python> <checker-path> <repository-root> --json --agent --map docs/README.md`. A missing map uses the same bounded fallback route as `map`; omit `--hot` when no existing current-state file is selected. `has_findings: true` is a findings result. The checker must be the final repository-evidence action: no repository read is permitted after the checker. Without execution, use the smallest scriptless equivalent and state the limitation. Use the shared health output.
 `cleanup`: preview splits, merges, archives, removals, and estimated context savings without changing files; later, separate user message must accept the exact preview and revalidate evidence, proposal, and worktree.
-`help [all]`: `Diátaxis Docs v<metadata.version>`; `help` returns Daily help; `help all` returns Daily help plus Help all; no repo I/O.
+`help [all]`: `Diátaxis Docs v<metadata.version>`; `help` returns Daily help; `help all` returns Daily help plus Help all; no repo I/O. Always render this command tree before the matching descriptions so Help remains recognizable across hosts:
+
+```text
+Diátaxis Docs
+├── doctor
+├── init
+├── context
+├── write
+├── update
+├── audit
+├── fix
+├── map
+├── classify
+├── migrate
+├── check
+├── cleanup
+└── help
+```
 
 `doctor [--details] [goal]`: diagnose and prescribe in a read-only initial response. Bare Doctor retains every compact checker finding in its declared/evidenced scan scope and shows finding/treatment counts plus one compact card per correct evidence-backed treatment; it does not cap finding or treatment count. Full evidence is explicit `--details` output. Goal text narrows diagnosis while retaining related blockers, reporting exclusions, and avoiding any repository-exhaustive claim for a scoped result. `check` remains the structural score only: no advice and no edits.
 
-On missing or uncertain map evidence, Doctor first runs the explicit read-only discovery route `<python> <checker-path> <repository-root> --json --agent --init-discovery`; `$docs doctor [--details] --scope <repository-relative-directory> [goal text]` appends the explicit scope and confines the result to it. Respect selection-required/truncated/physical-limit user actions and open content only after a bounded scope is selected. Retain requested, normalized, selected, and inspected scope; exclusions/prunes; configured and observed limits; the planned content batch and unopened routes; and `content_reads` in its evidence receipt. Then run the normal checker once for the selected scope and group all compact findings into the default treatment cards. Semantic evidence opens remain bounded to four files and unverified suspicions stay unresolved.
+On missing or uncertain map evidence without explicit user scope, Doctor runs exactly one engine-owned read-only route: `<python> <checker-path> <repository-root> --json --agent --doctor-baseline`. Do not reconstruct its discovery, provider, or authority decisions with separate commands. Explicitly scoped no-map requests do not use this route and remain unmeasured.
 
-Only Doctor permits bounded post-check evidence after the checker; map and check reject repository reads after it. Print `health.meter` once from checker evidence and explain measured evidence. When work remains, include exact approval syntax for one or many treatments, naming every exact `DOC-*` ID and full fingerprint. After initialization or treatment, recommend `$docs doctor` to establish the next comparable baseline.
+The engine returns one of four zero-write modes. A supported provider gives an authoritative provider measurement, permits findings-based treatment authority, and never recommends Init. A conventional immediate entry filename gives a provisional `existing-entry-candidate` measurement: it is not proof of a maintained map, emits no treatment authority, and recommends `$docs map`. With neither, a tracked root `README.md` may give `Provisional structural baseline (root README orientation fallback)`: state that `README.md` is not a maintained documentation map, report the deterministic structural baseline, emit no treatment authority or Init preview, and recommend `$docs init`. A content-batch-only limit remains structurally measurable when scope metadata is complete and untruncated; it grants no semantic expansion. Unsupported provider semantics, unsafe/incomplete metadata discovery, or failed fallback preconditions return `Doctor baseline unavailable` with no score or recommendation. Unavailable evidence is never zero.
+
+With a maintained map, run the normal checker once for the selected scope and group all compact findings into the default treatment cards. Semantic evidence opens remain bounded to four files and unverified suspicions stay unresolved.
+
+Only Doctor permits bounded post-check evidence after the checker; map and check reject repository reads after it. Print `health.meter` once from checker evidence and explain measured evidence. For authoritative findings, when work remains include exact approval syntax for one or many treatments, naming every exact `DOC-*` ID and full fingerprint. Provisional candidate/fallback results emit no treatment ID, fingerprint, approval, or Init preview. After initialization or treatment, recommend `$docs doctor` to establish the next comparable baseline.
 
 Writes separate verified facts, inference, and candidates. Unknown commands have no side effects.
 

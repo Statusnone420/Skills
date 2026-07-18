@@ -1,0 +1,9 @@
+interface:
+  display_name: "Docs Update"
+  short_description: "Update documentation for a verified repository change."
+  icon_small: "./assets/bounded-compass-small.svg"
+  icon_large: "./assets/bounded-compass.png"
+  brand_color: "#6657E8"
+  default_prompt: "Use $docs-update on this repository."
+policy:
+  allow_implicit_invocation: false

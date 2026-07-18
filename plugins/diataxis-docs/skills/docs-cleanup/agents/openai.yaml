@@ -1,0 +1,9 @@
+interface:
+  display_name: "Docs Cleanup"
+  short_description: "Preview documentation consolidation and cleanup before approval."
+  icon_small: "./assets/bounded-compass-small.svg"
+  icon_large: "./assets/bounded-compass.png"
+  brand_color: "#6657E8"
+  default_prompt: "Use $docs-cleanup on this repository."
+policy:
+  allow_implicit_invocation: false
