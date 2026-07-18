@@ -292,7 +292,7 @@ class EvidenceReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceeds available"):
             evidence.validate_evidence_receipt(value)
 
-    def test_builder_counts_hidden_pages_separately_from_pages(self):
+    def test_builder_preserves_counts_and_missing_map_path(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             docs = root / "docs"
@@ -329,6 +329,22 @@ class EvidenceReceiptTests(unittest.TestCase):
                 "semantic": run_docs_corpus._semantic_not_assessed(),
             }
             receipt = evidence.build_evidence_receipt(**builder)
+            missing_map_builder = copy.deepcopy(builder)
+            missing_map_builder["checker_payload"]["findings"] = [
+                {"kind": "missing-map", "map": "docs/missing-map.md"},
+                {
+                    "kind": "missing-map",
+                    "source": "docs/source.md",
+                    "map": "docs/lower-priority-map.md",
+                },
+                {
+                    "kind": "missing-map",
+                    "path": "docs/path.md",
+                    "source": "docs/lower-priority-source.md",
+                    "map": "docs/lower-priority-map.md",
+                },
+            ]
+            missing_map_receipt = evidence.build_evidence_receipt(**missing_map_builder)
 
             for field, malformed in (
                 ("run", None),
@@ -354,6 +370,17 @@ class EvidenceReceiptTests(unittest.TestCase):
                     evidence.build_evidence_receipt(**malformed_builder)
         self.assertEqual(receipt["counts"]["pages"], {"status": "completed", "value": 2})
         self.assertEqual(receipt["counts"]["hidden_pages"], {"status": "completed", "value": 1})
+        self.assertEqual(
+            missing_map_receipt["evidence"]["deterministic"]["findings"][0]["path"],
+            {"status": "completed", "value": "docs/missing-map.md"},
+        )
+        self.assertEqual(
+            [
+                row["path"]["value"]
+                for row in missing_map_receipt["evidence"]["deterministic"]["findings"]
+            ],
+            ["docs/missing-map.md", "docs/source.md", "docs/path.md"],
+        )
 
     def test_unavailable_is_not_zero_and_must_match_index(self):
         with self.assertRaises(ValueError):
@@ -1814,6 +1841,44 @@ class CorpusHarnessTests(unittest.TestCase):
                     sys.executable,
                     "-c",
                     "import sys; sys.path.insert(0, 'tools'); import run_docs_corpus; "
+                    "print(sys.dont_write_bytecode)",
+                ],
+                cwd=copied_root,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertEqual(cli_caches, [])
+        self.assertEqual(imported.returncode, 0, imported.stdout + imported.stderr)
+        self.assertEqual(imported.stdout.strip(), "False")
+
+    def test_preparer_disables_bytecode_before_runner_imports(self):
+        with tempfile.TemporaryDirectory() as td:
+            copied_root = Path(td) / "repo"
+            copied_tools = copied_root / "tools"
+            copied_tools.mkdir(parents=True)
+            shutil.copy2(TOOLS / "prepare_docs_corpus.py", copied_tools)
+            shutil.copy2(TOOLS / "run_docs_corpus.py", copied_tools)
+            copied_scripts = copied_root / "skills" / "docs" / "scripts"
+            shutil.copytree(SCRIPTS, copied_scripts)
+            for cache in copied_root.rglob("__pycache__"):
+                shutil.rmtree(cache)
+            child_env = os.environ.copy()
+            child_env.pop("PYTHONDONTWRITEBYTECODE", None)
+            cli = subprocess.run(
+                [sys.executable, str(copied_tools / "prepare_docs_corpus.py"), "--help"],
+                cwd=copied_root,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+            cli_caches = list(copied_root.rglob("__pycache__"))
+            imported = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.path.insert(0, 'tools'); import prepare_docs_corpus; "
                     "print(sys.dont_write_bytecode)",
                 ],
                 cwd=copied_root,

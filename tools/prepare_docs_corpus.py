@@ -3,11 +3,15 @@
 
 from __future__ import annotations
 
+import sys
+
+_previous_dont_write_bytecode = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+
 import argparse
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from run_docs_corpus import (
@@ -20,6 +24,9 @@ from run_docs_corpus import (
     safe_path,
     verify_checkout,
 )
+
+sys.dont_write_bytecode = _previous_dont_write_bytecode
+del _previous_dont_write_bytecode
 
 
 WORKSPACE_ROOT = ROOT / "evals" / "workspace"

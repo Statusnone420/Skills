@@ -1395,7 +1395,14 @@ def build_evidence_receipt(
     for raw in checker_payload.get("findings", ()):
         if not isinstance(raw, Mapping) or not isinstance(raw.get("kind"), str):
             continue
-        path = raw.get("path") if isinstance(raw.get("path"), str) else raw.get("source")
+        path = next(
+            (
+                raw.get(field)
+                for field in ("path", "source", "map")
+                if isinstance(raw.get(field), str)
+            ),
+            None,
+        )
         line = raw.get("line") if isinstance(raw.get("line"), int) else None
         target = raw.get("target") if isinstance(raw.get("target"), str) else None
         findings.append(finding_receipt(raw["kind"], path=path, line=line, target=target))
