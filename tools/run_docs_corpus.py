@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -316,6 +317,29 @@ def _output_path(value, workspace):
     raise ValueError("corpus output must remain outside the corpus workspace")
 
 
+def _write_output(output, encoded):
+    """Atomically replace output without following an existing hard link."""
+    _assert_no_reparse_components(output)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=output.parent,
+        prefix=f".{output.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            descriptor = None
+            stream.write(encoded)
+        _assert_no_reparse_components(output)
+        os.replace(temporary, output)
+        temporary = None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
@@ -327,8 +351,7 @@ def main(argv=None):
         result = run_corpus(namespace.manifest, namespace.workspace)
         encoded = json.dumps(result, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
         if output:
-            _assert_no_reparse_components(output)
-            output.write_text(encoded, encoding="utf-8", newline="\n")
+            _write_output(output, encoded)
         else:
             print(encoded, end="")
         return 0
