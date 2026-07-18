@@ -12,6 +12,14 @@ FRONTMATTER_NAVIGATION_KEYS = frozenset({"hidden", "title"})
 _FRONTMATTER_KEY = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$")
 
 
+def _is_column_zero_frontmatter_delimiter(line, allowed):
+    delimiter = line.rstrip("\r\n")
+    return (
+        not delimiter.startswith((" ", "\t"))
+        and delimiter.rstrip(" \t") in allowed
+    )
+
+
 def is_document_path(value):
     """Return whether a path is supported as inert documentation text."""
     return Path(value).suffix.casefold() in DOCUMENT_SUFFIXES
@@ -41,7 +49,7 @@ def parse_frontmatter_scalars(text):
     if not isinstance(text, str):
         return {"status": "unresolved", "values": {}, "unresolved": ["document"]}
     lines = text.removeprefix("\ufeff").splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
+    if not lines or not _is_column_zero_frontmatter_delimiter(lines[0], {"---"}):
         return {"status": "absent", "values": {}, "unresolved": []}
     region_bytes = 0
     closing = None
@@ -49,7 +57,7 @@ def parse_frontmatter_scalars(text):
         region_bytes += len(line.encode("utf-8", "strict"))
         if region_bytes > MAX_FRONTMATTER_BYTES:
             return {"status": "unresolved", "values": {}, "unresolved": ["size"]}
-        if index and line.strip() in {"---", "..."}:
+        if index and _is_column_zero_frontmatter_delimiter(line, {"---", "..."}):
             closing = index
             break
     if closing is None:

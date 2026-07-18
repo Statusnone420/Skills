@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+import string
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from urllib.parse import unquote
@@ -543,6 +544,15 @@ def finding_receipt(kind, *, path=None, line=None, target=None, fingerprint=None
     }
 
 
+def _has_column_zero_frontmatter_opener(text):
+    source = text.removeprefix("\ufeff")
+    first_line = re.split(r"\r\n|\r|\n", source, maxsplit=1)[0]
+    return (
+        not first_line.startswith((" ", "\t"))
+        and first_line.rstrip(" \t") == "---"
+    )
+
+
 def _markdown_body_lines(text):
     """Return body lines after bounded frontmatter, or None when its boundary is unresolved."""
     source = text.removeprefix("\ufeff")
@@ -553,7 +563,7 @@ def _markdown_body_lines(text):
         start = match.end()
     if start < len(source):
         lines.append(source[start:])
-    if not lines or lines[0].strip() != "---":
+    if not lines or not _has_column_zero_frontmatter_opener(text):
         return lines
     region_bytes = 0
     for index, line in enumerate(lines):
@@ -699,18 +709,96 @@ def _without_inline_code_spans(line, open_length=0):
     return "".join(masked), 0
 
 
+def _is_safe_single_line_js_string(value):
+    """Validate the bounded JavaScript string forms accepted as inert ESM."""
+    if len(value) < 2 or value[0] not in {'"', "'"} or value[-1] != value[0]:
+        return False
+    content = value[1:-1]
+    index = 0
+    while index < len(content):
+        char = content[index]
+        if char in "\r\n\u2028\u2029":
+            return False
+        if char != "\\":
+            index += 1
+            continue
+        if index + 1 >= len(content):
+            return False
+        escaped = content[index + 1]
+        if escaped in "123456789":
+            return False
+        if escaped == "0":
+            if index + 2 < len(content) and content[index + 2].isdigit():
+                return False
+            index += 2
+            continue
+        if escaped == "x":
+            digits = content[index + 2 : index + 4]
+            if len(digits) != 2 or any(char not in string.hexdigits for char in digits):
+                return False
+            index += 4
+            continue
+        if escaped == "u":
+            if index + 2 < len(content) and content[index + 2] == "{":
+                end = content.find("}", index + 3)
+                digits = content[index + 3 : end] if end >= 0 else ""
+                if (
+                    not 1 <= len(digits) <= 6
+                    or any(char not in string.hexdigits for char in digits)
+                    or int(digits, 16) > 0x10FFFF
+                ):
+                    return False
+                index = end + 1
+                continue
+            digits = content[index + 2 : index + 6]
+            if len(digits) != 4 or any(char not in string.hexdigits for char in digits):
+                return False
+            index += 6
+            continue
+        index += 2
+    return True
+
+
 def _is_single_line_mdx_esm(line):
     stripped = line.strip()
     simple_import = re.fullmatch(
-        r"import(?:\s+[A-Za-z_$][A-Za-z0-9_$]*\s+from)?\s+(['\"])[^'\"\r\n]+\1\s*;?",
+        r"import(?:\s+(?P<import_binding>[A-Za-z_$][A-Za-z0-9_$]*)\s+from)?\s+"
+        r"(?P<import_value>\"(?:\\[^\r\n]|[^\"\\\r\n])+\"|"
+        r"'(?:\\[^\r\n]|[^'\\\r\n])+')\s*;?",
         stripped,
     )
     simple_export = re.fullmatch(
-        r"export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*"
-        r"(?:\"(?:\\[^\r\n]|[^\"\\\r\n])*\"|'(?:\\[^\r\n]|[^'\\\r\n])*')\s*;?",
+        r"export\s+const\s+(?P<export_binding>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+        r"(?P<export_value>\"(?:\\[^\r\n]|[^\"\\\r\n])*\"|"
+        r"'(?:\\[^\r\n]|[^'\\\r\n])*')\s*;?",
         stripped,
     )
-    return simple_import is not None or simple_export is not None
+    binding = None
+    value = None
+    if simple_import is not None:
+        binding = simple_import.group("import_binding")
+        value = simple_import.group("import_value")
+    elif simple_export is not None:
+        binding = simple_export.group("export_binding")
+        value = simple_export.group("export_value")
+    else:
+        return False
+    return (
+        (binding is None or binding not in _JS_RESERVED_BINDINGS)
+        and _is_safe_single_line_js_string(value)
+    )
+
+
+_JS_RESERVED_BINDINGS = frozenset(
+    {
+        "arguments", "await", "break", "case", "catch", "class", "const", "continue",
+        "debugger", "default", "delete", "do", "else", "enum", "eval", "export", "extends",
+        "false", "finally", "for", "function", "if", "implements", "import", "in",
+        "instanceof", "interface", "let", "new", "null", "package", "private", "protected",
+        "public", "return", "static", "super", "switch", "this", "throw", "true", "try",
+        "typeof", "var", "void", "while", "with", "yield",
+    }
+)
 
 
 _RAW_HTML_BLANK_TAGS = frozenset(
@@ -776,6 +864,7 @@ def observe_entry_orientation(root, entry):
             "provider_rendered_title": evidence_value("unavailable"),
         }
     body_lines = _markdown_body_lines(text)
+    frontmatter_opened = _has_column_zero_frontmatter_opener(text)
     literal_h1 = None
     if body_lines is not None:
         component_document = Path(relative).suffix.casefold() == ".mdx"
@@ -788,11 +877,23 @@ def observe_entry_orientation(root, entry):
         raw_html_terminator = None
         raw_html_until_blank = False
         in_mdx_esm = False
+        simple_mdx_esm_pending = False
         in_mdx_expression = False
         uncertain = False
         literal_h1 = False
         for raw_line in body_lines:
             line = raw_line.rstrip("\r\n")
+            if simple_mdx_esm_pending:
+                if _is_ascii_blank_line(line):
+                    simple_mdx_esm_pending = False
+                    continue
+                if re.match(
+                    r"^(?:import|export)(?:\s|\{|$)", line
+                ) and _is_single_line_mdx_esm(line):
+                    continue
+                uncertain = True
+                in_mdx_esm = True
+                continue
             if in_html_comment:
                 if not html_comment_block and (
                     _is_ascii_blank_line(line)
@@ -901,8 +1002,11 @@ def observe_entry_orientation(root, entry):
             if component_document and re.match(
                 r"^(?:import|export)(?:\s|\{|$)", pre_stripped
             ):
-                uncertain = True
-                in_mdx_esm = not _is_single_line_mdx_esm(pre_stripped)
+                if _is_single_line_mdx_esm(pre_stripped):
+                    simple_mdx_esm_pending = True
+                else:
+                    uncertain = True
+                    in_mdx_esm = True
                 continue
             jsx_match = re.match(
                 r"^</?([A-Za-z][A-Za-z0-9._-]*)(?:[ \t]|/?>|$)", pre_stripped
@@ -1071,7 +1175,11 @@ def observe_entry_orientation(root, entry):
     if body_lines is None:
         frontmatter_title = evidence_value("unavailable")
     else:
-        metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
+        metadata = (
+            parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
+            if frontmatter_opened
+            else {"status": "absent", "values": {}, "unresolved": []}
+        )
         title = metadata.get("values", {}).get("title")
         unresolved_metadata = set(metadata.get("unresolved", ()))
         if isinstance(title, str) and "title" not in unresolved_metadata:

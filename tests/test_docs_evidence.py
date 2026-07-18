@@ -480,6 +480,33 @@ class EvidenceReceiptTests(unittest.TestCase):
                 observed["frontmatter_title"], {"status": "unavailable", "value": None}
             )
 
+            indented_opener = root / "indented-opener.md"
+            indented_opener.write_text(
+                "  ---\ntitle: Not frontmatter\n# Actual H1\n", encoding="utf-8"
+            )
+            observed = evidence.observe_entry_orientation(root, indented_opener.name)
+            self.assertEqual(
+                observed["literal_h1"], {"status": "completed", "value": True}
+            )
+            self.assertEqual(
+                observed["frontmatter_title"],
+                {"status": "completed", "value": False},
+            )
+
+            indented_false_close = root / "indented-false-close.md"
+            indented_false_close.write_text(
+                "---\ntitle: Good\ndescription: |\n  ---\ntitle: Duplicate\n---\n# Actual H1\n",
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, indented_false_close.name)
+            self.assertEqual(
+                observed["literal_h1"], {"status": "completed", "value": True}
+            )
+            self.assertEqual(
+                observed["frontmatter_title"],
+                {"status": "unavailable", "value": None},
+            )
+
     def test_orientation_ignores_comments_and_indented_code(self):
         scenarios = {
             "html-comment": "<!--\n# not a heading\n-->\n## Start\n",
@@ -667,6 +694,54 @@ class EvidenceReceiptTests(unittest.TestCase):
             "esm-then-heading.mdx": (
                 "import Example from './example'\n\n# Actual H1\n",
                 {"status": "completed", "value": True},
+            ),
+            "esm-import-no-h1.mdx": (
+                "import Example from './example'\n\n## Start\n",
+                {"status": "completed", "value": False},
+            ),
+            "esm-export-no-h1.mdx": (
+                'export const marker = "safe"\n\n## Start\n',
+                {"status": "completed", "value": False},
+            ),
+            "esm-import-no-boundary.mdx": (
+                "import Example from './example'\n# Not body Markdown\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-consecutive-imports.mdx": (
+                "import One from './one'\nimport Two from './two'\n\n# Actual H1\n",
+                {"status": "completed", "value": True},
+            ),
+            "esm-reserved-import-binding.mdx": (
+                "import for from './components'\n\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-reserved-export-binding.mdx": (
+                'export const for = "safe"\n\n# Actual H1\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-import-string.mdx": (
+                "import Example from '.\\'\n\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-import-escape.mdx": (
+                "import Example from './\\xZZ'\n\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-side-effect-escape.mdx": (
+                "import './\\xZZ'\n\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-strict-string.mdx": (
+                'export const marker = "\\8"\n\n# Actual H1\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-export-hex.mdx": (
+                'export const marker = "\\xZZ"\n\n# Actual H1\n',
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-invalid-export-unicode.mdx": (
+                'export const marker = "\\u{ZZ}"\n\n# Actual H1\n',
+                {"status": "unavailable", "value": None},
             ),
             "esm-named-import-parked.mdx": (
                 "import { Callout } from './components'\n\n# Actual H1\n",
