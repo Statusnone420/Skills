@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import sys
+
+_previous_dont_write_bytecode = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+
 import argparse
 import json
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -29,6 +33,9 @@ from _docs_checker.health import HEALTH_RUBRIC_VERSION, HEALTH_WEIGHTS, health_s
 from _docs_checker.init_adoption import SKILL_VERSION  # noqa: E402
 from _docs_checker.paths import _assert_no_reparse_components, safe_path  # noqa: E402
 from check import check  # noqa: E402
+
+sys.dont_write_bytecode = _previous_dont_write_bytecode
+del _previous_dont_write_bytecode
 
 
 DEFAULT_MANIFEST = ROOT / "evals" / "docs-corpus-v1.json"

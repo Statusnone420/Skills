@@ -1757,6 +1757,43 @@ class CorpusHarnessTests(unittest.TestCase):
                 )
             self.assertEqual(json.loads(output.read_text(encoding="utf-8")), result)
 
+    def test_runner_disables_bytecode_before_checker_imports(self):
+        with tempfile.TemporaryDirectory() as td:
+            copied_root = Path(td) / "repo"
+            copied_tools = copied_root / "tools"
+            copied_tools.mkdir(parents=True)
+            shutil.copy2(TOOLS / "run_docs_corpus.py", copied_tools)
+            copied_scripts = copied_root / "skills" / "docs" / "scripts"
+            shutil.copytree(SCRIPTS, copied_scripts)
+            for cache in copied_root.rglob("__pycache__"):
+                shutil.rmtree(cache)
+            child_env = os.environ.copy()
+            child_env.pop("PYTHONDONTWRITEBYTECODE", None)
+            cli = subprocess.run(
+                [sys.executable, str(copied_tools / "run_docs_corpus.py"), "--help"],
+                cwd=copied_root,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+            cli_caches = list(copied_root.rglob("__pycache__"))
+            imported = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.path.insert(0, 'tools'); import run_docs_corpus; "
+                    "print(sys.dont_write_bytecode)",
+                ],
+                cwd=copied_root,
+                env=child_env,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertEqual(cli_caches, [])
+        self.assertEqual(imported.returncode, 0, imported.stdout + imported.stderr)
+        self.assertEqual(imported.stdout.strip(), "False")
+
     def test_prepare_reparse_workspace_cannot_write_outside(self):
         with tempfile.TemporaryDirectory() as td:
             original = prepare_docs_corpus.WORKSPACE_ROOT
