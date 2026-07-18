@@ -15,6 +15,8 @@ flowchart LR
     J["Selected-surface engine"] --> K["Markdown map or bounded Mintlify provider"]
     K --> I
     L["Malformed or unsupported provider input"] --> M["Unmeasured, fail closed"]
+    N["Pinned corpus manifest"] --> O["Read-only corpus runner"]
+    O --> P["Sanitized evidence receipt v1"]
 ```
 
 ## Commands
@@ -40,6 +42,21 @@ python -B tools/run_tests.py list
 python -B tools/run_tests.py verify
 ```
 
+Validate the receipt and corpus harness with local fixtures:
+
+```text
+python -B -m unittest -v tests.test_docs_evidence
+```
+
+Public corpus acquisition is explicit and writes only new ignored checkouts. The runner itself performs no acquisition or target writes:
+
+```text
+python -B tools/prepare_docs_corpus.py --manifest evals/docs-corpus-v1.json
+python -B tools/run_docs_corpus.py --manifest evals/docs-corpus-v1.json --output evals/docs-corpus-baseline-v1.json
+```
+
+Preparation never deletes, updates, or reuses an existing corpus directory. The runner requires the official remote, exact detached commit, clean before/after Git status, and every declared entry/configuration probe. It never installs dependencies, builds sites, or executes MDX, JSX, JavaScript, TypeScript, TOML, YAML, Hugo shortcodes, imports, expressions, or components.
+
 The orchestrator prints each group start and finish, module/test progress from verbose `unittest`, elapsed time, and a heartbeat every 30 seconds while work is still running. `--heartbeat-seconds` changes that interval and `--failfast` stops at the first failure.
 
 ## WSL performance
@@ -57,5 +74,7 @@ Run the Ubuntu proof from a Linux-native checkout under `$HOME`, not directly fr
 7. Let CI repeat the same grouped commands; CI confirms local evidence rather than discovering basic failures.
 
 Provider regressions also prove that Map, Check, Doctor, Audit, and Init use the same selected-surface evidence, including root-manifest authority, root README score isolation, tracked Git visibility, provider findings, and authority-digest Init revalidation on Git and non-Git fixtures. Semantic candidates remain labeled and bounded.
+
+Corpus regressions additionally prove exact pins, inert configuration probes, unsupported-provider `not_assessed` states, orientation evidence that does not affect scoring, and zero target-repository writes. Rubric v2 and its category weights remain the comparison baseline until a separate calibration change is justified.
 
 No valid test may be skipped, deleted, or weakened to pass a gate. A completion claim requires fresh output, a reviewed diff, and explicit separation of change-caused failures from verified pre-existing failures.

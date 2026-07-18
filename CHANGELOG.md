@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — Evidence and calibration foundation (2026-07-17)
+
+- Added a strict sanitized evidence receipt that preserves category-level rubric inputs, score gates, deterministic findings, semantic findings, unresolved candidates, Doctor evidence, Git/write state, and explicit unavailable values.
+- Preserved the sanitized 0.1.3 Cline dogfood baseline without accessing raw session data or inventing missing commit, category, treatment, or approval evidence.
+- Added a six-repository, commit-pinned documentation corpus with non-destructive sparse acquisition and a read-only runner that records supported Mintlify measurements and inert unsupported-provider evidence.
+- Added provider-neutral literal-H1 and frontmatter-title observations without changing rubric v2, `HEALTH_WEIGHTS`, useful-entry gating, or provider scoring.
+- Kept external models and APIs optional: deterministic receipts and corpus evidence remain local, standard-library based, and network-free after explicit corpus acquisition.
+
 ## 0.1.3 — Deterministic navigation surfaces (2026-07-17)
 
 - Unified `.md`, `.markdown`, and `.mdx` under one inert, vendor-neutral structural policy without executing MDX or component code.

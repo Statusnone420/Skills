@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "receipt_id": "dogfood-cline-0.1.3",
+  "repository": {
+    "identifier": "github.com/cline/cline",
+    "commit": {"status": "unavailable", "value": null}
+  },
+  "checker": {"name": "diataxis-docs", "version": "0.1.3"},
+  "run": {
+    "id": "019f71fd-aa0d-7093-821c-b5a2b98975e7",
+    "client": "codex-desktop-vscode",
+    "model_provider": "openai",
+    "model": "gpt-5.6-luna",
+    "effort": "max",
+    "turns": {"status": "completed", "value": 1},
+    "duration_seconds": {"status": "completed", "value": 508.747},
+    "commands": ["docs-map", "docs-check", "docs-audit", "docs-doctor"]
+  },
+  "surface": {
+    "provider": "mintlify",
+    "authority": {"status": "completed", "value": "docs/docs.json"},
+    "provider_root": {"status": "completed", "value": "docs"},
+    "entry": {"status": "completed", "value": "docs/cline-overview.mdx"}
+  },
+  "counts": {
+    "pages": {"status": "completed", "value": 107},
+    "hidden_pages": {"status": "completed", "value": 3},
+    "redirects": {"status": "completed", "value": 188},
+    "links_checked": {"status": "completed", "value": 245},
+    "links_valid": {"status": "completed", "value": 245},
+    "anchors_checked": {"status": "completed", "value": 78},
+    "anchors_valid": {"status": "completed", "value": 72}
+  },
+  "orientation": {
+    "literal_h1": {"status": "completed", "value": false},
+    "frontmatter_title": {"status": "completed", "value": true},
+    "provider_rendered_title": {"status": "unavailable", "value": null}
+  },
+  "health": {
+    "status": "completed",
+    "rubric_version": {"status": "completed", "value": 2},
+    "percentage": {"status": "completed", "value": 29},
+    "earned_weight": {"status": "unavailable", "value": null},
+    "available_weight": {"status": "completed", "value": 100},
+    "categories": {
+      "entry": {
+        "raw": {
+          "map_exists": {"status": "unavailable", "value": null},
+          "map_has_h1": {"status": "completed", "value": false},
+          "map_has_body": {"status": "unavailable", "value": null},
+          "map_has_h2": {"status": "unavailable", "value": null},
+          "valid_navigation_routes": {"status": "unavailable", "value": null},
+          "complete_single_document": {"status": "unavailable", "value": null},
+          "useful_entry": {"status": "completed", "value": false}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 20}
+      },
+      "path_safety": {
+        "raw": {
+          "safe": {"status": "unavailable", "value": null},
+          "maintained": {"status": "unavailable", "value": null}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 15}
+      },
+      "links": {
+        "raw": {
+          "valid": {"status": "completed", "value": 245},
+          "checked": {"status": "completed", "value": 245}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 20}
+      },
+      "anchors": {
+        "raw": {
+          "valid": {"status": "completed", "value": 72},
+          "checked": {"status": "completed", "value": 78}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 10}
+      },
+      "reachability": {
+        "raw": {
+          "reachable": {"status": "unavailable", "value": null},
+          "maintained": {"status": "completed", "value": 107}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 25}
+      },
+      "titles": {
+        "raw": {
+          "usable_unique": {"status": "unavailable", "value": null},
+          "maintained": {"status": "completed", "value": 107}
+        },
+        "earned": {"status": "unavailable", "value": null},
+        "available": {"status": "completed", "value": 10}
+      }
+    },
+    "score_gates": {
+      "map_has_h1": {"status": "completed", "value": false},
+      "useful_entry": {"status": "completed", "value": false}
+    }
+  },
+  "evidence": {
+    "deterministic": {
+      "status": "completed",
+      "findings": [
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/api/authentication.mdx"}, "line": {"status": "completed", "value": 72}, "target": {"status": "completed", "value": "/cli/cli-reference#cline-auth"}, "fingerprint": {"status": "unavailable", "value": null}},
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/api/getting-started.mdx"}, "line": {"status": "completed", "value": 97}, "target": {"status": "completed", "value": "/api/models#free-models"}, "fingerprint": {"status": "unavailable", "value": null}},
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/customization/cline-rules.mdx"}, "line": {"status": "completed", "value": 54}, "target": {"status": "completed", "value": "/getting-started/config#storage-locations"}, "fingerprint": {"status": "unavailable", "value": null}},
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/customization/skills.mdx"}, "line": {"status": "completed", "value": 151}, "target": {"status": "completed", "value": "/getting-started/config#storage-locations"}, "fingerprint": {"status": "unavailable", "value": null}},
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/enterprise-solutions/api-reference.mdx"}, "line": {"status": "completed", "value": 23}, "target": {"status": "completed", "value": "/api/overview#authentication"}, "fingerprint": {"status": "unavailable", "value": null}},
+        {"kind": "missing-anchor", "path": {"status": "completed", "value": "docs/tools-reference/all-cline-tools.mdx"}, "line": {"status": "completed", "value": 67}, "target": {"status": "completed", "value": "/sdk/tools#creating-custom-tools"}, "fingerprint": {"status": "unavailable", "value": null}}
+      ]
+    },
+    "semantic": {
+      "status": "completed",
+      "evaluator": {
+        "provider": {"status": "completed", "value": "openai"},
+        "model": {"status": "completed", "value": "gpt-5.6-luna"},
+        "version": {"status": "unavailable", "value": null}
+      },
+      "findings": []
+    },
+    "unresolved": {
+      "status": "completed",
+      "candidates": [
+        {"kind": "canonical-diataxis-map", "status": "unavailable"},
+        {"kind": "doctor-treatment-fingerprint", "status": "unavailable"},
+        {"kind": "approval-line-evidence", "status": "unavailable"},
+        {"kind": "category-health-receipt", "status": "unavailable"}
+      ]
+    }
+  },
+  "doctor": {
+    "status": "completed",
+    "treatment_fingerprint": {"status": "unavailable", "value": null},
+    "approval_line_present": {"status": "unavailable", "value": null}
+  },
+  "write_audit": {
+    "status": "completed",
+    "writes_attempted": {"status": "completed", "value": 0},
+    "writes_observed": {"status": "completed", "value": 0}
+  },
+  "git": {
+    "before": {"status": "unavailable", "value": null},
+    "after": {"status": "completed", "value": "clean"}
+  },
+  "unavailable_evidence": [
+    "doctor.approval_line_present",
+    "doctor.treatment_fingerprint",
+    "evidence.deterministic.findings[0].fingerprint",
+    "evidence.deterministic.findings[1].fingerprint",
+    "evidence.deterministic.findings[2].fingerprint",
+    "evidence.deterministic.findings[3].fingerprint",
+    "evidence.deterministic.findings[4].fingerprint",
+    "evidence.deterministic.findings[5].fingerprint",
+    "evidence.semantic.evaluator.version",
+    "git.before",
+    "health.categories.anchors.earned",
+    "health.categories.entry.earned",
+    "health.categories.entry.raw.complete_single_document",
+    "health.categories.entry.raw.map_exists",
+    "health.categories.entry.raw.map_has_body",
+    "health.categories.entry.raw.map_has_h2",
+    "health.categories.entry.raw.valid_navigation_routes",
+    "health.categories.links.earned",
+    "health.categories.path_safety.earned",
+    "health.categories.path_safety.raw.maintained",
+    "health.categories.path_safety.raw.safe",
+    "health.categories.reachability.earned",
+    "health.categories.reachability.raw.reachable",
+    "health.categories.titles.earned",
+    "health.categories.titles.raw.usable_unique",
+    "health.earned_weight",
+    "orientation.provider_rendered_title",
+    "repository.commit"
+  ]
+}
