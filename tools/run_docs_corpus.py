@@ -322,7 +322,7 @@ def _write_output(output, encoded):
     _assert_no_reparse_components(output)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=output.parent,
-        prefix=f".{output.name}.",
+        prefix=".docs-corpus-",
         suffix=".tmp",
     )
     temporary = Path(temporary_name)

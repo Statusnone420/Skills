@@ -1738,6 +1738,25 @@ class CorpusHarnessTests(unittest.TestCase):
             self.assertEqual(checkout_file.read_text(encoding="utf-8"), "checkout bytes\n")
             self.assertEqual(json.loads(output.read_text(encoding="utf-8")), result)
 
+    def test_runner_atomic_output_accepts_near_limit_basename(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            output = root / ("x" * 242)
+            output.write_text("previous bytes\n", encoding="utf-8")
+            result = {"schema_version": 1, "repositories": []}
+            with mock.patch.object(
+                run_docs_corpus, "run_corpus", return_value=result
+            ):
+                self.assertEqual(
+                    run_docs_corpus.main(
+                        ["--workspace", str(workspace), "--output", str(output)]
+                    ),
+                    0,
+                )
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), result)
+
     def test_prepare_reparse_workspace_cannot_write_outside(self):
         with tempfile.TemporaryDirectory() as td:
             original = prepare_docs_corpus.WORKSPACE_ROOT
