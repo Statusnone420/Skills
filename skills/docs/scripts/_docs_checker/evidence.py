@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .formats import MAX_FRONTMATTER_BYTES, parse_frontmatter_scalars
-from .paths import normalize_repo_relative, safe_path
+from .paths import normalize_repo_relative, safe_path, shared_text_exposes_route
 
 
 EVIDENCE_RECEIPT_VERSION = 1
@@ -37,13 +37,16 @@ _PRIVATE_POSIX_ABSOLUTE = re.compile(
     re.IGNORECASE,
 )
 _NETWORK_PATH = re.compile(r"(?<![A-Za-z0-9_.\\/-])(?://|\\\\)")
-_URI_SCHEME = re.compile(r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:")
+_URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_FILE_SCHEME = re.compile(r"(?<![A-Za-z0-9+.-])file:", re.IGNORECASE)
+_PRIVATE_LOCAL = re.compile(r"(?i)(?<![A-Za-z0-9_.-])\.local(?:[\\/]|$)")
+_WINDOWS_ROOTED = re.compile(r"(?<![A-Za-z0-9_.\\/-])\\(?!\\)[^\s]+")
 _CREDENTIAL_PARAMETER = re.compile(
-    r"(?:^|[?&#;])[^=&#;]*(?:api[_-]?key|authorization|credential|password|secret|token)[^=&#;]*=",
+    r"(?:^|[\\/?&#;])[^=\\/&#;]*(?:api[_-]?key|authorization|credential|password|secret|token)[^=\\/&#;]*=",
     re.IGNORECASE,
 )
 _CREDENTIAL_VALUE = re.compile(
-    r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",
+    r"(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|(?:sk|rk)-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|bearer\s+[A-Za-z0-9._-]{12,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)",
     re.IGNORECASE,
 )
 _CATEGORY_RAW_FIELDS = {
@@ -112,6 +115,17 @@ def _exact_keys(value, expected, name):
     return value
 
 
+def _decoded_forms(value, name):
+    current = value
+    for _ in range(MAX_TEXT_BYTES + 1):
+        yield current
+        decoded = unquote(current)
+        if decoded == current:
+            return
+        current = decoded
+    raise ValueError(f"{name} has excessive encoding depth")
+
+
 def _bounded_text(value, name, *, pattern=None, allow_empty=False):
     if not isinstance(value, str) or (not value and not allow_empty):
         raise ValueError(f"{name} must be text")
@@ -119,20 +133,17 @@ def _bounded_text(value, name, *, pattern=None, allow_empty=False):
         raise ValueError(f"{name} exceeds capacity")
     if any(ord(char) < 32 for char in value):
         raise ValueError(f"{name} contains control characters")
-    current = value
-    for _ in range(4):
+    for current in _decoded_forms(value, name):
         if (
             _WINDOWS_ABSOLUTE.search(current)
             or _PRIVATE_POSIX_ABSOLUTE.search(current)
             or _NETWORK_PATH.search(current)
+            or _WINDOWS_ROOTED.search(current)
+            or _PRIVATE_LOCAL.search(current)
         ):
             raise ValueError(f"{name} exposes an absolute or private path")
-        if _CREDENTIAL_VALUE.search(current):
+        if _CREDENTIAL_VALUE.search(current) or _CREDENTIAL_PARAMETER.search(current):
             raise ValueError(f"{name} exposes credential-shaped data")
-        decoded = unquote(current)
-        if decoded == current:
-            break
-        current = decoded
     if pattern is not None and pattern.fullmatch(value) is None:
         raise ValueError(f"{name} is invalid")
     return value
@@ -151,7 +162,7 @@ def _nonnegative_number(value, name):
 
 
 def _percentage(value, name):
-    value = _nonnegative_number(value, name)
+    value = _integer(value, name)
     if value > 100:
         raise ValueError(f"{name} must not exceed 100")
     return value
@@ -198,6 +209,9 @@ def _digest(value, name):
 
 
 def _relative(value, name):
+    _bounded_text(value, name)
+    if any(shared_text_exposes_route(current) for current in _decoded_forms(value, name)):
+        raise ValueError(f"{name} exposes a private or unsafe route")
     normalized = normalize_repo_relative(value, name)
     if normalized != value:
         raise ValueError(f"{name} must be normalized")
@@ -206,16 +220,11 @@ def _relative(value, name):
 
 def _route(value, name):
     value = _bounded_text(value, name)
-    current = value
-    for _ in range(4):
-        if _URI_SCHEME.search(current):
+    for current in _decoded_forms(value, name):
+        if _URI_SCHEME.match(current) or _FILE_SCHEME.search(current):
             raise ValueError(f"{name} must be a local route")
         if _CREDENTIAL_PARAMETER.search(current):
             raise ValueError(f"{name} exposes credential-shaped data")
-        decoded = unquote(current)
-        if decoded == current:
-            break
-        current = decoded
     return value
 
 

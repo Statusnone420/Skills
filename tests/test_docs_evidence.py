@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).parents[1]
@@ -127,6 +128,7 @@ class EvidenceReceiptTests(unittest.TestCase):
             "guide.md?access_token=SUPERSECRET",
             "%2Froot%2F.ssh%2Fid_rsa",
             "guide.md?%74oken=SUPERSECRET",
+            "#api:v1?token=SUPERSECRET",
         ):
             value = copy.deepcopy(self.receipt)
             value["evidence"]["deterministic"]["findings"][0]["target"] = {
@@ -139,14 +141,51 @@ class EvidenceReceiptTests(unittest.TestCase):
         value = copy.deepcopy(self.receipt)
         value["evidence"]["deterministic"]["findings"][0]["target"] = {
             "status": "completed",
-            "value": "/docs/safe-guide#setup",
+            "value": "/docs/safe-guide#api:v1",
         }
         evidence.validate_evidence_receipt(value)
 
-        value = copy.deepcopy(self.receipt)
-        value["run"]["model"] = "sk-proj-synthetic012345678901234567890"
-        with self.assertRaisesRegex(ValueError, "credential-shaped"):
-            evidence.validate_evidence_receipt(value)
+        for credential in (
+            "sk-proj-synthetic012345678901234567890",
+            "glpat-synthetic012345678901234567890",
+            "npm_012345678901234567890123456789012345",
+            "pypi-synthetic012345678901234567890",
+            "eyJsynthetic01.eyJsynthetic02.synthetic-signature",
+        ):
+            value = copy.deepcopy(self.receipt)
+            value["run"]["model"] = credential
+            with self.subTest(credential=credential), self.assertRaisesRegex(
+                ValueError, "credential-shaped"
+            ):
+                evidence.validate_evidence_receipt(value)
+
+        for private_path in (
+            ".local/private.md",
+            r"\Users\private\notes.md",
+            "docs/guide.md?token=SUPERSECRET",
+            quote(quote(quote(quote("/root/.ssh/id_rsa", safe=""), safe=""), safe=""), safe=""),
+        ):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"]["deterministic"]["findings"][0]["path"] = {
+                "status": "completed",
+                "value": private_path,
+            }
+            with self.subTest(private_path=private_path), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
+
+        deeply_encoded_target = "/tmp/private/secret.txt"
+        deeply_encoded_parameter = "guide.md?token=SUPERSECRET"
+        for _ in range(4):
+            deeply_encoded_target = quote(deeply_encoded_target, safe="")
+            deeply_encoded_parameter = quote(deeply_encoded_parameter, safe="")
+        for target in (deeply_encoded_target, deeply_encoded_parameter):
+            value = copy.deepcopy(self.receipt)
+            value["evidence"]["deterministic"]["findings"][0]["target"] = {
+                "status": "completed",
+                "value": target,
+            }
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                evidence.validate_evidence_receipt(value)
 
     def test_completed_health_requires_every_category(self):
         value = copy.deepcopy(self.receipt)
@@ -160,12 +199,52 @@ class EvidenceReceiptTests(unittest.TestCase):
             evidence.validate_evidence_receipt(value)
 
         value = copy.deepcopy(self.receipt)
+        value["health"]["percentage"] = {"status": "completed", "value": 29.5}
+        with self.assertRaisesRegex(ValueError, "integer"):
+            evidence.validate_evidence_receipt(value)
+
+        value = copy.deepcopy(self.receipt)
         value["health"]["categories"]["entry"]["earned"] = {
             "status": "completed",
             "value": 21,
         }
         with self.assertRaisesRegex(ValueError, "exceeds available"):
             evidence.validate_evidence_receipt(value)
+
+    def test_builder_counts_hidden_pages_separately_from_pages(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            docs = root / "docs"
+            docs.mkdir()
+            (docs / "README.md").write_text("# Home\n\n## Start\n", encoding="utf-8")
+            findings, _, measurements = run_docs_corpus.check(
+                root,
+                map_path="docs/README.md",
+                scope="docs",
+                _measurements=True,
+            )
+            health = run_docs_corpus.health_summary(
+                measurements,
+                findings=measurements["active_findings"],
+                baseline=measurements["baseline"],
+                freshness=measurements["freshness"],
+                coverage=measurements["coverage"],
+            )
+            navigation = copy.deepcopy(measurements["navigation"])
+            navigation["navigated_pages"] = ["docs/README.md", "docs/guide.md"]
+            navigation["hidden_pages"] = ["docs/guide.md"]
+            receipt = evidence.build_evidence_receipt(
+                receipt_id="page-count-regression",
+                repository_identifier="example.invalid/docs/page-count",
+                commit="0" * 40,
+                checker_version="0.1.4",
+                run=copy.deepcopy(self.receipt["run"]),
+                checker_payload={"navigation": navigation, "health": health, "findings": findings},
+                orientation=copy.deepcopy(self.receipt["orientation"]),
+                semantic=run_docs_corpus._semantic_not_assessed(),
+            )
+        self.assertEqual(receipt["counts"]["pages"], {"status": "completed", "value": 2})
+        self.assertEqual(receipt["counts"]["hidden_pages"], {"status": "completed", "value": 1})
 
     def test_unavailable_is_not_zero_and_must_match_index(self):
         with self.assertRaises(ValueError):
