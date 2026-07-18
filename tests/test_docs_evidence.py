@@ -127,6 +127,10 @@ class EvidenceReceiptTests(unittest.TestCase):
             "/tmp/private/secret.txt",
             "/root/.ssh/id_rsa",
             r"\\server\private\secret.txt",
+            "../private-roadmap.md",
+            "..%2fprivate-roadmap.md",
+            "%2e%2e/private.md",
+            "/docs/../private-roadmap.md",
             "see /tmp/private/secret.txt",
             "file:///etc/passwd",
             "guide.md?token=SUPERSECRET",
@@ -407,6 +411,20 @@ class EvidenceReceiptTests(unittest.TestCase):
             self.assertEqual(observed["literal_h1"], {"status": "unavailable", "value": None})
             self.assertEqual(
                 observed["frontmatter_title"], {"status": "unavailable", "value": None}
+            )
+
+            scalar_close = root / "scalar-close.md"
+            scalar_close.write_text(
+                "---\ntitle: Guide\ndescription: |\n  ---\n# still scalar\n",
+                encoding="utf-8",
+            )
+            observed = evidence.observe_entry_orientation(root, scalar_close.name)
+            self.assertEqual(
+                observed["literal_h1"], {"status": "unavailable", "value": None}
+            )
+            self.assertEqual(
+                observed["frontmatter_title"],
+                {"status": "unavailable", "value": None},
             )
 
             oversized = root / "oversized.md"

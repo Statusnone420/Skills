@@ -241,6 +241,13 @@ def _route(value, name):
             raise ValueError(f"{name} must be a local route")
         if _CREDENTIAL_PARAMETER.search(current):
             raise ValueError(f"{name} exposes credential-shaped data")
+        route_text = (
+            candidate[1:]
+            if candidate.startswith("/") and not candidate.startswith("//")
+            else candidate
+        )
+        if shared_text_exposes_route(route_text):
+            raise ValueError(f"{name} exposes a private or unsafe route")
     return value
 
 
@@ -1055,15 +1062,18 @@ def observe_entry_orientation(root, entry):
             uncertain or in_mdx_esm or in_mdx_expression or inline_code_length
         ):
             literal_h1 = None
-    metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
-    title = metadata.get("values", {}).get("title")
-    unresolved_metadata = set(metadata.get("unresolved", ()))
-    if isinstance(title, str) and "title" not in unresolved_metadata:
-        frontmatter_title = evidence_value("completed", bool(title.strip()))
-    elif metadata.get("status") in {"absent", "measured"}:
-        frontmatter_title = evidence_value("completed", False)
-    else:
+    if body_lines is None:
         frontmatter_title = evidence_value("unavailable")
+    else:
+        metadata = parse_frontmatter_scalars(text[: MAX_FRONTMATTER_BYTES + 1])
+        title = metadata.get("values", {}).get("title")
+        unresolved_metadata = set(metadata.get("unresolved", ()))
+        if isinstance(title, str) and "title" not in unresolved_metadata:
+            frontmatter_title = evidence_value("completed", bool(title.strip()))
+        elif metadata.get("status") in {"absent", "measured"}:
+            frontmatter_title = evidence_value("completed", False)
+        else:
+            frontmatter_title = evidence_value("unavailable")
     return {
         "literal_h1": evidence_value("completed", literal_h1)
         if literal_h1 is not None
