@@ -29,6 +29,7 @@ MODULES = (
     "scan",
     "identity",
     "memory",
+    "doctor_baseline",
     "health",
     "navigation",
 )
@@ -242,6 +243,10 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
             graph["scan"], {"formats", "paths", "identity", "health", "navigation"}
         )
         self.assertLessEqual(graph["memory"], {"formats", "paths", "identity"})
+        self.assertEqual(
+            graph["doctor_baseline"],
+            {"discovery", "health", "navigation", "paths"},
+        )
         self.assertEqual(graph["navigation"], {"formats", "paths"})
         visiting = set()
         visited = set()

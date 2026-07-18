@@ -4,11 +4,12 @@ The evaluation workflow uses deterministic fixtures, disposable repositories, re
 
 ## Layered regression gates
 
-The public alpha uses three gates so quality evidence does not become an uncontrolled model-usage campaign:
+The public alpha uses four gates so quality evidence does not become an uncontrolled model-usage campaign:
 
 1. **Deterministic contract gate:** every change runs standard-library tests for safety, checker behavior, adapter parity, and command contracts.
-2. **Sanitized trajectory gate:** host-neutral receipts record semantic answers, documentation-owned actions, host/external overhead, visible diagnostics, and exposed usage counters. Raw traces, hidden reasoning, private paths, and credentials are never public inputs.
-3. **Capped live canary:** release candidates may run a small, explicitly approved campaign against stable mapped, missing-map, and hostile fixtures. A campaign is limited to 12 runs; the checked-in example authorizes none.
+2. **Marketplace assembly gate:** release packaging must prove that a real Codex marketplace entry resolves to an identity-aligned package whose umbrella and 13 focused skills are present, explicit-only, and generator-owned.
+3. **Sanitized trajectory gate:** host-neutral receipts record semantic answers, documentation-owned actions, host/external overhead, visible diagnostics, and exposed usage counters. Raw traces, hidden reasoning, private paths, and credentials are never public inputs.
+4. **Capped live canary:** release candidates may run a small, explicitly approved campaign against stable mapped, missing-map, and hostile fixtures. A campaign is limited to 12 runs; the checked-in example authorizes none.
 
 ## Product contract and research provenance
 

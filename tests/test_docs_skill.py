@@ -117,7 +117,7 @@ class DocsSkillContractTests(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
 
-        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.4\"", skill)
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.5\"", skill)
         self.assertIn("Diátaxis Docs v<metadata.version>", commands)
 
     def test_default_help_uses_plain_english_daily_commands(self):
@@ -370,10 +370,10 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_canonical_version_is_strict_semver(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertEqual(build_adapters.canonical_version(skill), "0.1.4")
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.5")
         for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
             with self.subTest(invalid=invalid):
-                malformed = skill.replace('version: "0.1.4"', f'version: "{invalid}"')
+                malformed = skill.replace('version: "0.1.5"', f'version: "{invalid}"')
                 with self.assertRaises(ValueError):
                     build_adapters.canonical_version(malformed)
 
@@ -657,17 +657,16 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_doctor_first_contact_reuses_read_only_discovery_and_reports_scope_evidence(self):
         doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
         lowered = doctor.lower()
-        discovery_invocation = (
+        baseline_invocation = (
             "<python> <installed-skill>/scripts/check.py <repository-root> "
-            "--json --agent --init-discovery"
+            "--json --agent --doctor-baseline"
         )
 
-        self.assertIn("discover_init_scope(root, explicit_scope=None)", doctor)
-        self.assertIn(discovery_invocation, doctor)
+        self.assertIn(baseline_invocation, doctor)
         self.assertIn("$docs doctor --scope <repository-relative-directory> [goal text]", doctor)
         self.assertRegex(
             lowered,
-            r"missing\s+or\s+uncertain\s+map.{0,180}first\s+repository-evidence\s+action.{0,180}--init-discovery",
+            r"missing\s+or\s+uncertain\s+map.{0,180}first\s+and\s+only\s+repository-evidence\s+action.{0,180}--doctor-baseline",
         )
         self.assertRegex(
             lowered,
@@ -689,6 +688,11 @@ class DocsSkillContractTests(unittest.TestCase):
             "unopened routes",
             "content_reads",
             "explicit scope is honored as a confinement boundary",
+            "supported provider",
+            "existing-entry-candidate",
+            "orientation fallback",
+            "doctor baseline unavailable",
+            "no treatment authority",
         ):
             self.assertIn(concept, lowered)
         self.assertIn(

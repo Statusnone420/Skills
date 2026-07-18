@@ -69,9 +69,10 @@ Run the Ubuntu proof from a Linux-native checkout under `$HOME`, not directly fr
 2. Run its owning group on Windows.
 3. Run the same group in WSL Ubuntu.
 4. Regenerate and verify generated adapters when canonical skill content changed.
-5. Run the repository documentation checker.
-6. Run `all` on Windows and WSL once the narrower gates pass.
-7. Let CI repeat the same grouped commands; CI confirms local evidence rather than discovering basic failures.
+5. For marketplace releases, verify `.agents/plugins/marketplace.json`, the generated `plugins/diataxis-docs` package, all focused skill descriptions, and a brand-new task invocation rather than relying only on source-level adapter parity.
+6. Run the repository documentation checker.
+7. Run `all` on Windows and WSL once the narrower gates pass.
+8. Let CI repeat the same grouped commands; CI confirms local evidence rather than discovering basic failures.
 
 Provider regressions also prove that Map, Check, Doctor, Audit, and Init use the same selected-surface evidence, including root-manifest authority, root README score isolation, tracked Git visibility, provider findings, and authority-digest Init revalidation on Git and non-Git fixtures. Semantic candidates remain labeled and bounded.
 

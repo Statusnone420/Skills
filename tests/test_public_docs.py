@@ -13,6 +13,7 @@ class PublicDocumentationContractTests(unittest.TestCase):
             "BENCHMARK.md", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md",
             "ROADMAP.md", "LICENSE", "NOTICE", "AGENTS.md", "docs/README.md",
             "docs/STATE.md", ".github/dependabot.yml", ".github/workflows/codeql.yml",
+            ".agents/plugins/marketplace.json", "plugins/diataxis-docs/.codex-plugin/plugin.json",
             ".claude-plugin/marketplace.json", "adapters/claude/.claude-plugin/plugin.json",
             "adapters/claude/skills/docs/SKILL.md",
             ".github/ISSUE_TEMPLATE/bug-report.yml",
@@ -42,7 +43,8 @@ class PublicDocumentationContractTests(unittest.TestCase):
         self.assertIn("108-run matrix", benchmark)
         self.assertIn("not run", benchmark.lower())
         compatibility = (ROOT / "COMPATIBILITY.md").read_text(encoding="utf-8")
-        self.assertIn("unpublished preview", compatibility.lower())
+        self.assertIn("codex marketplace plugin", compatibility.lower())
+        self.assertIn("13 focused command skills", compatibility.lower())
         self.assertIn("canonical source", compatibility.lower())
         self.assertIn("adapters", compatibility.lower())
         install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")

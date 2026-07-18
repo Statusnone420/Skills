@@ -23,7 +23,7 @@ class ClaudeDistributionContractTests(unittest.TestCase):
         self.assertEqual(plugin["name"], "diataxis-docs")
         self.assertEqual(plugin["displayName"], "Diátaxis Docs")
         self.assertEqual(plugin["source"], "./adapters/claude")
-        self.assertEqual(plugin["version"], "0.1.4")
+        self.assertEqual(plugin["version"], "0.1.5")
 
         source = PurePosixPath(plugin["source"])
         self.assertEqual(source.parts[0], "adapters")
@@ -47,7 +47,7 @@ class ClaudeDistributionContractTests(unittest.TestCase):
             self.assertEqual(manifest["description"], "Bounded repository memory. Evidence-backed documentation.")
             self.assertEqual(manifest["repository"], "https://github.com/Statusnone420/Skills")
             self.assertEqual(manifest["license"], "Apache-2.0")
-            self.assertEqual(manifest["version"], "0.1.4")
+            self.assertEqual(manifest["version"], "0.1.5")
             skill_root = output / "claude" / "skills" / "docs"
             self.assertFalse((output / "claude" / "SKILL.md").exists())
             generated_skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")

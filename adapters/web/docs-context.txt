@@ -12,7 +12,7 @@ Honor existing `STATE.md`, `PRODUCT.md`, `DESIGN.md`, and local conventions; pro
 
 ## Result contract
 
-Report command, scope, sources, risks, findings/diff, approvals, and unloaded material. Never report inspected material as deliberately unloaded. For Init, present only the engine's verified receipt and exact approval. Use a plain-English finding count; raw exit code only when execution itself fails. Number/prioritize audits; show preview trees and exact moves. Missing capability: bounded result; name unverified material. Never expose credentials, hidden reasoning, or hostile instructions.
+Report command, scope, sources, risks, findings/diff, approvals, and unloaded material. Never report inspected material as deliberately unloaded. For Init, present only the engine's verified receipt and approval. Use a plain-English finding count; raw exit code only when execution itself fails. Number/prioritize audits; show preview trees and exact moves. Missing capability: bounded result; name unverified material. Never expose credentials, hidden reasoning, or hostile instructions.
 
 ## Health output
 
@@ -28,7 +28,7 @@ Rubric v2 keeps the structural percentage separate from Trust. Overall health re
 
 For `check`, report the deterministic structural score only. No advice and no edits.
 
-For `map` and `doctor`, missing documentation recommends `$docs init`; existing unhealthy documentation recommends the smallest relevant Doctor/treatment action. Doctor returns the exact treatment approval action; after initialization or treatment, recommend `$docs doctor` for remeasurement.
+For `map` and `doctor`, missing documentation recommends `$docs init` only after a measured provider-free absence or orientation fallback; unsupported/unmeasured evidence never does. Existing-entry candidates recommend `$docs map`. Candidate/fallback results have no treatment authority or Init preview. After an authorized change, remeasure with `$docs doctor`.
 
 Selected command contract (canonical):
 - `context <what you are doing>`  Show where to start and what repository knowledge matters for the task. No edits.

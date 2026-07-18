@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
+from unittest import mock
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).parents[1]
@@ -128,6 +129,7 @@ class AdapterBuilderTests(unittest.TestCase):
                 "init_closeout.py",
                 "init_adoption.py",
                 "doctor_closeout.py",
+                "doctor_baseline.py",
                 "health.py",
                 "navigation.py",
             },
@@ -410,6 +412,79 @@ class AdapterBuilderTests(unittest.TestCase):
             run = subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(link / "new")], cwd=ROOT, capture_output=True, text=True)
             self.assertNotEqual(run.returncode, 0); self.assertTrue(sentinel.exists())
 
+    def test_codex_distribution_rejects_reparse_parent_before_replacement(self):
+        import tools.build_adapters as builder
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as td, tempfile.TemporaryDirectory() as outside_td:
+            fake_root = Path(td) / "repo"
+            generated = fake_root / "generated" / "plugin"
+            generated.mkdir(parents=True)
+            (generated / builder.PLUGIN_MARKER_NAME).write_text(
+                builder.PLUGIN_MARKER_TEXT, encoding="utf-8"
+            )
+            outside = Path(outside_td)
+            sentinel = outside / "sentinel.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+            fake_root.mkdir(exist_ok=True)
+            link = fake_root / "plugins"
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink unavailable")
+            original_root = builder.ROOT
+            try:
+                builder.ROOT = fake_root
+                with self.assertRaisesRegex(ValueError, "reparse point"):
+                    builder._sync_codex_distribution(fake_root / "generated")
+            finally:
+                builder.ROOT = original_root
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_codex_distribution_stages_before_replacing_last_good_package(self):
+        import tools.build_adapters as builder
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as td:
+            fake_root = Path(td) / "repo"
+            source = fake_root / "generated" / "plugin"
+            source.mkdir(parents=True)
+            (source / builder.PLUGIN_MARKER_NAME).write_text(
+                builder.PLUGIN_MARKER_TEXT, encoding="utf-8"
+            )
+            (source / "new.txt").write_text("new", encoding="utf-8")
+            destination = fake_root / "plugins" / "diataxis-docs"
+            destination.mkdir(parents=True)
+            (destination / builder.PLUGIN_MARKER_NAME).write_text(
+                builder.PLUGIN_MARKER_TEXT, encoding="utf-8"
+            )
+            sentinel = destination / "last-good.txt"
+            sentinel.write_text("keep", encoding="utf-8")
+
+            def fail_mid_copy(_source, staging, **_kwargs):
+                (Path(staging) / "partial.txt").write_text("partial", encoding="utf-8")
+                raise OSError("simulated copy interruption")
+
+            original_root = builder.ROOT
+            try:
+                builder.ROOT = fake_root
+                with mock.patch.object(builder.shutil, "copytree", side_effect=fail_mid_copy):
+                    with self.assertRaisesRegex(OSError, "simulated copy interruption"):
+                        builder._sync_codex_distribution(fake_root / "generated")
+                self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+                self.assertFalse((destination / "new.txt").exists())
+                self.assertFalse(
+                    list((fake_root / "plugins").glob(".diataxis-docs-stage-*"))
+                )
+
+                builder._sync_codex_distribution(fake_root / "generated")
+            finally:
+                builder.ROOT = original_root
+
+            self.assertFalse(sentinel.exists())
+            self.assertEqual((destination / "new.txt").read_text(encoding="utf-8"), "new")
+            self.assertFalse(
+                list((fake_root / "plugins").glob(".diataxis-docs-*"))
+            )
+
     def test_frontmatter_conflict_and_stale_empty_dir_fail_check(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as td:
             out = Path(td) / "out"; subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
@@ -439,7 +514,7 @@ class AdapterBuilderTests(unittest.TestCase):
             manifest["version"] = "9.9.9"
             manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8")
             wrapper_path = out / "gemini/docs.md"
-            wrapper_path.write_text(wrapper_path.read_text(encoding="utf-8").replace("v0.1.4", "v9.9.9"), encoding="utf-8")
+            wrapper_path.write_text(wrapper_path.read_text(encoding="utf-8").replace("v0.1.5", "v9.9.9"), encoding="utf-8")
 
             check = subprocess.run(
                 [sys.executable, str(BUILDER), "--check", "--output", str(out)],
@@ -458,7 +533,7 @@ class AdapterBuilderTests(unittest.TestCase):
             subprocess.run([sys.executable, str(BUILDER), "generate", "--output", str(out)], cwd=ROOT, check=True)
             skill_path = out / "copilot/SKILL.md"
             skill_path.write_text(
-                skill_path.read_text(encoding="utf-8").replace('version: "0.1.4"', 'version: "9.9.9"'),
+                skill_path.read_text(encoding="utf-8").replace('version: "0.1.5"', 'version: "9.9.9"'),
                 encoding="utf-8",
             )
 
@@ -542,20 +617,20 @@ class AdapterBuilderTests(unittest.TestCase):
             canonical = (ROOT / "skills/docs/SKILL.md").read_text(encoding="utf-8")
             for vendor in ("claude", "copilot", "grok", "cursor"):
                 text = (adapter_skill_root(out, vendor) / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn('  version: "0.1.4"', text)
+                self.assertIn('  version: "0.1.5"', text)
                 self.assertIn("user-invocable: true", text)
                 self.assertIn("disable-model-invocation: true", text)
                 self.assertEqual(text.split("---", 2)[-1].replace("\nuser-invocable: true\ndisable-model-invocation: true", "", 1), canonical.split("---", 2)[-1])
             for vendor in ("gemini", "opencode"):
                 wrapper = (out / vendor / "docs.md").read_text(encoding="utf-8")
                 self.assertIn("docs", wrapper.lower()); self.assertIn("raw trailing text", wrapper.lower())
-                self.assertIn("Diátaxis Docs v0.1.4", wrapper)
+                self.assertIn("Diátaxis Docs v0.1.5", wrapper)
             web = (out / "web" / "docs-help.txt").read_text(encoding="utf-8")
             self.assertIn("capabilit", web.lower())
-            self.assertIn("Diátaxis Docs v0.1.4", web)
+            self.assertIn("Diátaxis Docs v0.1.5", web)
             manifest = json.loads((out / "plugin/.codex-plugin/plugin.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["name"], "statusnone-skills")
-            self.assertEqual(manifest["version"], "0.1.4")
+            self.assertEqual(manifest["name"], "diataxis-docs")
+            self.assertEqual(manifest["version"], "0.1.5")
             self.assertEqual(manifest["interface"]["capabilities"], ["Read", "Write"])
             self.assertEqual(manifest["interface"].get("brandColor"), "#6657E8")
             self.assertEqual(manifest["interface"].get("composerIcon"), "./assets/bounded-compass.png")

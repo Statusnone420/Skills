@@ -1,0 +1,20 @@
+{
+  "interface": {
+    "displayName": "Statusnone Skills"
+  },
+  "name": "statusnone-skills",
+  "plugins": [
+    {
+      "category": "Developer Tools",
+      "name": "diataxis-docs",
+      "policy": {
+        "authentication": "ON_INSTALL",
+        "installation": "AVAILABLE"
+      },
+      "source": {
+        "path": "./plugins/diataxis-docs",
+        "source": "local"
+      }
+    }
+  ]
+}
