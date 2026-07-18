@@ -894,6 +894,28 @@ class EvidenceReceiptTests(unittest.TestCase):
                     with self.subTest(name=name, newline=repr(newline)):
                         self.assertEqual(observed["literal_h1"], expected)
 
+    def test_orientation_export_string_scan_is_linear_and_inert(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            closed_entry = root / "long-export-closed.mdx"
+            closed_entry.write_text(
+                'export const marker = "' + "\\a" * 50_000 + '"\n\n# Actual H1\n',
+                encoding="utf-8",
+            )
+            closed = evidence.observe_entry_orientation(root, closed_entry.name)
+            open_entry = root / "long-export-open.mdx"
+            open_entry.write_text(
+                'export const marker = "' + "\\a" * 50_000,
+                encoding="utf-8",
+            )
+            open_string = evidence.observe_entry_orientation(root, open_entry.name)
+        self.assertEqual(
+            closed["literal_h1"], {"status": "completed", "value": True}
+        )
+        self.assertEqual(
+            open_string["literal_h1"], {"status": "unavailable", "value": None}
+        )
+
     def test_stdout_receipt_entrypoint_combines_one_checker_run(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

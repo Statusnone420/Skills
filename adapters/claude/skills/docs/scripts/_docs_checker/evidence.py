@@ -693,7 +693,8 @@ def _is_single_line_mdx_esm(line):
         stripped,
     )
     simple_export = re.fullmatch(
-        r"export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(['\"])(?:\\.|(?!\1).)*\1\s*;?",
+        r"export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*"
+        r"(?:\"(?:\\[^\r\n]|[^\"\\\r\n])*\"|'(?:\\[^\r\n]|[^'\\\r\n])*')\s*;?",
         stripped,
     )
     return simple_import is not None or simple_export is not None
