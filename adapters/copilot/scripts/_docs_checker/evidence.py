@@ -481,6 +481,12 @@ def validate_evidence_receipt(value):
     _enum_text(write_audit["status"], EVIDENCE_STATES, "write_audit.status")
     _evidence(write_audit["writes_attempted"], "write_audit.writes_attempted", validator=_integer)
     _evidence(write_audit["writes_observed"], "write_audit.writes_observed", validator=_integer)
+    audit_completed = all(
+        write_audit[field]["status"] == "completed"
+        for field in ("writes_attempted", "writes_observed")
+    )
+    if (write_audit["status"] == "completed") != audit_completed:
+        raise ValueError("write_audit.status does not match its evidence")
 
     git = _exact_keys(value["git"], {"before", "after"}, "git")
     for field in git:
@@ -1250,9 +1256,11 @@ def build_evidence_receipt(
         },
         "doctor": dict(doctor),
         "write_audit": {
-            "status": "completed",
+            "status": "completed" if writes_observed is not None else "unavailable",
             "writes_attempted": evidence_value("completed", writes_attempted),
-            "writes_observed": evidence_value("completed", writes_observed),
+            "writes_observed": evidence_value("completed", writes_observed)
+            if writes_observed is not None
+            else evidence_value("unavailable"),
         },
         "git": {
             "before": evidence_value("completed", git_before),

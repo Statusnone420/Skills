@@ -112,7 +112,11 @@ def main(argv=None):
             unresolved=metadata["unresolved"],
             doctor=metadata["doctor"],
             writes_attempted=0,
-            writes_observed=0 if before_raw == after_raw else len(after_raw.splitlines()),
+            writes_observed=(
+                None
+                if before_raw
+                else 0 if before_raw == after_raw else len(after_raw.splitlines())
+            ),
             git_before=before,
             git_after=after,
         )

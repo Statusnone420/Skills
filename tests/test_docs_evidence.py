@@ -668,6 +668,14 @@ class EvidenceReceiptTests(unittest.TestCase):
                 "import Example from './example'\n\n# Actual H1\n",
                 {"status": "completed", "value": True},
             ),
+            "esm-named-import-parked.mdx": (
+                "import { Callout } from './components'\n\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
+            "esm-named-import-no-boundary.mdx": (
+                "import { Callout } from './components'\n# Actual H1\n",
+                {"status": "unavailable", "value": None},
+            ),
             "esm-import-comment-text.mdx": (
                 "import Example from './<!--example-->'\n\n# Actual H1\n",
                 {"status": "completed", "value": True},
@@ -987,11 +995,41 @@ class EvidenceReceiptTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            (docs / "README.md").write_text(
+                "# Dirty before receipt\n\n## Start\n", encoding="utf-8"
+            )
+            dirty_start = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(EVIDENCE_CLI),
+                    str(root),
+                    "--metadata-file",
+                    str(metadata),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         receipt = json.loads(completed.stdout)
         evidence.validate_evidence_receipt(receipt)
         self.assertEqual(receipt["health"]["status"], "completed")
         self.assertEqual(receipt["write_audit"]["writes_observed"]["value"], 0)
+        self.assertEqual(
+            dirty_start.returncode, 0, dirty_start.stdout + dirty_start.stderr
+        )
+        dirty_receipt = json.loads(dirty_start.stdout)
+        evidence.validate_evidence_receipt(dirty_receipt)
+        self.assertEqual(dirty_receipt["git"]["before"]["value"], "dirty")
+        self.assertEqual(dirty_receipt["write_audit"]["status"], "unavailable")
+        self.assertEqual(
+            dirty_receipt["write_audit"]["writes_observed"],
+            {"status": "unavailable", "value": None},
+        )
+        self.assertIn(
+            "write_audit.writes_observed", dirty_receipt["unavailable_evidence"]
+        )
 
     def test_receipt_entrypoint_disables_bytecode_before_checker_imports(self):
         with tempfile.TemporaryDirectory() as td:
