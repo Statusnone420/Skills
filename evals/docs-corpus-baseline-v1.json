@@ -1,0 +1,1625 @@
+{
+  "checker_version": "0.1.4",
+  "corpus_id": "docs-corpus-v1",
+  "repositories": [
+    {
+      "commit": "d1837366c0b3a8cfa595e098e00c26275426fbc0",
+      "configurations": [
+        {
+          "bytes": 29161,
+          "path": "docs/docs.json",
+          "sha256": "sha256:63b0d14ea1662aa187364cd053e91dc60f204a12f8f9f3e9e8af870c3538d5b5",
+          "status": "completed"
+        }
+      ],
+      "id": "cline",
+      "measurement": "supported",
+      "provider": "mintlify",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "completed",
+            "value": 78
+          },
+          "anchors_valid": {
+            "status": "completed",
+            "value": 72
+          },
+          "hidden_pages": {
+            "status": "completed",
+            "value": 3
+          },
+          "links_checked": {
+            "status": "completed",
+            "value": 245
+          },
+          "links_valid": {
+            "status": "completed",
+            "value": 245
+          },
+          "pages": {
+            "status": "completed",
+            "value": 110
+          },
+          "redirects": {
+            "status": "completed",
+            "value": 188
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/api/authentication.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/cli/cli-reference#cline-auth"
+                }
+              },
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/api/getting-started.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/api/models#free-models"
+                }
+              },
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/customization/cline-rules.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/getting-started/config#storage-locations"
+                }
+              },
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/customization/skills.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/getting-started/config#storage-locations"
+                }
+              },
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/enterprise-solutions/api-reference.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/api/overview#authentication"
+                }
+              },
+              {
+                "fingerprint": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "kind": "missing-anchor",
+                "line": {
+                  "status": "unavailable",
+                  "value": null
+                },
+                "path": {
+                  "status": "completed",
+                  "value": "docs/tools-reference/all-cline-tools.mdx"
+                },
+                "target": {
+                  "status": "completed",
+                  "value": "/sdk/tools#creating-custom-tools"
+                }
+              }
+            ],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "completed",
+            "value": 100
+          },
+          "categories": {
+            "anchors": {
+              "available": {
+                "status": "completed",
+                "value": 10
+              },
+              "earned": {
+                "status": "completed",
+                "value": 0
+              },
+              "raw": {
+                "checked": {
+                  "status": "completed",
+                  "value": 78
+                },
+                "valid": {
+                  "status": "completed",
+                  "value": 72
+                }
+              }
+            },
+            "entry": {
+              "available": {
+                "status": "completed",
+                "value": 20
+              },
+              "earned": {
+                "status": "completed",
+                "value": 5
+              },
+              "raw": {
+                "complete_single_document": {
+                  "status": "completed",
+                  "value": false
+                },
+                "map_exists": {
+                  "status": "completed",
+                  "value": true
+                },
+                "map_has_body": {
+                  "status": "completed",
+                  "value": true
+                },
+                "map_has_h1": {
+                  "status": "completed",
+                  "value": false
+                },
+                "map_has_h2": {
+                  "status": "completed",
+                  "value": true
+                },
+                "useful_entry": {
+                  "status": "completed",
+                  "value": false
+                },
+                "valid_navigation_routes": {
+                  "status": "completed",
+                  "value": 107
+                }
+              }
+            },
+            "links": {
+              "available": {
+                "status": "completed",
+                "value": 20
+              },
+              "earned": {
+                "status": "completed",
+                "value": 0
+              },
+              "raw": {
+                "checked": {
+                  "status": "completed",
+                  "value": 245
+                },
+                "valid": {
+                  "status": "completed",
+                  "value": 245
+                }
+              }
+            },
+            "path_safety": {
+              "available": {
+                "status": "completed",
+                "value": 15
+              },
+              "earned": {
+                "status": "completed",
+                "value": 15
+              },
+              "raw": {
+                "maintained": {
+                  "status": "completed",
+                  "value": 110
+                },
+                "safe": {
+                  "status": "completed",
+                  "value": 110
+                }
+              }
+            },
+            "reachability": {
+              "available": {
+                "status": "completed",
+                "value": 25
+              },
+              "earned": {
+                "status": "completed",
+                "value": 0
+              },
+              "raw": {
+                "maintained": {
+                  "status": "completed",
+                  "value": 110
+                },
+                "reachable": {
+                  "status": "completed",
+                  "value": 110
+                }
+              }
+            },
+            "titles": {
+              "available": {
+                "status": "completed",
+                "value": 10
+              },
+              "earned": {
+                "status": "completed",
+                "value": 9.45
+              },
+              "raw": {
+                "maintained": {
+                  "status": "completed",
+                  "value": 110
+                },
+                "usable_unique": {
+                  "status": "completed",
+                  "value": 104
+                }
+              }
+            }
+          },
+          "earned_weight": {
+            "status": "completed",
+            "value": 29.45
+          },
+          "percentage": {
+            "status": "completed",
+            "value": 29
+          },
+          "rubric_version": {
+            "status": "completed",
+            "value": 2
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "completed",
+              "value": false
+            },
+            "useful_entry": {
+              "status": "completed",
+              "value": false
+            }
+          },
+          "status": "completed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": true
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": false
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-cline",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "d1837366c0b3a8cfa595e098e00c26275426fbc0"
+          },
+          "identifier": "github.com/cline/cline"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-cline",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "docs/docs.json"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "docs/cline-overview.mdx"
+          },
+          "provider": "mintlify",
+          "provider_root": {
+            "status": "completed",
+            "value": "docs"
+          }
+        },
+        "unavailable_evidence": [
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.deterministic.findings[0].fingerprint",
+          "evidence.deterministic.findings[0].line",
+          "evidence.deterministic.findings[1].fingerprint",
+          "evidence.deterministic.findings[1].line",
+          "evidence.deterministic.findings[2].fingerprint",
+          "evidence.deterministic.findings[2].line",
+          "evidence.deterministic.findings[3].fingerprint",
+          "evidence.deterministic.findings[3].line",
+          "evidence.deterministic.findings[4].fingerprint",
+          "evidence.deterministic.findings[4].line",
+          "evidence.deterministic.findings[5].fingerprint",
+          "evidence.deterministic.findings[5].line",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "commit": "c1d010a699a76738db63d22d33256b15bd7aea7a",
+      "configurations": [
+        {
+          "bytes": 1211,
+          "path": "apps/docs/generator/config.ts",
+          "sha256": "sha256:6c1f5ec222852279ea32900b60e510da7ea3fece5775ae2c1a4deab114a5a58b",
+          "status": "completed"
+        },
+        {
+          "bytes": 5019,
+          "path": "apps/docs/content/navigation.references.ts",
+          "sha256": "sha256:fb61ffe395f2bb6ed758006500744e163f3103fd6554c11045609c09050fd2dd",
+          "status": "completed"
+        }
+      ],
+      "id": "supabase",
+      "measurement": "unsupported",
+      "provider": "custom-mdx",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "anchors_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "hidden_pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "redirects": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [
+              {
+                "kind": "unsupported-custom-mdx-semantics",
+                "status": "not_assessed"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "categories": {},
+          "earned_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "percentage": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "rubric_version": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "not_assessed",
+              "value": null
+            },
+            "useful_entry": {
+              "status": "not_assessed",
+              "value": null
+            }
+          },
+          "status": "not_assessed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": true
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": false
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-supabase",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "c1d010a699a76738db63d22d33256b15bd7aea7a"
+          },
+          "identifier": "github.com/supabase/supabase"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-supabase",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "apps/docs/content/navigation.references.ts"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "apps/docs/content/guides/getting-started.mdx"
+          },
+          "provider": "custom-mdx",
+          "provider_root": {
+            "status": "completed",
+            "value": "apps/docs/content"
+          }
+        },
+        "unavailable_evidence": [
+          "counts.anchors_checked",
+          "counts.anchors_valid",
+          "counts.hidden_pages",
+          "counts.links_checked",
+          "counts.links_valid",
+          "counts.pages",
+          "counts.redirects",
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "health.available_weight",
+          "health.earned_weight",
+          "health.percentage",
+          "health.rubric_version",
+          "health.score_gates.map_has_h1",
+          "health.score_gates.useful_entry",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "commit": "a0bc32214436d52a5ac9de9be1a515d872987366",
+      "configurations": [
+        {
+          "bytes": 31230,
+          "path": "website/docusaurus.config.ts",
+          "sha256": "sha256:db6482643a938d96bc97331933fd732a61c3112b2f46fbea0812236b0805c1c6",
+          "status": "completed"
+        },
+        {
+          "bytes": 4611,
+          "path": "website/sidebars.ts",
+          "sha256": "sha256:e785151eb62edd58b569b7c424887aec6412ef3a5d004fecc4dd2d4fb9660426",
+          "status": "completed"
+        },
+        {
+          "bytes": 134,
+          "path": "website/versions.json",
+          "sha256": "sha256:241339c660b5cde4461aac1c693ece9182b7fcc2bc76ad5de7ab2df8c2ce562d",
+          "status": "completed"
+        }
+      ],
+      "id": "docusaurus",
+      "measurement": "unsupported",
+      "provider": "docusaurus",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "anchors_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "hidden_pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "redirects": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [
+              {
+                "kind": "unsupported-docusaurus-semantics",
+                "status": "not_assessed"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "categories": {},
+          "earned_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "percentage": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "rubric_version": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "not_assessed",
+              "value": null
+            },
+            "useful_entry": {
+              "status": "not_assessed",
+              "value": null
+            }
+          },
+          "status": "not_assessed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": false
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": true
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-docusaurus",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "a0bc32214436d52a5ac9de9be1a515d872987366"
+          },
+          "identifier": "github.com/facebook/docusaurus"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-docusaurus",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "website/docusaurus.config.ts"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "website/docs/introduction.mdx"
+          },
+          "provider": "docusaurus",
+          "provider_root": {
+            "status": "completed",
+            "value": "website/docs"
+          }
+        },
+        "unavailable_evidence": [
+          "counts.anchors_checked",
+          "counts.anchors_valid",
+          "counts.hidden_pages",
+          "counts.links_checked",
+          "counts.links_valid",
+          "counts.pages",
+          "counts.redirects",
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "health.available_weight",
+          "health.earned_weight",
+          "health.percentage",
+          "health.rubric_version",
+          "health.score_gates.map_has_h1",
+          "health.score_gates.useful_entry",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "commit": "e16ff3a1199293ac9cdfa6132c08fdea162215f3",
+      "configurations": [
+        {
+          "bytes": 17370,
+          "path": "docs/.vitepress/config.ts",
+          "sha256": "sha256:831762578cc7dd0604544300d43886e191c6340e23e365861898095ab79425a6",
+          "status": "completed"
+        }
+      ],
+      "id": "vite",
+      "measurement": "unsupported",
+      "provider": "vitepress",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "anchors_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "hidden_pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "redirects": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [
+              {
+                "kind": "unsupported-vitepress-semantics",
+                "status": "not_assessed"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "categories": {},
+          "earned_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "percentage": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "rubric_version": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "not_assessed",
+              "value": null
+            },
+            "useful_entry": {
+              "status": "not_assessed",
+              "value": null
+            }
+          },
+          "status": "not_assessed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": true
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": false
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-vite",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "e16ff3a1199293ac9cdfa6132c08fdea162215f3"
+          },
+          "identifier": "github.com/vitejs/vite"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-vite",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "docs/.vitepress/config.ts"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "docs/index.md"
+          },
+          "provider": "vitepress",
+          "provider_root": {
+            "status": "completed",
+            "value": "docs"
+          }
+        },
+        "unavailable_evidence": [
+          "counts.anchors_checked",
+          "counts.anchors_valid",
+          "counts.hidden_pages",
+          "counts.links_checked",
+          "counts.links_valid",
+          "counts.pages",
+          "counts.redirects",
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "health.available_weight",
+          "health.earned_weight",
+          "health.percentage",
+          "health.rubric_version",
+          "health.score_gates.map_has_h1",
+          "health.score_gates.useful_entry",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "commit": "bb9eba0bb4e04c08d8a09f1096ede335e54e5503",
+      "configurations": [
+        {
+          "bytes": 11407,
+          "path": "mkdocs.yml",
+          "sha256": "sha256:e39d302d07d5e355ba2734de630a01075b9292ff2a07016e5eaa15161d784d27",
+          "status": "completed"
+        }
+      ],
+      "id": "uv",
+      "measurement": "unsupported",
+      "provider": "mkdocs",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "anchors_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "hidden_pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "redirects": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [
+              {
+                "kind": "unsupported-mkdocs-semantics",
+                "status": "not_assessed"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "categories": {},
+          "earned_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "percentage": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "rubric_version": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "not_assessed",
+              "value": null
+            },
+            "useful_entry": {
+              "status": "not_assessed",
+              "value": null
+            }
+          },
+          "status": "not_assessed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": false
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": true
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-uv",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "bb9eba0bb4e04c08d8a09f1096ede335e54e5503"
+          },
+          "identifier": "github.com/astral-sh/uv"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-uv",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "mkdocs.yml"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "docs/index.md"
+          },
+          "provider": "mkdocs",
+          "provider_root": {
+            "status": "completed",
+            "value": "docs"
+          }
+        },
+        "unavailable_evidence": [
+          "counts.anchors_checked",
+          "counts.anchors_valid",
+          "counts.hidden_pages",
+          "counts.links_checked",
+          "counts.links_valid",
+          "counts.pages",
+          "counts.redirects",
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "health.available_weight",
+          "health.earned_weight",
+          "health.percentage",
+          "health.rubric_version",
+          "health.score_gates.map_has_h1",
+          "health.score_gates.useful_entry",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    },
+    {
+      "commit": "5e1d1bde0ca03efe09608d59c573d6ec87052c24",
+      "configurations": [
+        {
+          "bytes": 18452,
+          "path": "hugo.toml",
+          "sha256": "sha256:83a0eef8dc9d68fb286e694a6b85cd80ed4d170d69eaba044d5a02028ce0b902",
+          "status": "completed"
+        }
+      ],
+      "id": "kubernetes-website",
+      "measurement": "unsupported",
+      "provider": "hugo",
+      "receipt": {
+        "checker": {
+          "name": "diataxis-docs",
+          "version": "0.1.4"
+        },
+        "counts": {
+          "anchors_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "anchors_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "hidden_pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_checked": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "links_valid": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "pages": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "redirects": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "doctor": {
+          "approval_line_present": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "status": "not_assessed",
+          "treatment_fingerprint": {
+            "status": "not_assessed",
+            "value": null
+          }
+        },
+        "evidence": {
+          "deterministic": {
+            "findings": [],
+            "status": "completed"
+          },
+          "semantic": {
+            "evaluator": {
+              "model": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "provider": {
+                "status": "not_assessed",
+                "value": null
+              },
+              "version": {
+                "status": "not_assessed",
+                "value": null
+              }
+            },
+            "findings": [],
+            "status": "not_assessed"
+          },
+          "unresolved": {
+            "candidates": [
+              {
+                "kind": "unsupported-hugo-semantics",
+                "status": "not_assessed"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "git": {
+          "after": {
+            "status": "completed",
+            "value": "clean"
+          },
+          "before": {
+            "status": "completed",
+            "value": "clean"
+          }
+        },
+        "health": {
+          "available_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "categories": {},
+          "earned_weight": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "percentage": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "rubric_version": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "score_gates": {
+            "map_has_h1": {
+              "status": "not_assessed",
+              "value": null
+            },
+            "useful_entry": {
+              "status": "not_assessed",
+              "value": null
+            }
+          },
+          "status": "not_assessed"
+        },
+        "orientation": {
+          "frontmatter_title": {
+            "status": "completed",
+            "value": true
+          },
+          "literal_h1": {
+            "status": "completed",
+            "value": false
+          },
+          "provider_rendered_title": {
+            "status": "unavailable",
+            "value": null
+          }
+        },
+        "receipt_id": "docs-corpus-v1-kubernetes-website",
+        "repository": {
+          "commit": {
+            "status": "completed",
+            "value": "5e1d1bde0ca03efe09608d59c573d6ec87052c24"
+          },
+          "identifier": "github.com/kubernetes/website"
+        },
+        "run": {
+          "client": "local-corpus-harness",
+          "commands": [
+            "corpus-check"
+          ],
+          "duration_seconds": {
+            "status": "not_assessed",
+            "value": null
+          },
+          "effort": "not-applicable",
+          "id": "docs-corpus-v1-kubernetes-website",
+          "model": "deterministic-harness",
+          "model_provider": "local",
+          "turns": {
+            "status": "completed",
+            "value": 1
+          }
+        },
+        "schema_version": 1,
+        "surface": {
+          "authority": {
+            "status": "completed",
+            "value": "hugo.toml"
+          },
+          "entry": {
+            "status": "completed",
+            "value": "content/en/docs/home/_index.md"
+          },
+          "provider": "hugo",
+          "provider_root": {
+            "status": "completed",
+            "value": "content"
+          }
+        },
+        "unavailable_evidence": [
+          "counts.anchors_checked",
+          "counts.anchors_valid",
+          "counts.hidden_pages",
+          "counts.links_checked",
+          "counts.links_valid",
+          "counts.pages",
+          "counts.redirects",
+          "doctor.approval_line_present",
+          "doctor.treatment_fingerprint",
+          "evidence.semantic.evaluator.model",
+          "evidence.semantic.evaluator.provider",
+          "evidence.semantic.evaluator.version",
+          "health.available_weight",
+          "health.earned_weight",
+          "health.percentage",
+          "health.rubric_version",
+          "health.score_gates.map_has_h1",
+          "health.score_gates.useful_entry",
+          "orientation.provider_rendered_title",
+          "run.duration_seconds"
+        ],
+        "write_audit": {
+          "status": "completed",
+          "writes_attempted": {
+            "status": "completed",
+            "value": 0
+          },
+          "writes_observed": {
+            "status": "completed",
+            "value": 0
+          }
+        }
+      }
+    }
+  ],
+  "rubric": {
+    "changed": false,
+    "version": 2,
+    "weights": {
+      "anchors": 10,
+      "entry": 20,
+      "links": 20,
+      "path_safety": 15,
+      "reachability": 25,
+      "titles": 10
+    }
+  },
+  "schema_version": 1
+}

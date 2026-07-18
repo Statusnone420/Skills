@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "corpus_id": "docs-corpus-v1",
+  "repositories": [
+    {
+      "id": "cline",
+      "repository_url": "https://github.com/cline/cline.git",
+      "commit": "d1837366c0b3a8cfa595e098e00c26275426fbc0",
+      "provider": "mintlify",
+      "measurement": "supported",
+      "scope": "docs",
+      "entry": "docs/cline-overview.mdx",
+      "authority_probes": ["docs/docs.json"],
+      "config_probes": ["docs/docs.json"],
+      "sparse_paths": ["README.md", "docs"]
+    },
+    {
+      "id": "supabase",
+      "repository_url": "https://github.com/supabase/supabase.git",
+      "commit": "c1d010a699a76738db63d22d33256b15bd7aea7a",
+      "provider": "custom-mdx",
+      "measurement": "unsupported",
+      "scope": "apps/docs/content",
+      "entry": "apps/docs/content/guides/getting-started.mdx",
+      "authority_probes": ["apps/docs/content/navigation.references.ts"],
+      "config_probes": ["apps/docs/generator/config.ts", "apps/docs/content/navigation.references.ts"],
+      "sparse_paths": ["apps/docs/README.md", "apps/docs/content", "apps/docs/generator/config.ts"]
+    },
+    {
+      "id": "docusaurus",
+      "repository_url": "https://github.com/facebook/docusaurus.git",
+      "commit": "a0bc32214436d52a5ac9de9be1a515d872987366",
+      "provider": "docusaurus",
+      "measurement": "unsupported",
+      "scope": "website/docs",
+      "entry": "website/docs/introduction.mdx",
+      "authority_probes": ["website/docusaurus.config.ts", "website/sidebars.ts"],
+      "config_probes": ["website/docusaurus.config.ts", "website/sidebars.ts", "website/versions.json"],
+      "sparse_paths": ["website/docs", "website/docusaurus.config.ts", "website/sidebars.ts", "website/versioned_docs", "website/versioned_sidebars", "website/versions.json"]
+    },
+    {
+      "id": "vite",
+      "repository_url": "https://github.com/vitejs/vite.git",
+      "commit": "e16ff3a1199293ac9cdfa6132c08fdea162215f3",
+      "provider": "vitepress",
+      "measurement": "unsupported",
+      "scope": "docs",
+      "entry": "docs/index.md",
+      "authority_probes": ["docs/.vitepress/config.ts"],
+      "config_probes": ["docs/.vitepress/config.ts"],
+      "sparse_paths": ["docs"]
+    },
+    {
+      "id": "uv",
+      "repository_url": "https://github.com/astral-sh/uv.git",
+      "commit": "bb9eba0bb4e04c08d8a09f1096ede335e54e5503",
+      "provider": "mkdocs",
+      "measurement": "unsupported",
+      "scope": "docs",
+      "entry": "docs/index.md",
+      "authority_probes": ["mkdocs.yml"],
+      "config_probes": ["mkdocs.yml"],
+      "sparse_paths": ["docs", "mkdocs.yml"]
+    },
+    {
+      "id": "kubernetes-website",
+      "repository_url": "https://github.com/kubernetes/website.git",
+      "commit": "5e1d1bde0ca03efe09608d59c573d6ec87052c24",
+      "provider": "hugo",
+      "measurement": "unsupported",
+      "scope": "content",
+      "entry": "content/en/docs/home/_index.md",
+      "authority_probes": ["hugo.toml"],
+      "config_probes": ["hugo.toml"],
+      "sparse_paths": ["config", "content", "data", "hugo.toml", "layouts"]
+    }
+  ]
+}

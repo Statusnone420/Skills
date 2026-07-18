@@ -11,6 +11,7 @@ REFERENCE_FILES = ("commands.md", "init.md", "doctor.md", "isolation.md", "memor
 ASSETS = ("bounded-compass-small.svg", "bounded-compass.png")
 CHECKER_FILES = (
     "scripts/check.py",
+    "scripts/evidence_receipt.py",
     "scripts/init_closeout.py",
     "scripts/doctor_closeout.py",
     "scripts/_docs_checker/__init__.py",
@@ -23,6 +24,7 @@ CHECKER_FILES = (
     "scripts/_docs_checker/discovery_policy.py",
     "scripts/_docs_checker/surfaces.py",
     "scripts/_docs_checker/receipt.py",
+    "scripts/_docs_checker/evidence.py",
     "scripts/_docs_checker/discovery_io.py",
     "scripts/_docs_checker/discovery.py",
     "scripts/_docs_checker/scan.py",

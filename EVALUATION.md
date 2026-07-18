@@ -57,6 +57,14 @@ State-declared verified document/source routes use newline- and NFC-normalized S
 
 Route tests use generated one-change mutations, invariant checks, deterministic cases, and retained named regressions. This applies Hypothesis/property-based testing ideas without adding Hypothesis, copying its source, or adding any runtime dependency.
 
+## Evidence receipt and documentation corpus v1
+
+Evidence receipt v1 is a sanitized product-evidence contract, not a transcript format. It records repository and checker identity, selected-surface facts, category-level rubric evidence, score gates, deterministic findings, semantic findings, unresolved candidates, Doctor evidence, Git/write state, and a complete index of unavailable evidence. `completed` with zero semantic findings is distinct from `not_assessed`; unavailable values are null and never become a product failure or numeric zero.
+
+The calibration corpus pins Cline, Supabase, Docusaurus, Vite, uv, and Kubernetes Website to immutable commits. Explicit preparation creates sparse ignored checkouts without dependencies or site builds. The runner then requires each checkout to be clean, detached, and at the exact commit; hashes bounded configuration bytes and reads inert entry text; and verifies Git status is unchanged. Only the existing Mintlify contract produces a structural score. Custom MDX, Docusaurus, VitePress, MkDocs, and Hugo evidence remains deterministic but structurally `not_assessed` until an inert provider contract exists.
+
+Literal H1 and scalar frontmatter-title observations are collected for calibration but do not affect rubric v2. The corpus baseline is evidence for a later scoring decision, not permission to tune `HEALTH_WEIGHTS`, useful-entry gating, or provider behavior in this release. No external model or API is required; an optional semantic lane must record its evaluator and cannot calculate or change the deterministic score.
+
 ## Shared-engine dogfood
 
 Fresh isolated Codex agents ran the same canonical skill against the same repository state on Windows 11 on 2026-07-11:

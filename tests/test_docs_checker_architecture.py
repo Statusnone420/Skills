@@ -23,6 +23,7 @@ MODULES = (
     "discovery_policy",
     "surfaces",
     "receipt",
+    "evidence",
     "discovery_io",
     "discovery",
     "scan",
@@ -217,6 +218,7 @@ class DocsCheckerArchitectureTests(unittest.TestCase):
             graph["receipt"],
             {"continuation", "knowledge", "paths", "surfaces"},
         )
+        self.assertEqual(graph["evidence"], {"formats", "paths"})
         self.assertEqual(
             graph["discovery_io"],
             {"discovery_policy", "formats", "metadata_io"},
