@@ -109,6 +109,23 @@ class EvidenceReceiptTests(unittest.TestCase):
         self.assertEqual(self.receipt["run"]["duration_seconds"]["value"], 508.747)
         self.assertIn("repository.commit", self.receipt["unavailable_evidence"])
 
+    def test_completed_semantic_lane_requires_evaluator_provenance(self):
+        for field in ("provider", "model"):
+            for status in ("not_assessed", "unavailable", "failed"):
+                value = copy.deepcopy(self.receipt)
+                value["evidence"]["semantic"]["evaluator"][field] = {
+                    "status": status,
+                    "value": None,
+                }
+                unavailable = set(value["unavailable_evidence"])
+                unavailable.add(f"evidence.semantic.evaluator.{field}")
+                value["unavailable_evidence"] = sorted(unavailable)
+                with self.subTest(field=field, status=status), self.assertRaisesRegex(
+                    ValueError,
+                    rf"evidence\.semantic\.evaluator\.{field} must be completed",
+                ):
+                    evidence.validate_evidence_receipt(value)
+
     def test_receipt_rejects_unknown_sensitive_and_absolute_data(self):
         for mutation in ("unknown", "raw_transcript"):
             value = copy.deepcopy(self.receipt)

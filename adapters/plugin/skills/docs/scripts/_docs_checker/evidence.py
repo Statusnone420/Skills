@@ -321,6 +321,13 @@ def _validate_lane(value, name, *, semantic=False):
                 f"{name}.evaluator.{field}",
                 validator=_safe_identifier,
             )
+        if value["status"] == "completed":
+            for field in ("provider", "model"):
+                if evaluator[field]["status"] != "completed":
+                    raise ValueError(
+                        f"{name}.evaluator.{field} must be completed "
+                        "when semantic evidence is completed"
+                    )
 
 
 def _validate_unresolved(value):
