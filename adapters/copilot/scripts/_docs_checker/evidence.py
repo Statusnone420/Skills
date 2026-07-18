@@ -587,6 +587,22 @@ def _markdown_body_lines(text):
     return None
 
 
+def _frontmatter_has_comment_only_title(text):
+    """Identify an unquoted YAML comment where a title scalar would be expected."""
+    if not _has_column_zero_frontmatter_opener(text):
+        return False
+    source = text.removeprefix("\ufeff")
+    for index, line in enumerate(re.split(r"\r\n|\r|\n", source)):
+        if index and not line.startswith((" ", "\t")) and line.rstrip(" \t") in {
+            "---",
+            "...",
+        }:
+            return False
+        if index and re.fullmatch(r"title[ \t]*:[ \t]*#.*", line):
+            return True
+    return False
+
+
 def _comment_remains_open(line, opening, closing, already_open=False):
     position = 0
     if already_open:
@@ -1233,8 +1249,15 @@ def observe_entry_orientation(root, entry):
         )
         title = metadata.get("values", {}).get("title")
         unresolved_metadata = set(metadata.get("unresolved", ()))
-        if isinstance(title, str) and "title" not in unresolved_metadata:
+        comment_only_title = _frontmatter_has_comment_only_title(text)
+        if (
+            isinstance(title, str)
+            and "title" not in unresolved_metadata
+            and not comment_only_title
+        ):
             frontmatter_title = evidence_value("completed", bool(title.strip()))
+        elif isinstance(title, str) and comment_only_title:
+            frontmatter_title = evidence_value("unavailable")
         elif metadata.get("status") in {"absent", "measured"}:
             frontmatter_title = evidence_value("completed", False)
         else:
