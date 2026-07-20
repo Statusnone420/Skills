@@ -2,7 +2,7 @@
 
 ## 0.1.6 — Empty-state recovery repair (2026-07-20)
 
-- Let Init discovery and Doctor's zero-write baseline proceed when `.diataxis/` is empty or contains only an empty `manifests/` container left by an interrupted or branch-switched initialization.
+- Let Init discovery and Doctor's zero-write baseline proceed without false missing-state findings when `.diataxis/` is empty or contains only an empty `manifests/` container left by an interrupted or branch-switched initialization.
 - Applied the same bounded residue rule during approval-time revalidation so a successful Init preview can complete its approved apply.
 - Kept unknown control children, non-empty manifests, recovery artifacts, symlinks, reparse points, and malformed operational state fail-closed for Doctor diagnosis.
 - Added public-command regressions for Init discovery, Doctor baseline measurement, full preview/apply adoption, and unsafe-residue rejection.

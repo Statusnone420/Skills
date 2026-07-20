@@ -264,6 +264,12 @@ class CommandSkillDistributionTests(unittest.TestCase):
         )
         self.assertEqual(payload["doctor_baseline"]["writes"], 0)
         self.assertEqual(payload["doctor_baseline"]["recommendation"], "$docs init")
+        self.assertFalse(
+            any(
+                finding.get("kind") == "state-conflict"
+                for finding in payload["findings"]
+            )
+        )
 
     def test_engine_rejects_unsupported_provider_without_score_or_init(self):
         result, payload, before, after = self._run_doctor_baseline(

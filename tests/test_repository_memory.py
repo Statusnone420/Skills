@@ -1928,17 +1928,26 @@ class RepositoryMemoryTests(unittest.TestCase):
                 )
                 self.assertEqual(path.read_bytes(), before)
 
-    def test_missing_control_files_are_conflicts_only_after_control_plane_exists(self):
+    def test_missing_control_files_are_conflicts_only_after_real_state_evidence_exists(self):
         with tempfile.TemporaryDirectory() as td:
             uninitialized = Path(td) / "uninitialized"
             uninitialized.mkdir()
             findings, _ = docs_checker.check(uninitialized)
             self.assertFalse(any(item["kind"] == "state-conflict" for item in findings))
 
-            initialized = Path(td) / "initialized"
-            initialized.mkdir()
-            (initialized / ".diataxis").mkdir()
-            findings, _ = docs_checker.check(initialized)
+            empty_control = Path(td) / "empty-control"
+            (empty_control / ".diataxis").mkdir(parents=True)
+            findings, _ = docs_checker.check(empty_control)
+            self.assertFalse(any(item["kind"] == "state-conflict" for item in findings))
+
+            empty_manifests = Path(td) / "empty-manifests"
+            control = empty_manifests / ".diataxis"
+            (control / "manifests").mkdir(parents=True)
+            findings, _ = docs_checker.check(empty_manifests)
+            self.assertFalse(any(item["kind"] == "state-conflict" for item in findings))
+
+            (control / "unexpected").write_text("evidence\n", encoding="utf-8")
+            findings, _ = docs_checker.check(empty_manifests)
             self.assertTrue(any(item["kind"] == "state-conflict" for item in findings))
 
     def test_checker_inspection_never_changes_operational_memory(self):
