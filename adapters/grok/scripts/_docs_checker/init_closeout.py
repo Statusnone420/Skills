@@ -41,6 +41,7 @@ from .memory import (
     MAX_FINDINGS_BYTES,
     STATE_DIRECTORY,
     STATE_SCHEMA_VERSION,
+    _is_benign_initialization_residue,
     build_initialization_state,
     inspect_operational_memory,
     load_operational_events,
@@ -1270,11 +1271,14 @@ def inspect_initialization_preflight(root, *, control_present=False):
     incomplete or conflicting control plane fails closed to Doctor.
     """
     root = Path(root).absolute()
-    if not control_present and not os.path.lexists(root / STATE_DIRECTORY):
+    control = root / STATE_DIRECTORY
+    if not control_present and not os.path.lexists(control):
         return None
 
     state = None
     try:
+        if _is_benign_initialization_residue(root):
+            return None
         memory_findings = inspect_operational_memory(
             root, inspect_protected_intent=False
         )

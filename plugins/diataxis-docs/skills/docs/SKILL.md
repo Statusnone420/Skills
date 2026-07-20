@@ -3,7 +3,7 @@ name: docs
 description: Use when a user explicitly invokes repository documentation help for bounded Diátaxis writing, context recall, mapping, auditing, checking, migration, cleanup, Doctor guidance, or evidence-backed updates.
 metadata:
   author: Statusnone
-  version: "0.1.5"
+  version: "0.1.6"
 ---
 
 # Diátaxis Docs

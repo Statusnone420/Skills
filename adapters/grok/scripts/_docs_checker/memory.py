@@ -25,6 +25,7 @@ from .identity import (
 )
 from .paths import (
     _assert_no_reparse_components,
+    _is_reparse,
     normalize_repo_relative,
     safe_path,
     shared_text_exposes_route,
@@ -170,6 +171,32 @@ def _operational_control(root):
     if not control.is_dir():
         raise ValueError(f"{STATE_DIRECTORY} must be a directory")
     return control
+
+
+def _benign_initialization_residue(control):
+    """Return whether control contains only bounded empty Init containers."""
+    if _is_reparse(control) or not control.is_dir():
+        return False
+    with os.scandir(control) as entries:
+        first = next(entries, None)
+        if first is None:
+            return True
+        if next(entries, None) is not None:
+            return False
+    manifests = Path(first.path)
+    if (
+        first.name != "manifests"
+        or _is_reparse(manifests)
+        or not first.is_dir(follow_symlinks=False)
+    ):
+        return False
+    with os.scandir(manifests) as entries:
+        return next(entries, None) is None
+
+
+def _is_benign_initialization_residue(root):
+    control = _operational_control(root)
+    return control is not None and _benign_initialization_residue(control)
 
 
 def _operational_file(root, filename):
@@ -2137,6 +2164,18 @@ def inspect_operational_memory(root, *, inspect_protected_intent=True):
         ]
     if control is None:
         return []
+    try:
+        if _benign_initialization_residue(control):
+            return []
+    except OSError as exc:
+        return [
+            _memory_finding(
+                "state-conflict",
+                "P0",
+                STATE_DIRECTORY,
+                _sanitized_memory_detail(exc, "operational control entries"),
+            )
+        ]
 
     findings, observed_control = _inspect_control_plane_files(control)
     state = None

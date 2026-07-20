@@ -48,7 +48,7 @@ def frontmatter(text):
 
 
 class CommandSkillDistributionTests(unittest.TestCase):
-    def _run_doctor_baseline_raw(self, files, *extra):
+    def _run_doctor_baseline_raw(self, files, *extra, directories=()):
         with tempfile.TemporaryDirectory() as td:
             repository = Path(td) / "repo"
             repository.mkdir()
@@ -56,6 +56,8 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 path = repository / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
+            for relative in directories:
+                (repository / relative).mkdir(parents=True, exist_ok=True)
             subprocess.run(["git", "init", "-q", str(repository)], check=True)
             subprocess.run(
                 ["git", "-C", str(repository), "add", "--all"], check=True
@@ -88,8 +90,12 @@ class CommandSkillDistributionTests(unittest.TestCase):
             ).stdout
             return result, before, after
 
-    def _run_doctor_baseline(self, files, *extra):
-        result, before, after = self._run_doctor_baseline_raw(files, *extra)
+    def _run_doctor_baseline(self, files, *extra, directories=()):
+        result, before, after = self._run_doctor_baseline_raw(
+            files,
+            *extra,
+            directories=directories,
+        )
         return result, json.loads(result.stdout), before, after
 
     def test_codex_marketplace_routes_to_the_named_plugin_package(self):
@@ -123,7 +129,7 @@ class CommandSkillDistributionTests(unittest.TestCase):
         )
         self.assertEqual(manifest["name"], entry["name"])
         self.assertEqual(plugin_root.name, entry["name"])
-        self.assertEqual(manifest["version"], "0.1.5")
+        self.assertEqual(manifest["version"], "0.1.6")
         self.assertEqual(manifest["interface"]["displayName"], "Diátaxis Docs")
 
     def test_codex_and_claude_publish_the_umbrella_plus_focused_skills(self):
@@ -239,6 +245,31 @@ class CommandSkillDistributionTests(unittest.TestCase):
         self.assertEqual(payload["map"], "README.md")
         self.assertEqual(payload["scope"], "docs")
         self.assertEqual(payload["health"]["rubric_version"], 2)
+
+    def test_engine_measures_with_empty_control_residue_without_writes(self):
+        result, payload, before, after = self._run_doctor_baseline(
+            {
+                "README.md": "# Project\n\nRepository overview.\n",
+                "docs/guide.md": "# Guide\n\nUseful guidance.\n",
+            },
+            directories=(".diataxis/manifests",),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(before, after)
+        self.assertEqual(payload["doctor_baseline"]["status"], "measured")
+        self.assertEqual(
+            payload["doctor_baseline"]["authority_kind"],
+            "orientation-fallback",
+        )
+        self.assertEqual(payload["doctor_baseline"]["writes"], 0)
+        self.assertEqual(payload["doctor_baseline"]["recommendation"], "$docs init")
+        self.assertFalse(
+            any(
+                finding.get("kind") == "state-conflict"
+                for finding in payload["findings"]
+            )
+        )
 
     def test_engine_rejects_unsupported_provider_without_score_or_init(self):
         result, payload, before, after = self._run_doctor_baseline(
