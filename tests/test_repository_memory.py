@@ -1787,6 +1787,30 @@ class RepositoryMemoryTests(unittest.TestCase):
         self.assertEqual(findings[0]["detail"], "operational event is invalid")
         self.assertNotIn(private, json.dumps(findings, sort_keys=True))
 
+    def test_empty_control_scan_error_is_reported_fail_closed(self):
+        private = r"C:\private-checkout\.diataxis WinError 5 SECRET"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            control = root / ".diataxis"
+            control.mkdir()
+
+            with mock.patch(
+                "_docs_checker.memory.os.scandir",
+                side_effect=PermissionError(private),
+            ):
+                findings = docs_checker.inspect_operational_memory(root)
+
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["kind"], "state-conflict")
+            self.assertEqual(findings[0]["priority"], "P0")
+            self.assertEqual(findings[0]["path"], ".diataxis")
+            self.assertEqual(
+                findings[0]["detail"],
+                "operational control entries is unavailable",
+            )
+            self.assertNotIn(private, json.dumps(findings, sort_keys=True))
+            self.assertEqual(list(control.iterdir()), [])
+
     def test_duplicate_json_keys_are_state_conflicts_in_every_control_file(self):
         state = json.dumps(valid_state(), sort_keys=True)
         duplicate_state = state.replace(

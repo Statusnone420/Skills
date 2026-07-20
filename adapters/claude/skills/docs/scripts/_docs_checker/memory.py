@@ -2162,8 +2162,20 @@ def inspect_operational_memory(root, *, inspect_protected_intent=True):
                 _sanitized_memory_detail(exc, "operational control"),
             )
         ]
-    if control is None or _benign_initialization_residue(control):
+    if control is None:
         return []
+    try:
+        if _benign_initialization_residue(control):
+            return []
+    except OSError as exc:
+        return [
+            _memory_finding(
+                "state-conflict",
+                "P0",
+                STATE_DIRECTORY,
+                _sanitized_memory_detail(exc, "operational control entries"),
+            )
+        ]
 
     findings, observed_control = _inspect_control_plane_files(control)
     state = None
