@@ -47,7 +47,12 @@ from .memory import (
     load_operational_findings,
     load_operational_state,
 )
-from .paths import normalize_repo_relative, safe_path, shared_text_exposes_route
+from .paths import (
+    _is_reparse,
+    normalize_repo_relative,
+    safe_path,
+    shared_text_exposes_route,
+)
 
 
 REQUEST_SCHEMA_VERSION = 3
@@ -1262,6 +1267,27 @@ def _initialization_preflight_result(status, *, state=None):
     }
 
 
+def _is_benign_initialization_residue(control):
+    """Recognize bounded empty Init containers without weakening state checks."""
+    if _is_reparse(control) or not control.is_dir():
+        return False
+    with os.scandir(control) as entries:
+        first = next(entries, None)
+        if first is None:
+            return True
+        if next(entries, None) is not None:
+            return False
+    manifests = Path(first.path)
+    if (
+        first.name != "manifests"
+        or _is_reparse(manifests)
+        or not first.is_dir(follow_symlinks=False)
+    ):
+        return False
+    with os.scandir(manifests) as entries:
+        return next(entries, None) is None
+
+
 def inspect_initialization_preflight(root, *, control_present=False):
     """Return a bounded terminal Init result when operational state exists.
 
@@ -1270,11 +1296,14 @@ def inspect_initialization_preflight(root, *, control_present=False):
     incomplete or conflicting control plane fails closed to Doctor.
     """
     root = Path(root).absolute()
-    if not control_present and not os.path.lexists(root / STATE_DIRECTORY):
+    control = root / STATE_DIRECTORY
+    if not control_present and not os.path.lexists(control):
         return None
 
     state = None
     try:
+        if _is_benign_initialization_residue(control):
+            return None
         memory_findings = inspect_operational_memory(
             root, inspect_protected_intent=False
         )
@@ -2628,6 +2657,10 @@ def _failure_response(
 def _verify_retain_preapply(root, prepared):
     try:
         memory_findings = inspect_operational_memory(root)
+        if _is_benign_initialization_residue(
+            Path(root).absolute() / STATE_DIRECTORY
+        ):
+            memory_findings = []
         source_receipt = _verify_disposition_sources(
             root, prepared["selected_scope"], prepared["dispositions"]
         )

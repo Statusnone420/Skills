@@ -288,6 +288,67 @@ class InitCloseoutProcessTests(unittest.TestCase):
             self.assertTrue(receipt_path.is_file())
             self.assertEqual(tree_snapshot(root), before)
 
+    def test_adopt_preview_and_apply_accept_empty_manifest_residue(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repository"
+            build_repository(root)
+            manifests = root / ".diataxis" / "manifests"
+            manifests.mkdir(parents=True)
+            receipt_path = Path(td) / "init-receipt.json"
+            before = tree_snapshot(root)
+
+            preview_process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "adopt-preview",
+                    "--receipt-file",
+                    str(receipt_path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                preview_process.returncode,
+                0,
+                preview_process.stderr or preview_process.stdout,
+            )
+            preview = json.loads(preview_process.stdout)
+            self.assertEqual(preview["status"], "approval-required")
+            self.assertEqual(preview["writes"], 0)
+            self.assertEqual(tree_snapshot(root), before)
+
+            apply_process = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLOSEOUT),
+                    str(root),
+                    "adopt-apply",
+                    "--receipt-file",
+                    str(receipt_path),
+                    "--approval",
+                    preview["approval"],
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                apply_process.returncode,
+                0,
+                apply_process.stderr or apply_process.stdout,
+            )
+            applied = json.loads(apply_process.stdout)
+            self.assertEqual(applied["status"], "applied")
+            self.assertTrue(applied["successful_event_recorded"])
+            self.assertTrue(any(manifests.iterdir()))
+
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell transport test")
     def test_documented_init_powershell_transport_executes_preview_and_apply(self):
         init_reference = (SCRIPTS.parent / "references" / "init.md").read_text(
@@ -1224,17 +1285,49 @@ class InitRepeatDoctorTests(unittest.TestCase):
                     self.assertEqual(payload["writes"], 0)
                     self.assertEqual(tree_snapshot(root), before)
 
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            build_repository(root, preexisting_control=True)
-            before = tree_snapshot(root)
-            process = run_init_discovery(root)
-            self.assertEqual(process.returncode, 2, process.stderr)
-            payload = json.loads(process.stdout)
-            self.assertEqual(payload["status"], "state-conflict")
-            self.assertEqual(payload["candidate_traversal"], 0)
-            self.assertEqual(payload["content_reads"], 0)
-            self.assertEqual(tree_snapshot(root), before)
+        for label in ("unknown-empty-container", "nonempty-manifests"):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                build_repository(root, preexisting_control=True)
+                if label == "unknown-empty-container":
+                    (root / ".diataxis" / "unknown").mkdir()
+                else:
+                    manifests = root / ".diataxis" / "manifests"
+                    manifests.mkdir()
+                    (manifests / "orphan.json").write_text(
+                        "{}\n",
+                        encoding="utf-8",
+                    )
+                before = tree_snapshot(root)
+
+                process = run_init_discovery(root)
+
+                self.assertEqual(process.returncode, 2, process.stderr)
+                payload = json.loads(process.stdout)
+                self.assertEqual(payload["status"], "state-conflict")
+                self.assertEqual(payload["candidate_traversal"], 0)
+                self.assertEqual(payload["content_reads"], 0)
+                self.assertEqual(tree_snapshot(root), before)
+
+    def test_empty_control_residue_allows_init_discovery_without_writes(self):
+        for label, with_manifests in (
+            ("empty-control", False),
+            ("empty-manifests", True),
+        ):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                build_repository(root, preexisting_control=True)
+                if with_manifests:
+                    (root / ".diataxis" / "manifests").mkdir()
+                before = tree_snapshot(root)
+
+                process = run_init_discovery(root)
+
+                self.assertEqual(process.returncode, 0, process.stderr)
+                payload = json.loads(process.stdout)
+                self.assertEqual(payload["status"], "batch-limited")
+                self.assertNotEqual(payload.get("mode"), "init-preflight")
+                self.assertEqual(tree_snapshot(root), before)
 
 
     def test_second_public_init_does_not_create_preview_manifest_or_event(self):

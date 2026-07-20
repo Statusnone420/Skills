@@ -23,7 +23,7 @@ from .navigation import (
 from .scan import discover_markdown, scan_documents
 
 
-SKILL_VERSION = "0.1.5"
+SKILL_VERSION = "0.1.6"
 
 
 def canonical_request_bytes(value):
