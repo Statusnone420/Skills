@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
+  "provenance_required": true,
   "campaign_id": "luna-low-0.1.7-current-state-correctness-v1",
-  "purpose": "Verify that the released 0.1.7 bytes reliably select an explicitly labeled current-state route after the targeted map-contract correction.",
+  "purpose": "Verify that the 0.1.7 release-candidate bytes reliably select an explicitly labeled current-state route after the targeted map-contract correction.",
   "target": {
     "repository": "Statusnone Skills",
     "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673"
@@ -42,6 +43,7 @@
     "shell_commands",
     "memory_read_ops",
     "memory_read_output_chars",
+    "memory_prompt_markers",
     "first_turn_cached_input_tokens",
     "input_tokens",
     "cached_input_tokens",
@@ -54,6 +56,7 @@
     "minimum_correctness": "Candidate passes all constant assertions in 3 of 3 runs.",
     "maximum_repository_checker_attempts": 0,
     "maximum_memory_read_ops": 0,
+    "maximum_memory_prompt_markers": 0,
     "interpretation": "The 0.1.7 correction passes when all three fresh Luna Low runs satisfy every constant assertion, use the installed bundled checker without attempting the repository-local checker, record zero memory reads, and leave the target worktree clean. This correctness campaign supplements rather than rescores the frozen Luna Max paired performance result."
   }
 }

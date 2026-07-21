@@ -6,7 +6,7 @@
 - Made focused command routing authoritative while keeping umbrella `$docs` dispatch compatible, eliminating conflicting focused-versus-umbrella instructions.
 - Required explicitly labeled current-state/current-truth/status routes to be read and supplied as measured hot paths instead of being silently skipped.
 - Added provenance-bound Codex campaign tooling and a memory-isolated paired Luna Max evaluation. The pre-fix candidate used the same four tool wrappers as the July reference, 52.7% less median uncached input, and stayed within the 25% duration gate; its recorded 2/3 correctness result motivated the targeted current-state fix rather than being discarded.
-- Confirmed the exact corrected 0.1.7 package in three fresh memory-isolated Luna Low runs: 3/3 complete maps, zero repository-local checker attempts, zero memory reads, and zero writes.
+- Confirmed the provenance-bound corrected Map route, shared skill, and bundled checker in three fresh memory-isolated Luna Low runs: 3/3 complete maps, zero repository-local checker attempts, zero memory reads, and zero writes. The final adversarial review then closed focused Check/Doctor dependency gaps and hardened the evaluation collector without changing those three evaluated files.
 
 ## 0.1.6 — Empty-state recovery repair (2026-07-20)
 

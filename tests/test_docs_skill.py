@@ -419,7 +419,7 @@ class DocsSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, skill + "\n" + commands + "\n" + doctor)
         for phrase in (
-            "same bounded fallback route as `map`",
+            "non-recursively probe only root readme.md/state.md/product.md/design.md/plan.md",
             "no repository read is permitted after the checker",
             "only doctor permits bounded post-check evidence",
             "correct evidence-backed treatment",
@@ -609,7 +609,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("get-childitem", doctor)
         self.assertIn("rg --files", doctor)
         self.assertIn("git ls-files", doctor)
-        self.assertIn("exact `map`/`check` entry in `commands.md`", doctor)
+        self.assertIn("read every map link labeled current state/current truth/status", doctor)
         self.assertIn("scripts/check.py` exactly once", doctor)
         self.assertIn("never use repo-local checker", doctor)
         for phrase in ("responsible command", "tree/hot-path impact", "approval"):
@@ -1230,6 +1230,11 @@ class DocsSkillContractTests(unittest.TestCase):
             "make no edits",
             "execute the bundled checker once",
             "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
+            "if the direct `docs/readme.md` read is missing",
+            "non-recursively probe only root readme.md/state.md/product.md/design.md/plan.md",
+            "read one maintained map candidate with at most two current-state candidates",
+            "the checker is the final fallback action",
+            "no candidate map: stop unmeasured",
             "omit `--hot` when no existing current-state file is selected",
             "`has_findings: true` is a findings result",
             "smallest scriptless equivalent",
@@ -1256,6 +1261,20 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("no advice and no edits", contract)
         for advisory in ("remediation route", "next action", "recommend", "prescrib"):
             self.assertNotIn(advisory, contract)
+
+    def test_doctor_playbook_is_self_contained_for_focused_routing(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertNotIn("consult the exact `map`/`check` entry", doctor)
+        self.assertNotIn("remain those in `commands.md`", doctor)
+        for phrase in (
+            "read every map link labeled current state/current truth/status",
+            "a successful read proves existence",
+            "pass its repository-relative path to `--hot`",
+            "never skip a labeled route",
+            "follows `isolation.md`",
+            "and `memory.md`",
+        ):
+            self.assertIn(phrase, doctor)
 
     def _scope_fixture(self):
         temporary = tempfile.TemporaryDirectory()

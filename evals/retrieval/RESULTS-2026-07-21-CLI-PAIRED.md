@@ -2,6 +2,8 @@
 
 Date: 2026-07-21 local time. Candidate commit: `47d6e76`. Target repository commit: `7609b76`. Host: Codex CLI `0.144.5` with memories disabled. Model: `gpt-5.6-luna`, Max reasoning.
 
+Duration values below are host session telemetry from turn context through the final token-count event, not end-to-end CLI process wall time.
+
 ## Verdict
 
 **The provenance-bound candidate passes both performance gates and all execution-validity controls, but the exact candidate does not pass release acceptance because correctness was 2/3 rather than the required 3/3.** Do not discard or retry the incomplete run.

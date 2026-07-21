@@ -22,7 +22,9 @@ CAMPAIGN = {
         "fresh_task_per_run": True,
         "read_only": True,
     },
-    "conditions": [{"id": "docs-map-candidate", "prompt": "map"}],
+    "conditions": [{
+        "id": "docs-map-candidate", "skill": "diataxis-docs:docs-map", "prompt": "map",
+    }],
     "decision_rule": {"primary_metrics": ["duration_seconds"]},
 }
 
@@ -90,6 +92,8 @@ class ProvenanceFixture:
         started: datetime | None = None,
         tool_events: list[dict] | None = None,
         first_cached_input_tokens: int = 40,
+        request: str | None = None,
+        request_skill: str | None = None,
     ) -> Path:
         started = started or (datetime.now(timezone.utc) + timedelta(seconds=5))
         finished = started + timedelta(seconds=90)
@@ -113,6 +117,20 @@ class ProvenanceFixture:
                 "type": "message", "role": "user",
                 "content": [{"type": "input_text", "text": injection}],
             }})
+        request = CAMPAIGN["conditions"][0]["prompt"] if request is None else request
+        request_skill = "diataxis-docs:docs-map" if injected and request_skill is None else request_skill
+        visible_request = (
+            f"[${request_skill}](cache\\skills\\docs-map\\SKILL.md)\n\n{request}"
+            if request_skill else request
+        )
+        events.append({"type": "response_item", "timestamp": started.isoformat(), "payload": {
+            "type": "message", "role": "user",
+            "content": [{"type": "input_text", "text": (
+                "<codex_delegation>\n"
+                f"  <input>{visible_request}</input>\n"
+                "</codex_delegation>"
+            )}],
+        }})
         events.extend(tool_events or [])
         events.extend([
             {"type": "response_item", "timestamp": finished.isoformat(), "payload": {
@@ -177,6 +195,205 @@ text(JSON.stringify({a, b, memory}));"""}},
             metrics = codex_campaign.collect_session(session, CAMPAIGN)
             self.assertEqual(metrics["first_turn_cached_input_tokens"], 9984)
 
+    def test_collect_requires_the_exact_condition_prompt_and_skill_selector(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+            receipt = fixture.build_receipt()
+            wrong_prompt = fixture.write_session("thread-wrong-prompt", request="wrong prompt")
+            with self.assertRaisesRegex(ValueError, "exact condition prompt"):
+                codex_campaign.collect_session(wrong_prompt, CAMPAIGN, receipt)
+
+            wrong_skill = fixture.write_session(
+                "thread-wrong-skill", request_skill="other-plugin:docs-map"
+            )
+            with self.assertRaisesRegex(ValueError, "exact qualified skill request"):
+                codex_campaign.collect_session(wrong_skill, CAMPAIGN, receipt)
+
+            no_skill_campaign = {
+                **CAMPAIGN,
+                "conditions": [{"id": "no-skill", "prompt": "map"}],
+            }
+            selected = fixture.write_session(
+                "thread-selected-no-skill", injected=False,
+                request_skill="diataxis-docs:docs-map",
+            )
+            with self.assertRaisesRegex(ValueError, "launched through a skill selector"):
+                codex_campaign.collect_session(selected, no_skill_campaign)
+
+            duplicate_request = [{
+                "type": "response_item", "timestamp": datetime.now(timezone.utc).isoformat(),
+                "payload": {"type": "message", "role": "user", "content": [{
+                    "type": "input_text", "text": "map",
+                }]},
+            }]
+            duplicated = fixture.write_session(
+                "thread-duplicate-request", injected=False,
+                tool_events=duplicate_request,
+            )
+            with self.assertRaisesRegex(ValueError, "exactly one condition request"):
+                codex_campaign.collect_session(duplicated, no_skill_campaign)
+
+    def test_collect_enforces_host_context_and_memory_isolation_for_unpaired_campaigns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+            campaign = {
+                **CAMPAIGN,
+                "host_context": {"host": "Codex CLI", "memory": "unavailable"},
+            }
+            campaign_path = fixture.base / "isolated.json"
+            campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+            memory_call = [{
+                "type": "response_item", "timestamp": datetime.now(timezone.utc).isoformat(),
+                "payload": {"type": "custom_tool_call", "name": "exec", "call_id": "m1",
+                            "input": "tools.shell_command({command: \"Get-Content C:\\\\Users\\\\A\\\\.codex\\\\memories\\\\MEMORY.md\"});"},
+            }]
+            fixture.write_session("thread-memory", tool_events=memory_call)
+            manifest = fixture.base / "manifest.json"
+            base_manifest = {
+                "host_context": campaign["host_context"],
+                "runs": [{
+                    "run_id": "candidate-1", "condition": "docs-map-candidate",
+                    "repetition": 1, "thread_id": "thread-memory",
+                }],
+            }
+            manifest.write_text(json.dumps(base_manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "memory isolation failed for run"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+            memory_prompt = [{
+                "type": "response_item", "timestamp": datetime.now(timezone.utc).isoformat(),
+                "payload": {"type": "message", "role": "developer", "content": [{
+                    "type": "input_text", "text": "<memory_summary>private context</memory_summary>",
+                }]},
+            }]
+            fixture.write_session("thread-memory-prompt", tool_events=memory_prompt)
+            base_manifest["runs"][0]["thread_id"] = "thread-memory-prompt"
+            manifest.write_text(json.dumps(base_manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "memory isolation failed for run"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+            base_manifest["host_context"] = {"host": "Codex Desktop", "memory": "enabled"}
+            manifest.write_text(json.dumps(base_manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "host context must match"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+    def test_collect_rejects_private_paths_and_task_ids_in_public_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+            fixture.write_session("thread-private-field")
+            manifest = fixture.base / "manifest.json"
+            cases = (
+                ("absolute-path", [r"raw trace at C:\\Users\\Example\\.codex\\sessions"], "candidate-1"),
+                ("task-id", [], "019f830f-6c17-7353-9e80-44511d4717c7"),
+            )
+            for label, limitations, run_id in cases:
+                with self.subTest(label=label):
+                    manifest.write_text(json.dumps({
+                        "limitations": limitations,
+                        "runs": [{
+                            "run_id": run_id, "condition": "docs-map-candidate",
+                            "repetition": 1, "thread_id": "thread-private-field",
+                        }],
+                    }), encoding="utf-8")
+                    output = fixture.base / f"result-{label}.json"
+                    with self.assertRaisesRegex(ValueError, "public result must not contain"):
+                        codex_campaign.collect(
+                            fixture.campaign_path, manifest, output,
+                            fixture.base / "sessions",
+                        )
+                    self.assertFalse(output.exists())
+
+    def test_collect_requires_provenance_when_the_campaign_declares_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+            campaign = {
+                **CAMPAIGN,
+                "provenance_required": True,
+                "conditions": [{
+                    "id": "docs-map-candidate", "skill": "diataxis-docs:docs-map",
+                    "prompt": "map",
+                }],
+            }
+            campaign_path = fixture.base / "provenance-required.json"
+            campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+            manifest = fixture.base / "manifest.json"
+            manifest.write_text(json.dumps({"runs": [{
+                "run_id": "candidate-1", "condition": "docs-map-candidate",
+                "repetition": 1, "thread_id": "not-opened",
+            }]}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "requires a candidate provenance receipt"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+    def test_collect_requires_complete_repetitions_and_unique_session_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+            fixture.write_session("thread-one")
+            campaign = {
+                **CAMPAIGN,
+                "execution": {**CAMPAIGN["execution"], "repetitions_per_condition": 2},
+            }
+            campaign_path = fixture.base / "two-runs.json"
+            campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+            manifest = fixture.base / "manifest.json"
+
+            duplicate_thread = {"runs": [
+                {"run_id": "candidate-1", "condition": "docs-map-candidate",
+                 "repetition": 1, "thread_id": "thread-one"},
+                {"run_id": "candidate-2", "condition": "docs-map-candidate",
+                 "repetition": 2, "thread_id": "thread-one"},
+            ]}
+            manifest.write_text(json.dumps(duplicate_thread), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "thread IDs must be unique"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+            duplicate_thread["runs"][1]["thread_id"] = "thread-two"
+            duplicate_thread["runs"][1]["repetition"] = 3
+            manifest.write_text(json.dumps(duplicate_thread), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "complete declared range"):
+                codex_campaign.collect(
+                    campaign_path, manifest, fixture.base / "result.json",
+                    fixture.base / "sessions",
+                )
+
+    def test_collect_rejects_inconsistent_usage_and_timestamps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ProvenanceFixture(Path(directory))
+
+            bad_usage = fixture.write_session("thread-bad-usage")
+            events = [json.loads(line) for line in bad_usage.read_text(encoding="utf-8").splitlines()]
+            events[-1]["payload"]["info"]["total_token_usage"]["cached_input_tokens"] = 101
+            bad_usage.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "inconsistent token counters"):
+                codex_campaign.collect_session(bad_usage, CAMPAIGN)
+
+            bad_time = fixture.write_session("thread-bad-time")
+            events = [json.loads(line) for line in bad_time.read_text(encoding="utf-8").splitlines()]
+            events[-1]["timestamp"] = (
+                datetime.fromisoformat(events[1]["timestamp"]) - timedelta(seconds=1)
+            ).isoformat()
+            bad_time.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "predates the turn context"):
+                codex_campaign.collect_session(bad_time, CAMPAIGN)
+
     def test_summarize_flags_asymmetric_memory_exposure_and_cache_states(self):
         runs = []
         for condition, cached, memory in (
@@ -195,7 +412,7 @@ text(JSON.stringify({a, b, memory}));"""}},
                 })
         summary = codex_campaign.summarize({"runs": runs})
         self.assertEqual(summary["medians"]["july11-bounded-recipe"]["duration_seconds"], 10)
-        self.assertEqual(summary["docs_map_0_1_6_vs_july11_percent"]["uncached_input_tokens"], 0.0)
+        self.assertEqual(summary["candidate_vs_july11_percent"]["uncached_input_tokens"], 0.0)
         self.assertEqual(summary["comparability"]["july11-bounded-recipe"], {
             "runs_with_memory_reads": 1,
             "first_turn_cached_input_tokens": {"9984": 1, "21248": 2},
@@ -217,8 +434,11 @@ text(JSON.stringify({a, b, memory}));"""}},
         frozen_prompts = {item["id"]: item["prompt"] for item in frozen["conditions"]}
         paired_prompts = {item["id"]: item["prompt"] for item in paired["conditions"]}
         self.assertEqual(paired["host_context"]["memory"], "unavailable")
+        self.assertTrue(paired["provenance_required"])
         self.assertEqual(paired["paired_execution"]["pairs"], 3)
         self.assertTrue(paired["paired_execution"]["record_order_before_launch"])
+        self.assertIn("memory_prompt_markers", paired["metrics"])
+        self.assertIn("memory_prompt_markers", paired["validity_rule"]["memory_isolation"])
         self.assertEqual(paired_prompts, {
             "july11-bounded-recipe": frozen_prompts["july11-bounded-recipe"],
             "docs-map-candidate": frozen_prompts["docs-map-0.1.6"],
@@ -235,14 +455,28 @@ text(JSON.stringify({a, b, memory}));"""}},
             campaign["target"] = dict(CAMPAIGN["target"])
             campaign["execution"] = dict(CAMPAIGN["execution"], repetitions_per_condition=1)
             campaign["paired_execution"] = dict(paired["paired_execution"], pairs=1)
+            campaign["provenance_required"] = False
             campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
             memory_call = [{
                 "type": "response_item", "timestamp": datetime.now(timezone.utc).isoformat(),
                 "payload": {"type": "custom_tool_call", "name": "exec", "call_id": "m1",
                             "input": "tools.shell_command({command: \"Get-Content C:\\\\Users\\\\A\\\\.codex\\\\memories\\\\MEMORY.md\"});"},
             }]
-            fixture.write_session("thread-july", injected=False)
-            fixture.write_session("thread-candidate", injected=False, tool_events=memory_call)
+            reference_prompt = next(
+                item["prompt"] for item in campaign["conditions"]
+                if item["id"] == "july11-bounded-recipe"
+            )
+            candidate_prompt = next(
+                item["prompt"] for item in campaign["conditions"]
+                if item["id"] == "docs-map-candidate"
+            )
+            fixture.write_session(
+                "thread-july", injected=False, request=reference_prompt
+            )
+            fixture.write_session(
+                "thread-candidate", injected=False, tool_events=memory_call,
+                request=candidate_prompt, request_skill="diataxis-docs:docs-map",
+            )
             manifest = fixture.base / "manifest.json"
             manifest.write_text(json.dumps({
                 "host_context": paired["host_context"],
@@ -423,7 +657,10 @@ text(JSON.stringify({a, b, memory}));"""}},
             with self.assertRaisesRegex(ValueError, "do not match the candidate"):
                 run_with("thread-stale-bytes")
 
-            fixture.write_session("thread-no-injection", injected=False)
+            fixture.write_session(
+                "thread-no-injection", injected=False,
+                request_skill="diataxis-docs:docs-map",
+            )
             with self.assertRaisesRegex(ValueError, "no injected skill message"):
                 run_with("thread-no-injection")
 
@@ -490,7 +727,9 @@ text(JSON.stringify({a, b, memory}));"""}},
             session = fixture.write_session(
                 "thread-cli-qualified", injected=False, tool_events=[user_event]
             )
-            metrics = codex_campaign.collect_session(session, campaign, receipt)
+            metrics = codex_campaign.collect_session(
+                session, campaign, receipt, condition=candidate
+            )
             self.assertEqual(
                 metrics["requested_skill_sha256"],
                 receipt["key_files"]["skills/docs-map/SKILL.md"],
@@ -529,9 +768,11 @@ text(JSON.stringify({a, b, memory}));"""}},
         self.assertEqual(campaign["host_context"], {
             "host": "Codex CLI", "memory": "unavailable"
         })
+        self.assertTrue(campaign["provenance_required"])
         self.assertEqual(campaign["conditions"][0]["skill"], "diataxis-docs:docs-map")
         self.assertEqual(campaign["decision_rule"]["maximum_repository_checker_attempts"], 0)
         self.assertEqual(campaign["decision_rule"]["maximum_memory_read_ops"], 0)
+        self.assertEqual(campaign["decision_rule"]["maximum_memory_prompt_markers"], 0)
 
 
 if __name__ == "__main__":

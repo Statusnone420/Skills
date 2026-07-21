@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "provenance_required": true,
   "campaign_id": "luna-max-cli-memory-isolated-paired-v1",
   "purpose": "Decide whether the provenance-bound 0.1.7 candidate preserves the July 11 bounded recipe under symmetric, memory-isolated Codex CLI execution.",
   "target": {
@@ -55,6 +56,7 @@
     "shell_commands",
     "memory_read_ops",
     "memory_read_output_chars",
+    "memory_prompt_markers",
     "first_turn_cached_input_tokens",
     "input_tokens",
     "cached_input_tokens",
@@ -64,7 +66,7 @@
     "total_tokens"
   ],
   "validity_rule": {
-    "memory_isolation": "Any run with memory_read_ops greater than zero invalidates its entire pair.",
+    "memory_isolation": "Any run with memory_read_ops or memory_prompt_markers greater than zero invalidates its entire pair.",
     "discard_policy": "No other completed run may be discarded or retried."
   },
   "decision_rule": {

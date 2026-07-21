@@ -226,7 +226,12 @@ def command_skill(command: str, vendor: str = "codex") -> str:
     if vendor == "claude":
         invocation = "user-invocable: true\ndisable-model-invocation: true\n"
     direct_reference = {
-        "doctor": " Also follow the [Doctor playbook](../docs/references/doctor.md).",
+        "doctor": (
+            " Also follow the [Doctor playbook](../docs/references/doctor.md). For a later "
+            "exactly approved Doctor treatment, follow the "
+            "[isolation contract](../docs/references/isolation.md) and "
+            "[repository memory contract](../docs/references/memory.md)."
+        ),
         "init": " Also follow the [Init contract](../docs/references/init.md).",
     }.get(command, "")
     contract = command_contract(command)

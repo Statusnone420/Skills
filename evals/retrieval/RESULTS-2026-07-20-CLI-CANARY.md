@@ -2,6 +2,8 @@
 
 Date: 2026-07-20 local time. Candidate commit: `47d6e76`. Target repository commit: `7609b76`. Host: Codex CLI `0.144.5`. Model: Luna High. This is diagnostic evidence only; it is not one of the frozen Luna Max acceptance pairs.
 
+Duration values below are host session telemetry from turn context through the final token-count event, not end-to-end CLI process wall time.
+
 ## Verdict
 
 The memory-isolation mechanism works, but the formal paired campaign was not ready to launch unchanged. No release score is assigned.

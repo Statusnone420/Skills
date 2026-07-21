@@ -220,9 +220,14 @@ class CommandSkillDistributionTests(unittest.TestCase):
                         self.assertIn("](../docs/references/memory.md)", body)
                     else:
                         # Read-only and engine-owned routes keep the mutating
-                        # lifecycle boundary and memory contract cold.
+                        # lifecycle boundary cold. Doctor links memory only for a
+                        # later exact approved treatment.
                         self.assertNotIn("## Command closeout boundary", body)
-                        self.assertNotIn("](../docs/references/memory.md)", body)
+                        if command != "doctor":
+                            self.assertNotIn("](../docs/references/memory.md)", body)
+                    if command == "doctor":
+                        self.assertIn("](../docs/references/isolation.md)", body)
+                        self.assertIn("](../docs/references/memory.md)", body)
                     if command != "map":
                         self.assertNotIn("\n`map`: make no edits.", body)
 

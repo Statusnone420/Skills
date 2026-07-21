@@ -20,8 +20,10 @@ These campaigns answer one narrow question: did the installed documentation skil
      evals/retrieval/results/luna-max-july11-0.1.6.json
    ```
 
-7. Score the constant assertions from the visible final answers. Keep raw task IDs, absolute paths, prompts injected by the host, and full session traces out of the versioned result.
+7. Score the constant assertions from the visible final answers. This semantic scoring is a human-reviewed step, not a claim that the collector understands answer meaning; raw answer hashes keep it traceable. Keep raw task IDs, absolute paths, prompts injected by the host, and full session traces out of the versioned result.
 8. Run `python -B tools/codex_campaign.py summarize <result>` and apply the campaign's declared decision rule.
+
+`duration_seconds` is host session telemetry from the fresh turn-context timestamp through the final cumulative token-count event. It is comparable within a same-host campaign, but it is not end-to-end CLI process wall time and must not be presented as such. `uncached_input_tokens` is cumulative host-reported input minus cumulative cached input.
 
 ## Candidate provenance
 
@@ -87,7 +89,7 @@ For causal performance claims, run through Codex CLI with isolated host context 
    On Codex CLI 0.144.5, approval policy is a top-level option (`codex -a never exec ...`) and the Windows read-only sandbox may fail before commands with `orchestrator_helper_launch_failed`. Treat that as an invalid host run, not a product result; fix the host before launching a scored pair.
 
 4. Record the emitted task ID in the private manifest. Wait for the first run to finish before starting its mate, and wait at least 15 minutes between pairs. Maximum concurrency is one.
-5. Collect with the provenance receipt. Collection fails closed if the manifest order is incomplete, candidate bytes drift, or either run reads a Codex memory path. A memory-read failure invalidates the entire pair; no other completed run may be discarded.
+5. Collect with the required provenance receipt. Collection fails closed if manifest order/repetitions/session identities are incomplete or reused, candidate bytes drift, the exact condition request differs, or either run reads a Codex memory path or contains a host memory-summary marker. A memory-isolation failure invalidates the entire pair; no other completed run may be discarded.
 6. After three valid pairs, summarize the result. Release acceptance requires candidate medians no more than 25% above the paired July arm for duration and uncached input, 3/3 correct candidate answers, and zero repository-local checker attempts. Luna High or Light runs are useful canaries but do not satisfy this frozen Luna Max gate.
 
 ## 0.1.7 targeted correctness confirmation
@@ -112,7 +114,9 @@ The private manifest is deliberately small:
 }
 ```
 
-The collector finds the raw local session by exact task ID. It fails on missing, duplicate, malformed, multi-turn, wrong-model, wrong-effort, wrong-repository, or wrong-commit evidence instead of manufacturing a measurement. The public result retains a SHA-256 provenance digest for each raw session without exposing its path or task ID.
+The collector finds the raw local session by exact task ID. It fails on missing, reused, malformed, multi-turn, wrong-model, wrong-effort, wrong-repository, wrong-commit, wrong-condition-prompt, duplicate/missing repetition, inconsistent token/timestamp telemetry, host-context mismatch, or declared memory-isolation failure instead of manufacturing a measurement. Qualified candidate campaigns require a provenance receipt and the exact campaign skill selector; unqualified reference conditions reject a selector. Before writing, the complete public result is rejected if any private task ID, local absolute path, or private session path escaped from the manifest. The public result retains a SHA-256 provenance digest for each raw session without exposing its path or task ID.
+
+The 0.1.7 adversarial-review closeout and deliberately parked non-blockers are recorded in [`P3-PARK-0.1.7.md`](P3-PARK-0.1.7.md). No P0, P1, or P2 finding is parked there.
 
 Archive completed benchmark tasks and remove their clean worktrees after collection. A temporary local branch used only to seed the pinned commit should also be removed after Git proves the commit remains reachable. Never push the campaign branch or temporary constant branch as part of a run.
 

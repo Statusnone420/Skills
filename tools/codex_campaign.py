@@ -33,9 +33,34 @@ _SKILL_INJECTION = re.compile(
     r"(?P<body>.*?)\n</skill>",
     re.DOTALL,
 )
-_ABSOLUTE_PATH_MARKER = re.compile(r"[A-Za-z]:[\\/]|(?<![\w.])/(?:home|Users)/")
+_ABSOLUTE_PATH_MARKER = re.compile(
+    r"[A-Za-z]:[\\/]|^\\\\|(?<![\w.])/(?:home|Users|tmp|private/tmp|var/folders)/",
+    re.IGNORECASE,
+)
+_PRIVATE_SESSION_MARKER = re.compile(
+    r"(?:\.codex[\\/]+(?:sessions|archived_sessions)|"
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b)",
+    re.IGNORECASE,
+)
 _SHELL_COMMAND = re.compile(r"tools\.shell_command\s*\(")
 _MEMORY_PATH = re.compile(r"(?:\.codex[\\/]+memories|[\\/]+memories[\\/])", re.IGNORECASE)
+_MEMORY_PROMPT_MARKER = re.compile(
+    r"(?:use memory by default|<memory_summary>|memory_summary begins|"
+    r"\.codex[\\/]+memories)",
+    re.IGNORECASE,
+)
+_DELEGATED_INPUT = re.compile(
+    r"<codex_delegation>.*?<input>(?P<input>.*?)</input>.*?</codex_delegation>",
+    re.DOTALL,
+)
+_PLUGIN_REQUEST = re.compile(
+    r"^\[\$(?P<skill>[^\]\r\n]+)\]\([^\r\n]+\)\n\n(?P<prompt>.*)$",
+    re.DOTALL,
+)
+_CLI_SKILL_REQUEST = re.compile(
+    r"^\$(?P<skill>[^\r\n]+)\n(?P<prompt>.*)$",
+    re.DOTALL,
+)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -97,6 +122,52 @@ def _text(message: dict[str, Any]) -> str:
         for item in message.get("payload", {}).get("content", [])
         if isinstance(item, dict) and isinstance(item.get("text"), str)
     )
+
+
+def _logical_requests(events: Iterable[dict[str, Any]]) -> list[tuple[str | None, str]]:
+    """Return normalized skill selector and prompt pairs from host-wrapped user requests."""
+    requests = []
+    for message in _messages(events, "user"):
+        text = _text(message).replace("\r\n", "\n")
+        delegated = [match.group("input") for match in _DELEGATED_INPUT.finditer(text)]
+        for value in delegated or [text]:
+            value = value.replace("\r\n", "\n")
+            match = _PLUGIN_REQUEST.fullmatch(value) or _CLI_SKILL_REQUEST.fullmatch(value)
+            if match:
+                requests.append((match.group("skill"), match.group("prompt")))
+            else:
+                requests.append((None, value))
+    return requests
+
+
+def _verify_condition_request(
+    events: Iterable[dict[str, Any]],
+    condition: dict[str, Any],
+    receipt: dict[str, Any] | None,
+) -> dict[str, str]:
+    prompt = condition.get("prompt")
+    if not isinstance(prompt, str) or not prompt:
+        raise ValueError("campaign condition prompt must be a non-empty string")
+    expected_skill = condition.get("skill")
+    if expected_skill is None and receipt is not None:
+        expected_skill = receipt["bound_skill"]
+    matches = [
+        skill
+        for skill, request_prompt in _logical_requests(events)
+        if request_prompt == prompt
+    ]
+    if not matches:
+        raise ValueError("session does not contain the exact condition prompt")
+    if len(matches) != 1:
+        raise ValueError("session must contain exactly one condition request")
+    actual_skill = matches[0]
+    if expected_skill is not None and actual_skill != expected_skill:
+        raise ValueError("session does not contain the exact qualified skill request")
+    if expected_skill is None and actual_skill is not None:
+        raise ValueError("unqualified condition was launched through a skill selector")
+    return {
+        "request_prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+    }
 
 
 def _last_usage(events: Iterable[dict[str, Any]]) -> tuple[dict[str, Any], str]:
@@ -162,6 +233,16 @@ def _tool_metrics(events: Iterable[dict[str, Any]]) -> tuple[int, int, int]:
     return commands, memory_ops, memory_chars
 
 
+def _memory_prompt_markers(events: Iterable[dict[str, Any]]) -> int:
+    """Count explicit host-memory injections separately from tool-based memory reads."""
+    return sum(
+        len(_MEMORY_PROMPT_MARKER.findall(_text(event)))
+        for event in events
+        if event.get("type") == "response_item"
+        and event.get("payload", {}).get("type") == "message"
+    )
+
+
 def _git(repo_root: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(repo_root), *args], shell=False, check=True,
@@ -199,10 +280,24 @@ def _snapshot_root(cache_root: Path) -> Path:
     return versions[0]
 
 
+def _strings(value: Any) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _strings(key)
+            yield from _strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _strings(item)
+
+
 def _assert_sanitized(payload: dict[str, Any], label: str) -> None:
-    text = json.dumps(payload)
-    if _ABSOLUTE_PATH_MARKER.search(text):
-        raise ValueError(f"{label} must not contain absolute or user-profile paths")
+    for value in _strings(payload):
+        if _ABSOLUTE_PATH_MARKER.search(value) or _PRIVATE_SESSION_MARKER.search(value):
+            raise ValueError(
+                f"{label} must not contain absolute paths, private session paths, or task IDs"
+            )
 
 
 def _verify_candidate_environment(
@@ -356,8 +451,16 @@ def collect_session(
     path: Path,
     campaign: dict[str, Any],
     receipt: dict[str, Any] | None = None,
+    *,
+    condition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     events = _events(path)
+    if condition is None:
+        conditions = campaign.get("conditions", [])
+        if len(conditions) != 1:
+            raise ValueError("condition is required for a multi-condition campaign")
+        condition = conditions[0]
+    request_fields = _verify_condition_request(events, condition, receipt)
     contexts = [event for event in events if event.get("type") == "turn_context"]
     if len(contexts) != 1:
         raise ValueError(f"expected one fresh turn, found {len(contexts)}")
@@ -390,6 +493,8 @@ def collect_session(
     started_at = context["timestamp"]
     started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
     finished = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+    if finished < started:
+        raise ValueError("session usage timestamp predates the turn context")
     assistant = _messages(events, "assistant")
     final_output = _text(assistant[-1]) if assistant else ""
     if not final_output:
@@ -406,6 +511,11 @@ def collect_session(
     cached_tokens = int(usage.get("cached_input_tokens", 0))
     output_tokens = int(usage["output_tokens"])
     reasoning_tokens = int(usage.get("reasoning_output_tokens", 0))
+    total_tokens = int(usage["total_tokens"])
+    if min(input_tokens, cached_tokens, output_tokens, reasoning_tokens, total_tokens) < 0:
+        raise ValueError("session usage contains negative token counters")
+    if cached_tokens > input_tokens or reasoning_tokens > output_tokens:
+        raise ValueError("session usage contains inconsistent token counters")
     provenance_fields = {}
     if receipt is not None:
         provenance_fields = (
@@ -414,6 +524,7 @@ def collect_session(
             else _bind_injected_skill(events, receipt, started)
         )
     return {
+        **request_fields,
         **provenance_fields,
         "raw_session_sha256": hashlib.sha256(raw).hexdigest(),
         "final_output_sha256": hashlib.sha256(output).hexdigest(),
@@ -422,13 +533,14 @@ def collect_session(
         "shell_commands": shell_commands,
         "memory_read_ops": memory_read_ops,
         "memory_read_output_chars": memory_read_output_chars,
+        "memory_prompt_markers": _memory_prompt_markers(events),
         "first_turn_cached_input_tokens": _first_cached_input(events),
         "input_tokens": input_tokens,
         "cached_input_tokens": cached_tokens,
         "uncached_input_tokens": input_tokens - cached_tokens,
         "reasoning_tokens": reasoning_tokens,
         "nonreasoning_output_tokens": output_tokens - reasoning_tokens,
-        "total_tokens": int(usage["total_tokens"]),
+        "total_tokens": total_tokens,
     }
 
 
@@ -444,6 +556,10 @@ def collect(
     campaign = _load(campaign_path)
     manifest = _load(manifest_path)
     condition_ids = _condition_ids(campaign)
+    conditions = {item["id"]: item for item in campaign["conditions"]}
+    expected_host_context = campaign.get("host_context")
+    if expected_host_context is not None and manifest.get("host_context") != expected_host_context:
+        raise ValueError("private manifest host context must match the campaign")
     receipt = None
     if provenance_path is not None:
         receipt = _load(provenance_path)
@@ -452,6 +568,14 @@ def collect(
         if not set(receipt.get("bound_conditions", [])) <= condition_ids:
             raise ValueError("provenance receipt binds unknown conditions")
         _verify_candidate_environment(receipt, repo_root, cache_root)
+    if campaign.get("provenance_required"):
+        if receipt is None:
+            raise ValueError("campaign requires a candidate provenance receipt")
+        required_bound = {
+            item["id"] for item in campaign["conditions"] if item.get("skill")
+        }
+        if not required_bound <= set(receipt.get("bound_conditions", [])):
+            raise ValueError("provenance receipt does not bind every qualified condition")
     runs = manifest.get("runs")
     expected = len(condition_ids) * int(campaign["execution"]["repetitions_per_condition"])
     if not isinstance(runs, list) or len(runs) != expected:
@@ -465,8 +589,6 @@ def collect(
             raise ValueError("paired candidate must use the fully qualified focused skill")
         if campaign.get("host_context", {}).get("memory") != "unavailable":
             raise ValueError("paired campaign must declare memory unavailable")
-        if manifest.get("host_context") != campaign["host_context"]:
-            raise ValueError("paired manifest host context must match the campaign")
         pairs = int(paired.get("pairs", 0))
         if pairs != int(campaign["execution"]["repetitions_per_condition"]):
             raise ValueError("paired campaign pairs must equal repetitions per condition")
@@ -477,8 +599,15 @@ def collect(
                     or {run.get("repetition") for run in members} != {pair}):
                 raise ValueError("paired runs require both conditions and recorded pair order")
 
+    expected_repetitions = int(campaign["execution"]["repetitions_per_condition"])
+    expected_keys = {
+        (condition_id, repetition)
+        for condition_id in condition_ids
+        for repetition in range(1, expected_repetitions + 1)
+    }
     seen: set[tuple[str, int]] = set()
-    public_runs = []
+    run_ids: set[str] = set()
+    thread_ids: set[str] = set()
     for run in runs:
         if not isinstance(run, dict) or run.get("condition") not in condition_ids:
             raise ValueError("run condition is invalid")
@@ -486,17 +615,33 @@ def collect(
         key = (run["condition"], repetition)
         if not isinstance(repetition, int) or repetition < 1 or key in seen:
             raise ValueError("run repetitions must be unique positive integers per condition")
+        run_id = run.get("run_id")
+        thread_id = run.get("thread_id")
+        if not isinstance(run_id, str) or not run_id or run_id in run_ids:
+            raise ValueError("run IDs must be unique non-empty strings")
+        if not isinstance(thread_id, str) or not thread_id or thread_id in thread_ids:
+            raise ValueError("thread IDs must be unique non-empty strings")
         seen.add(key)
+        run_ids.add(run_id)
+        thread_ids.add(thread_id)
+    if seen != expected_keys:
+        raise ValueError("run repetitions must cover the complete declared range per condition")
+
+    public_runs = []
+    for run in runs:
+        repetition = run["repetition"]
         bound = receipt is not None and run["condition"] in receipt["bound_conditions"]
         metrics = collect_session(
             _find_session(session_root, run.get("thread_id")),
             campaign,
             receipt if bound else None,
+            condition=conditions[run["condition"]],
         )
-        if paired and metrics["memory_read_ops"] > 0:
-            raise ValueError(
-                f"memory isolation failed for pair {run.get('pair')}; rerun the entire pair"
-            )
+        if (
+            metrics["memory_read_ops"] > 0 or metrics["memory_prompt_markers"] > 0
+        ) and campaign.get("host_context", {}).get("memory") == "unavailable":
+            location = f"pair {run.get('pair')}" if paired else f"run {run.get('run_id')}"
+            raise ValueError(f"memory isolation failed for {location}")
         public_runs.append({
             "run_id": run.get("run_id"),
             "condition": run["condition"],
@@ -526,6 +671,7 @@ def collect(
         }
         _assert_sanitized(candidate_provenance, "candidate provenance")
         result["candidate_provenance"] = candidate_provenance
+    _assert_sanitized(result, "public result")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
@@ -580,7 +726,7 @@ def summarize(result: dict[str, Any]) -> dict[str, Any]:
                 })
     return {
         "medians": medians,
-        "docs_map_0_1_6_vs_july11_percent": comparison,
+        "candidate_vs_july11_percent": comparison,
         "comparability": comparability,
         "paired_uncached_input_differences": paired_differences,
     }
