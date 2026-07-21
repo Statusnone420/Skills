@@ -34,8 +34,14 @@ _SKILL_INJECTION = re.compile(
     re.DOTALL,
 )
 _ABSOLUTE_PATH_MARKER = re.compile(
-    r"[A-Za-z]:[\\/]|^\\\\|(?<![\w.])/(?:home|Users|tmp|private/tmp|var/folders)/",
-    re.IGNORECASE,
+    r"(?i)(?:"
+    r"\b[A-Z]:[\\/]"
+    r"|(?<![A-Za-z0-9/:])(?:\\\\|//)[^\\/\s]+[\\/][^\\/\s]+"
+    r"|(?<![A-Za-z0-9/.:])/(?![/\s])[^\s]*"
+    r"|(?<![A-Za-z0-9/:\\.])\\(?![\\\s])[^\s]*"
+    r"|\bfile://[^\s]+"
+    r"|\b[A-Za-z][A-Za-z0-9+.-]*:(?=/[^\s/])[^\s]*"
+    r")"
 )
 _PRIVATE_SESSION_MARKER = re.compile(
     r"(?:\.codex[\\/]+(?:sessions|archived_sessions)|"

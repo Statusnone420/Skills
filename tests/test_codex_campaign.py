@@ -293,6 +293,9 @@ text(JSON.stringify({a, b, memory}));"""}},
             manifest = fixture.base / "manifest.json"
             cases = (
                 ("absolute-path", [r"raw trace at C:\\Users\\Example\\.codex\\sessions"], "candidate-1"),
+                ("unix-workspace-path", ["raw trace at /workspace/customer/repo/notes.md"], "candidate-1"),
+                ("unix-system-path", ["configuration read from /etc/example/config.json"], "candidate-1"),
+                ("file-uri", ["configuration read from file:///etc/example/config.json"], "candidate-1"),
                 ("task-id", [], "019f830f-6c17-7353-9e80-44511d4717c7"),
             )
             for label, limitations, run_id in cases:
@@ -311,6 +314,17 @@ text(JSON.stringify({a, b, memory}));"""}},
                             fixture.base / "sessions",
                         )
                     self.assertFalse(output.exists())
+
+    def test_public_result_sanitizer_allows_urls_and_relative_prose(self):
+        for value in (
+            "https://github.com/Statusnone420/Skills/pull/25",
+            "the measured ratio is 1/2",
+            "relative docs/README.md remains public",
+            "./plugins/diataxis-docs",
+            "../relative/checker.py",
+        ):
+            with self.subTest(value=value):
+                codex_campaign._assert_sanitized({"note": value}, "public result")
 
     def test_collect_requires_provenance_when_the_campaign_declares_it(self):
         with tempfile.TemporaryDirectory() as directory:
