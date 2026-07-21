@@ -1,0 +1,214 @@
+{
+  "campaign_id": "luna-max-july11-retrieval-constant-v1",
+  "collected_at": "2026-07-21T00:47:19.131334+00:00",
+  "decision_rule": {
+    "interpretation": "Call 0.1.6 a regression when its median exceeds the July 11 bounded recipe by more than 25 percent on either primary metric without a material correctness, coverage, or safety gain.",
+    "minimum_correctness": "all constant assertions present or an evidence-backed explanation for a changed finding",
+    "primary_metrics": [
+      "duration_seconds",
+      "uncached_input_tokens"
+    ],
+    "regression_threshold_percent": 25
+  },
+  "execution": {
+    "fresh_task_per_run": true,
+    "model": "gpt-5.6-luna",
+    "read_only": true,
+    "reasoning_effort": "max",
+    "recommended_max_concurrency": 3,
+    "repetitions_per_condition": 3
+  },
+  "host_context": {
+    "host": "Codex Desktop",
+    "memory": "enabled",
+    "tool_assisted_memory_generation": "enabled"
+  },
+  "limitations": [
+    "Shared host memory was injected into all conditions; one no-skill run explicitly used the old map only as a hypothesis before repository verification.",
+    "The executed July recipe omitted the historical instruction to treat checker exit 1 with findings as a completed diagnostic; the versioned constant now restores that clause for future runs.",
+    "Nine tasks were initially launched concurrently; future runs are capped at three concurrent tasks."
+  ],
+  "runs": [
+    {
+      "assertions": {
+        "constant_map": "FAIL",
+        "limitation": "selected the frozen repository checker and failed on its unsupported --agent flag",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 244480,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 203.712,
+      "final_output_sha256": "b9f0f7b3a3dff279e20ffeef5322b9959a2493172158135793772163dc06c951",
+      "input_tokens": 279682,
+      "nonreasoning_output_tokens": 1807,
+      "raw_session_sha256": "e44d38d77770fba2d6661fc324c0c031d1b47e83d020da8eec8fa9f55cc17990",
+      "reasoning_tokens": 5599,
+      "repetition": 1,
+      "run_id": "docs-map-0.1.6-1",
+      "tool_call_wrappers": 8,
+      "total_tokens": 287088,
+      "uncached_input_tokens": 35202
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "limitation": "first selected the frozen repository checker, then recovered with the installed checker",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 246528,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 190.475,
+      "final_output_sha256": "ad434fdd60b9744c5f32abeaeef8f1f92f50ada8d5b6ef3a5bbeeef7b42405ae",
+      "input_tokens": 281703,
+      "nonreasoning_output_tokens": 2314,
+      "raw_session_sha256": "81fa2dc9fc04e43ed2e65e99c723a1f803c37ce4b4dbf529acfe0d4b1a3d8f1d",
+      "reasoning_tokens": 5173,
+      "repetition": 2,
+      "run_id": "docs-map-0.1.6-2",
+      "tool_call_wrappers": 8,
+      "total_tokens": 289190,
+      "uncached_input_tokens": 35175
+    },
+    {
+      "assertions": {
+        "constant_map": "PARTIAL",
+        "limitation": "correct checker findings but omitted the required topology tree and canonical/generated routes",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 288000,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 165.375,
+      "final_output_sha256": "87192e68427509e791d1c062e1cf5eadecc4beca18d127e024f0f6b84f0e0ff1",
+      "input_tokens": 324016,
+      "nonreasoning_output_tokens": 1732,
+      "raw_session_sha256": "8537c651315e82044ebd2ab2da47244622bb0a505ff79bc226968acc8fafe466",
+      "reasoning_tokens": 3442,
+      "repetition": 3,
+      "run_id": "docs-map-0.1.6-3",
+      "tool_call_wrappers": 6,
+      "total_tokens": 329190,
+      "uncached_input_tokens": 36016
+    },
+    {
+      "assertions": {
+        "constant_map": "PARTIAL",
+        "limitation": "checker findings were not named and hot-path bytes were unavailable",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 107264,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 143.983,
+      "final_output_sha256": "f290cc49ef7a3e095e3fe3559046890a927b420ce49a79c3d5314a7a8989823b",
+      "input_tokens": 127465,
+      "nonreasoning_output_tokens": 1199,
+      "raw_session_sha256": "dc2cad2fc4e85f21fb7964bb3217a5afdcabcd1da72238e8084eff15385a4b1a",
+      "reasoning_tokens": 6436,
+      "repetition": 1,
+      "run_id": "july11-bounded-recipe-1",
+      "tool_call_wrappers": 4,
+      "total_tokens": 135100,
+      "uncached_input_tokens": 20201
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 217344,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 168.747,
+      "final_output_sha256": "e54878bd51aecaca55a5e31d3a32cb97b07267d336c2d88690327e0e3a5356e0",
+      "input_tokens": 239839,
+      "nonreasoning_output_tokens": 1958,
+      "raw_session_sha256": "ddbd616fa6438c1d3c199e005a81b006b3bbc8fd070f880158a5d5741290234c",
+      "reasoning_tokens": 6980,
+      "repetition": 2,
+      "run_id": "july11-bounded-recipe-2",
+      "tool_call_wrappers": 6,
+      "total_tokens": 248777,
+      "uncached_input_tokens": 22495
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 117504,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 94.604,
+      "final_output_sha256": "5bc4a09eaa4fb160a9dd82252bd0459f11b60fa27bc80b469587c455239e9662",
+      "input_tokens": 126351,
+      "nonreasoning_output_tokens": 1187,
+      "raw_session_sha256": "57a056d1f06d87e798d83151e4b6d43fc394298fb37460941cf38ddccaa343de",
+      "reasoning_tokens": 3731,
+      "repetition": 3,
+      "run_id": "july11-bounded-recipe-3",
+      "tool_call_wrappers": 4,
+      "total_tokens": 131269,
+      "uncached_input_tokens": 8847
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 1696768,
+      "condition": "no-skill",
+      "duration_seconds": 568.965,
+      "final_output_sha256": "83db4c9d23087a202f18bae6a7cd8cd5b4ea915b7e31152193a23c1ac51870ea",
+      "input_tokens": 1803309,
+      "nonreasoning_output_tokens": 5513,
+      "raw_session_sha256": "7d134d3f219bcf8b9080252ccb88fcf2d9d1a256771713c9cf2405f2c3508604",
+      "reasoning_tokens": 9208,
+      "repetition": 1,
+      "run_id": "no-skill-1",
+      "tool_call_wrappers": 35,
+      "total_tokens": 1818030,
+      "uncached_input_tokens": 106541
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 1627136,
+      "condition": "no-skill",
+      "duration_seconds": 281.578,
+      "final_output_sha256": "b9fb44b0bfa56f5730e888d7aff660d5dcef700384861ed7d473ffd296e7eb79",
+      "input_tokens": 1716038,
+      "nonreasoning_output_tokens": 4811,
+      "raw_session_sha256": "af506d5c605d2c6358211f7db1c2a00b407cd677f37c8de762b0980fc809ffb3",
+      "reasoning_tokens": 7625,
+      "repetition": 2,
+      "run_id": "no-skill-2",
+      "tool_call_wrappers": 27,
+      "total_tokens": 1728474,
+      "uncached_input_tokens": 88902
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 776192,
+      "condition": "no-skill",
+      "duration_seconds": 431.956,
+      "final_output_sha256": "5c91d16ea37eb4aae5aec385fd4cf5cdce7a58c875d1662959f44fe96614e25b",
+      "input_tokens": 855227,
+      "nonreasoning_output_tokens": 10349,
+      "raw_session_sha256": "7401010c9959d6054c17a65f8c47743266fb6f8f50a0ea346f3e7a40fbca500a",
+      "reasoning_tokens": 12372,
+      "repetition": 3,
+      "run_id": "no-skill-3",
+      "tool_call_wrappers": 15,
+      "total_tokens": 877948,
+      "uncached_input_tokens": 79035
+    }
+  ],
+  "schema_version": 1,
+  "target": {
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673",
+    "repository": "Statusnone Skills"
+  },
+  "validity": "desktop-memory-on-pilot"
+}

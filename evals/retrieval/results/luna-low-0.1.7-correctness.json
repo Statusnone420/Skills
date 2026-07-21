@@ -1,0 +1,145 @@
+{
+  "campaign_id": "luna-low-0.1.7-current-state-correctness-v1",
+  "candidate_provenance": {
+    "bound_conditions": [
+      "docs-map-0.1.7-correctness"
+    ],
+    "bound_skill": "diataxis-docs:docs-map",
+    "bound_skill_file": "skills/docs-map/SKILL.md",
+    "cache_relative_prefix": "statusnone-skills/diataxis-docs/0.1.7/",
+    "campaign_id": "luna-low-0.1.7-current-state-correctness-v1",
+    "candidate_commit": "a000fe8117abf83a154b8c79ac11c2295e63fb90",
+    "drift": "none",
+    "generated_at": "2026-07-21T05:00:39.397777+00:00",
+    "key_files": {
+      "skills/docs-map/SKILL.md": "6208aa57bfa5f40f9bd00b94d50cc644a58efb9133420c6e23af81a83a721d1a",
+      "skills/docs/SKILL.md": "83718a0f20ff61671e4038fb72c63e8907d5e1f8ea00e45f54653f5ebaeef92d",
+      "skills/docs/scripts/check.py": "5c95d5ff57e782ae7b4a6f87655100c093c931c1cd014d25f1fc7b4ae732792c"
+    },
+    "marketplace_source": "./plugins/diataxis-docs",
+    "package_tree": {
+      "files": 93,
+      "sha256": "5f3d62955a1b43bd09451bb5eb811cddaece48252e96382d3b1360dfbfbc1906"
+    },
+    "snapshot_version": "0.1.7",
+    "verified_at": "2026-07-21T05:05:47.889009+00:00"
+  },
+  "collected_at": "2026-07-21T05:05:47.888995+00:00",
+  "decision_rule": {
+    "interpretation": "The 0.1.7 correction passes when all three fresh Luna Low runs satisfy every constant assertion, use the installed bundled checker without attempting the repository-local checker, record zero memory reads, and leave the target worktree clean. This correctness campaign supplements rather than rescores the frozen Luna Max paired performance result.",
+    "maximum_memory_read_ops": 0,
+    "maximum_repository_checker_attempts": 0,
+    "minimum_correctness": "Candidate passes all constant assertions in 3 of 3 runs."
+  },
+  "execution": {
+    "fresh_task_per_run": true,
+    "model": "gpt-5.6-luna",
+    "read_only": true,
+    "reasoning_effort": "low",
+    "recommended_max_concurrency": 1,
+    "repetitions_per_condition": 3
+  },
+  "host_context": {
+    "host": "Codex CLI",
+    "memory": "unavailable"
+  },
+  "limitations": [
+    "Codex CLI 0.144.5 Windows read-only sandbox helper is unavailable, so tasks use danger-full-access on a disposable detached worktree with a read-only prompt and a mandatory clean-worktree check after every run.",
+    "All three Luna Low tasks run serially. This campaign confirms the targeted correctness fix and does not replace or rescore the frozen Luna Max paired performance result."
+  ],
+  "runs": [
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 0,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 77568,
+      "condition": "docs-map-0.1.7-correctness",
+      "duration_seconds": 31.273,
+      "final_output_sha256": "b9cea84d694929b749176eff81c9c80f91de8856ade7e0b6e227571636d2ae88",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 106481,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1006,
+      "raw_session_sha256": "747e15a13afd498c8ac722f16024e1246dc8d23f4034fec7fff6a7e9828e6a2f",
+      "reasoning_tokens": 228,
+      "repetition": 1,
+      "requested_skill_sha256": "6208aa57bfa5f40f9bd00b94d50cc644a58efb9133420c6e23af81a83a721d1a",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.7/skills/docs-map/SKILL.md",
+      "run_id": "luna-low-0.1.7-correctness-1",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 107715,
+      "uncached_input_tokens": 28913
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 0,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 89856,
+      "condition": "docs-map-0.1.7-correctness",
+      "duration_seconds": 31.084,
+      "final_output_sha256": "b6be347804dd23ba299b505578ae827f32551b20e3985fb22df9cd38fc23939d",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 106410,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 939,
+      "raw_session_sha256": "b741605b6464d3f611c2b701e071dd6436ead867d80d41a1ef6e5ea0d5d8f370",
+      "reasoning_tokens": 273,
+      "repetition": 2,
+      "requested_skill_sha256": "6208aa57bfa5f40f9bd00b94d50cc644a58efb9133420c6e23af81a83a721d1a",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.7/skills/docs-map/SKILL.md",
+      "run_id": "luna-low-0.1.7-correctness-2",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 107622,
+      "uncached_input_tokens": 16554
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 0,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 89856,
+      "condition": "docs-map-0.1.7-correctness",
+      "duration_seconds": 28.262,
+      "final_output_sha256": "ff617eec9bac2890e3973e3888ca5b81fd20c5770d85c8fffb4d18c49a6531de",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 106319,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 985,
+      "raw_session_sha256": "6674ab0938bdcead0ffd42186630d6f895cb051d8aa4f927dc53061b981147fe",
+      "reasoning_tokens": 181,
+      "repetition": 3,
+      "requested_skill_sha256": "6208aa57bfa5f40f9bd00b94d50cc644a58efb9133420c6e23af81a83a721d1a",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.7/skills/docs-map/SKILL.md",
+      "run_id": "luna-low-0.1.7-correctness-3",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 107485,
+      "uncached_input_tokens": 16463
+    }
+  ],
+  "schema_version": 1,
+  "target": {
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673",
+    "repository": "Statusnone Skills"
+  },
+  "validity": "valid-luna-low-0.1.7-correctness"
+}

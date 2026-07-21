@@ -117,7 +117,7 @@ class DocsSkillContractTests(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
 
-        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.6\"", skill)
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.7\"", skill)
         self.assertIn("Diátaxis Docs v<metadata.version>", commands)
 
     def test_default_help_uses_plain_english_daily_commands(self):
@@ -370,10 +370,10 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_canonical_version_is_strict_semver(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertEqual(build_adapters.canonical_version(skill), "0.1.6")
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.7")
         for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
             with self.subTest(invalid=invalid):
-                malformed = skill.replace('version: "0.1.6"', f'version: "{invalid}"')
+                malformed = skill.replace('version: "0.1.7"', f'version: "{invalid}"')
                 with self.assertRaises(ValueError):
                     build_adapters.canonical_version(malformed)
 
@@ -419,7 +419,7 @@ class DocsSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, skill + "\n" + commands + "\n" + doctor)
         for phrase in (
-            "same bounded fallback route as `map`",
+            "non-recursively probe only root readme.md/state.md/product.md/design.md/plan.md",
             "no repository read is permitted after the checker",
             "only doctor permits bounded post-check evidence",
             "correct evidence-backed treatment",
@@ -609,7 +609,7 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("get-childitem", doctor)
         self.assertIn("rg --files", doctor)
         self.assertIn("git ls-files", doctor)
-        self.assertIn("exact `map`/`check` entry in `commands.md`", doctor)
+        self.assertIn("read every map link labeled current state/current truth/status", doctor)
         self.assertIn("scripts/check.py` exactly once", doctor)
         self.assertIn("never use repo-local checker", doctor)
         for phrase in ("responsible command", "tree/hot-path impact", "approval"):
@@ -1089,11 +1089,17 @@ class DocsSkillContractTests(unittest.TestCase):
             "needs attention",
             "outside the mapped routes",
             "deliberately not loaded",
-            "presentation may vary",
+            "required elements",
+            "wording and order may vary",
+            "omitting any required element is an incomplete result",
+            "canonical-versus-generated split",
+            "shared health output",
+            "one next action",
         ):
             self.assertIn(phrase, contract)
         self.assertIn("make no edits", contract)
         self.assertIn("detailed diagnostics remain under `check`", contract)
+        self.assertNotIn("presentation may vary", contract)
 
     def test_map_command_has_bounded_evidence_recipe(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -1107,7 +1113,12 @@ class DocsSkillContractTests(unittest.TestCase):
             "at most three evidence actions, in order",
             "read the existing map",
             "only if it names existing current-state hot-path files, read them",
-            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
+            "select every map link explicitly presented as current state, current truth, or status",
+            "read it without a separate existence probe",
+            "a successful read proves existence",
+            "its repository-relative path must be passed to `--hot`",
+            "never silently skip an explicit current-state route",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",
             "never include skill or playbook files in `--hot`",
@@ -1153,11 +1164,24 @@ class DocsSkillContractTests(unittest.TestCase):
             "when mapped routes exist, do not use repository-wide search",
             "execute a documented bundled tool invocation once",
             "do not preflight its path or availability",
+            "`<installed-skill>` always means the installed diátaxis docs skill directory",
+            "the bundled checker is exactly `<installed-skill>/scripts/check.py`",
+            "repository evidence, never the tool; never execute it",
+            "hosts this skill's own source",
             "inspect source or help only when it cannot execute or returns malformed output",
             "resolve relative links from the linking file's directory",
             "report a missing target without listing its parent",
         ):
             self.assertIn(phrase, commands)
+
+    def test_checker_invocations_bind_to_the_installed_skill_only(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+        self.assertNotIn("<checker-path>", commands)
+        self.assertNotIn("<checker-path>", doctor)
+        for invocation in re.findall(r"<python> (\S+)/scripts/check\.py", commands + doctor):
+            self.assertEqual(invocation, "<installed-skill>")
+        self.assertIn("Never use repo-local checker", doctor)
 
     def test_context_command_has_bounded_retrieval_contract(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -1205,7 +1229,16 @@ class DocsSkillContractTests(unittest.TestCase):
         for phrase in (
             "make no edits",
             "execute the bundled checker once",
-            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
+            "select every map link explicitly presented as current state, current truth, or status",
+            "for each selected link, resolve it relative to the map and read it without a separate existence probe",
+            "a successful read proves existence and its repository-relative path must be passed to `--hot`",
+            "never silently skip an explicit current-state route",
+            "if the direct `docs/readme.md` read is missing",
+            "non-recursively probe only root readme.md/state.md/product.md/design.md/plan.md",
+            "read one maintained map candidate with at most two current-state candidates",
+            "the checker is the final fallback action",
+            "no candidate map: stop unmeasured",
             "omit `--hot` when no existing current-state file is selected",
             "`has_findings: true` is a findings result",
             "smallest scriptless equivalent",
@@ -1232,6 +1265,20 @@ class DocsSkillContractTests(unittest.TestCase):
         self.assertIn("no advice and no edits", contract)
         for advisory in ("remediation route", "next action", "recommend", "prescrib"):
             self.assertNotIn(advisory, contract)
+
+    def test_doctor_playbook_is_self_contained_for_focused_routing(self):
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8").lower()
+        self.assertNotIn("consult the exact `map`/`check` entry", doctor)
+        self.assertNotIn("remain those in `commands.md`", doctor)
+        for phrase in (
+            "read every map link labeled current state/current truth/status",
+            "a successful read proves existence",
+            "pass its repository-relative path to `--hot`",
+            "never skip a labeled route",
+            "follows `isolation.md`",
+            "and `memory.md`",
+        ):
+            self.assertIn(phrase, doctor)
 
     def _scope_fixture(self):
         temporary = tempfile.TemporaryDirectory()

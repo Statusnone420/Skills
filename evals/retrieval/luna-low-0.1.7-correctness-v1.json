@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "provenance_required": true,
+  "campaign_id": "luna-low-0.1.7-current-state-correctness-v1",
+  "purpose": "Verify that the 0.1.7 release-candidate bytes reliably select an explicitly labeled current-state route after the targeted map-contract correction.",
+  "target": {
+    "repository": "Statusnone Skills",
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673"
+  },
+  "host_context": {
+    "host": "Codex CLI",
+    "memory": "unavailable"
+  },
+  "execution": {
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "repetitions_per_condition": 3,
+    "recommended_max_concurrency": 1,
+    "fresh_task_per_run": true,
+    "read_only": true
+  },
+  "conditions": [
+    {
+      "id": "docs-map-0.1.7-correctness",
+      "skill": "diataxis-docs:docs-map",
+      "prompt": "Invoke the installed Diataxis Docs 0.1.7 map command for this repository. This is a read-only correctness benchmark; make no changes."
+    }
+  ],
+  "constant_assertions": {
+    "start_route": "docs/README.md",
+    "current_truth_route": "docs/STATE.md",
+    "canonical_skill_route": "skills/docs/SKILL.md",
+    "generated_route": "adapters/",
+    "hot_path_bytes": 1589,
+    "known_topology_gaps": [
+      "docs/superpowers/plans/2026-07-11-bounded-compass-identity.md",
+      "docs/superpowers/specs/2026-07-11-bounded-compass-identity-design.md"
+    ]
+  },
+  "metrics": [
+    "duration_seconds",
+    "tool_call_wrappers",
+    "shell_commands",
+    "memory_read_ops",
+    "memory_read_output_chars",
+    "memory_prompt_markers",
+    "first_turn_cached_input_tokens",
+    "input_tokens",
+    "cached_input_tokens",
+    "uncached_input_tokens",
+    "reasoning_tokens",
+    "nonreasoning_output_tokens",
+    "total_tokens"
+  ],
+  "decision_rule": {
+    "minimum_correctness": "Candidate passes all constant assertions in 3 of 3 runs.",
+    "maximum_repository_checker_attempts": 0,
+    "maximum_memory_read_ops": 0,
+    "maximum_memory_prompt_markers": 0,
+    "interpretation": "The 0.1.7 correction passes when all three fresh Luna Low runs satisfy every constant assertion, use the installed bundled checker without attempting the repository-local checker, record zero memory reads, and leave the target worktree clean. This correctness campaign supplements rather than rescores the frozen Luna Max paired performance result."
+  }
+}

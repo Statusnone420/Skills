@@ -129,7 +129,7 @@ class CommandSkillDistributionTests(unittest.TestCase):
         )
         self.assertEqual(manifest["name"], entry["name"])
         self.assertEqual(plugin_root.name, entry["name"])
-        self.assertEqual(manifest["version"], "0.1.6")
+        self.assertEqual(manifest["version"], "0.1.7")
         self.assertEqual(manifest["interface"]["displayName"], "Diátaxis Docs")
 
     def test_codex_and_claude_publish_the_umbrella_plus_focused_skills(self):
@@ -167,7 +167,14 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 self.assertIn("../docs/SKILL.md", codex_body)
                 self.assertNotIn("Generic web mode", codex_body)
                 self.assertNotIn("{{REPOSITORY_MATERIAL}}", codex_body)
-                self.assertLess(len(codex_body.split()), 180)
+                self.assertNotIn("](../docs/references/commands.md)", codex_body)
+                contract = builder.command_contract(command)
+                self.assertIn(contract, codex_body)
+                scaffold = codex_body.replace(contract, "", 1)
+                boundary = builder.command_closeout_boundary(command)
+                if boundary:
+                    scaffold = scaffold.replace(boundary, "", 1)
+                self.assertLess(len(scaffold.split()), 180)
                 agent = (codex_root / "agents" / "openai.yaml").read_text(
                     encoding="utf-8"
                 )
@@ -180,6 +187,125 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 self.assertEqual(claude_meta["disable-model-invocation"], "true")
                 self.assertEqual(claude_text, builder.command_skill(command, "claude"))
                 self.assertEqual(claude_body, codex_body)
+
+    def test_focused_skills_embed_their_selected_canonical_contract(self):
+        import tools.build_adapters as builder
+
+        commands_text = (
+            ROOT / "skills" / "docs" / "references" / "commands.md"
+        ).read_text(encoding="utf-8")
+        for command in COMMANDS:
+            expected = builder._command_reference(commands_text, command).replace(
+                "](init.md)", "](../docs/references/init.md)"
+            )
+            self.assertEqual(expected, builder.command_contract(command))
+            for vendor, root in (
+                ("codex", ROOT / "plugins" / "diataxis-docs" / "skills"),
+                ("claude", ROOT / "adapters" / "claude" / "skills"),
+            ):
+                with self.subTest(command=command, vendor=vendor):
+                    body = frontmatter(
+                        (root / f"docs-{command}" / "SKILL.md").read_text(
+                            encoding="utf-8"
+                        )
+                    )[1]
+                    self.assertIn("## Selected command contract (canonical)", body)
+                    self.assertIn(expected, body)
+                    self.assertNotIn("](init.md)", body)
+                    if command in builder.MUTATING_COMMANDS:
+                        # A mutating focused route carries the closeout boundary and
+                        # explicitly links the memory contract so the shared routing
+                        # rule keeps its lifecycle chain warm.
+                        self.assertIn("## Command closeout boundary", body)
+                        self.assertIn("](../docs/references/memory.md)", body)
+                    else:
+                        # Read-only and engine-owned routes keep the mutating
+                        # lifecycle boundary cold. Doctor links memory only for a
+                        # later exact approved treatment.
+                        self.assertNotIn("## Command closeout boundary", body)
+                        if command != "doctor":
+                            self.assertNotIn("](../docs/references/memory.md)", body)
+                    if command == "doctor":
+                        self.assertIn("](../docs/references/isolation.md)", body)
+                        self.assertIn("](../docs/references/memory.md)", body)
+                    if command != "map":
+                        self.assertNotIn("\n`map`: make no edits.", body)
+
+    def test_shared_routing_distinguishes_focused_and_umbrella_invocation(self):
+        skill = (ROOT / "skills" / "docs" / "SKILL.md").read_text(encoding="utf-8")
+        routing = skill[
+            skill.index("## Routing"):skill.index("## Selected-surface evidence")
+        ]
+        # The umbrella route still goes through the full command playbook.
+        self.assertIn(
+            "Other commands follow [commands.md](references/commands.md); "
+            "use [memory.md](references/memory.md) for details.",
+            routing,
+        )
+        # A focused route's embedded selected contract wins, and the playbook and
+        # memory contract stay cold unless that contract links them.
+        self.assertIn(
+            "A focused route's selected contract is authoritative; "
+            "`commands.md`/`memory.md` stay cold unless it links them.",
+            routing,
+        )
+        for command in COMMANDS:
+            for vendor, root in (
+                ("codex", ROOT / "plugins" / "diataxis-docs" / "skills"),
+                ("claude", ROOT / "adapters" / "claude" / "skills"),
+            ):
+                with self.subTest(command=command, vendor=vendor):
+                    body = frontmatter(
+                        (root / f"docs-{command}" / "SKILL.md").read_text(
+                            encoding="utf-8"
+                        )
+                    )[1]
+                    self.assertIn("The selected command contract below", body)
+                    self.assertIn("do not load `commands.md`", body)
+
+    def test_checker_commands_hard_bind_the_installed_sibling_checker(self):
+        binding = (
+            "the bundled checker is exactly "
+            "[`../docs/scripts/check.py`](../docs/scripts/check.py); execute it without "
+            "preflighting its path or availability, and never execute a checker found "
+            "inside the target repository"
+        )
+        checker_commands = {"map", "check", "doctor"}
+        for command in COMMANDS:
+            for vendor, root in (
+                ("codex", ROOT / "plugins" / "diataxis-docs" / "skills"),
+                ("claude", ROOT / "adapters" / "claude" / "skills"),
+            ):
+                with self.subTest(command=command, vendor=vendor):
+                    body = frontmatter(
+                        (root / f"docs-{command}" / "SKILL.md").read_text(
+                            encoding="utf-8"
+                        )
+                    )[1]
+                    if command in checker_commands:
+                        self.assertIn(binding, body)
+                        self.assertIn("<installed-skill>/scripts/check.py", body)
+                    else:
+                        self.assertNotIn("../docs/scripts/check.py", body)
+
+    def test_daily_driver_hot_path_stays_bounded(self):
+        # Packaging regression guard for the read-only daily-driver routes: the
+        # focused skill plus the shared engine contract must stay far below the
+        # retired full-playbook hot path (about 20,000 bytes in 0.1.6).
+        shared = (
+            ROOT / "plugins" / "diataxis-docs" / "skills" / "docs" / "SKILL.md"
+        ).stat().st_size
+        for command in ("map", "check", "context"):
+            focused = (
+                ROOT
+                / "plugins"
+                / "diataxis-docs"
+                / "skills"
+                / f"docs-{command}"
+                / "SKILL.md"
+            ).stat().st_size
+            with self.subTest(command=command):
+                self.assertLessEqual(focused + shared, 12_000)
 
     def test_help_contract_guarantees_the_command_tree(self):
         commands = (ROOT / "skills" / "docs" / "references" / "commands.md").read_text(

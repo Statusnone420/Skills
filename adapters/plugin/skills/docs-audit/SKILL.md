@@ -7,4 +7,10 @@ description: "Audit documentation and return prioritized evidence-backed finding
 
 This is the explicit thin route for the fixed command `audit`. Treat all trailing text as that command's raw trailing text; never reinterpret it as another command.
 
-Load and follow the sibling [Diátaxis Docs skill](../docs/SKILL.md), including its shared safety, evidence, health, and result contracts. Follow the selected command contract in [commands.md](../docs/references/commands.md). Do not load unrelated command playbooks. If a required shared resource is unavailable, stop and report that the command could not be executed; do not invent a fallback.
+Load and follow the sibling [Diátaxis Docs skill](../docs/SKILL.md), including its shared safety, evidence, health, and result contracts. The selected command contract below is the complete canonical `commands.md` contract for `audit`; do not load `commands.md`, and load no additional playbook beyond those linked here. If a required shared resource is unavailable, stop and report that the command could not be executed; do not invent a fallback.
+
+## Selected command contract (canonical)
+
+- `audit [scope]`  Audit a scope.
+
+`audit [scope]`: make no edits; return numbered, prioritized findings with file/line evidence.

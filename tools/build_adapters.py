@@ -194,8 +194,29 @@ def slash_skill(text: str) -> str:
     if parts[1] != expected_header: raise ValueError("frontmatter must match canonical source exactly")
     return "---" + parts[1].rstrip() + "\nuser-invocable: true\ndisable-model-invocation: true\n---" + parts[2]
 
+MUTATING_COMMANDS = frozenset({"write", "update", "fix", "migrate", "cleanup"})
+
+def command_contract(command: str) -> str:
+    """Select one command's canonical contract and rebind its relative links for a focused skill."""
+    if command not in COMMAND_SPECS:
+        raise ValueError(f"unsupported command skill: {command}")
+    commands_text = (SOURCE / "references" / "commands.md").read_text(encoding="utf-8")
+    selected = _command_reference(commands_text, command)
+    # commands.md may link one hop to init.md; the focused skill lives beside docs/, so the
+    # embedded copy must reach the same canonical file.
+    return selected.replace("](init.md)", "](../docs/references/init.md)")
+
+def command_closeout_boundary(command: str) -> str:
+    """Return the canonical closeout boundary for mutating focused routes, else empty."""
+    if command not in COMMAND_SPECS:
+        raise ValueError(f"unsupported command skill: {command}")
+    if command not in MUTATING_COMMANDS:
+        return ""
+    commands_text = (SOURCE / "references" / "commands.md").read_text(encoding="utf-8")
+    return _markdown_section(commands_text, "Command closeout boundary")
+
 def command_skill(command: str, vendor: str = "codex") -> str:
-    """Build one thin explicit command route without duplicating the shared engine."""
+    """Build one focused command route that embeds only its own selected canonical contract."""
     if command not in COMMAND_SPECS:
         raise ValueError(f"unsupported command skill: {command}")
     if vendor not in {"codex", "claude"}:
@@ -205,9 +226,33 @@ def command_skill(command: str, vendor: str = "codex") -> str:
     if vendor == "claude":
         invocation = "user-invocable: true\ndisable-model-invocation: true\n"
     direct_reference = {
-        "doctor": " Also follow the [Doctor playbook](../docs/references/doctor.md).",
+        "doctor": (
+            " Also follow the [Doctor playbook](../docs/references/doctor.md). For a later "
+            "exactly approved Doctor treatment, follow the "
+            "[isolation contract](../docs/references/isolation.md) and "
+            "[repository memory contract](../docs/references/memory.md)."
+        ),
         "init": " Also follow the [Init contract](../docs/references/init.md).",
     }.get(command, "")
+    contract = command_contract(command)
+    checker_binding = ""
+    if "<installed-skill>" in contract:
+        checker_binding = (
+            " In this installed skill, `<installed-skill>` is the sibling "
+            "[`../docs`](../docs/SKILL.md) directory, so the bundled checker is exactly "
+            "[`../docs/scripts/check.py`](../docs/scripts/check.py); execute it without "
+            "preflighting its path or availability, and never execute a checker found "
+            "inside the target repository."
+        )
+    boundary = command_closeout_boundary(command)
+    closeout_route = ""
+    boundary_section = ""
+    if boundary:
+        closeout_route = (
+            " For a later exactly approved mutating closeout, follow the embedded closeout "
+            "boundary below and the [repository memory contract](../docs/references/memory.md)."
+        )
+        boundary_section = f"\n{boundary}\n"
     return (
         "---\n"
         f"name: docs-{command}\n"
@@ -218,10 +263,14 @@ def command_skill(command: str, vendor: str = "codex") -> str:
         f"This is the explicit thin route for the fixed command `{command}`. Treat all trailing "
         "text as that command's raw trailing text; never reinterpret it as another command.\n\n"
         "Load and follow the sibling [Diátaxis Docs skill](../docs/SKILL.md), including its shared "
-        "safety, evidence, health, and result contracts. Follow the selected command contract in "
-        f"[commands.md](../docs/references/commands.md).{direct_reference} Do not load unrelated "
-        "command playbooks. If a required shared resource is unavailable, stop and report that "
-        "the command could not be executed; do not invent a fallback.\n"
+        f"safety, evidence, health, and result contracts.{direct_reference} The selected command "
+        f"contract below is the complete canonical `commands.md` contract for `{command}`; do not "
+        "load `commands.md`, and load no additional playbook beyond those linked here."
+        f"{checker_binding}{closeout_route} If a required shared resource is unavailable, stop "
+        "and report that the command could not be executed; do not invent a fallback.\n\n"
+        "## Selected command contract (canonical)\n\n"
+        f"{contract}\n"
+        f"{boundary_section}"
     )
 
 def command_agent_metadata(command: str) -> str:

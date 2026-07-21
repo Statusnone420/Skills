@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "campaign_id": "luna-max-july11-retrieval-constant-v1",
+  "purpose": "Detect retrieval progress or regression against the successful July 11 bounded recipe.",
+  "target": {
+    "repository": "Statusnone Skills",
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673"
+  },
+  "execution": {
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "max",
+    "repetitions_per_condition": 3,
+    "recommended_max_concurrency": 3,
+    "fresh_task_per_run": true,
+    "read_only": true
+  },
+  "conditions": [
+    {
+      "id": "no-skill",
+      "prompt": "Read-only retrieval benchmark. Do not invoke or load a documentation skill. Map this repository's documentation. Identify where a new agent should start, current truth, canonical versus generated documentation, deliberately unloaded material, hot-path size if directly measurable, and material documentation topology gaps. Render the important routes as one compact fenced text tree. Make no changes."
+    },
+    {
+      "id": "july11-bounded-recipe",
+      "prompt": "Read-only retrieval benchmark. Load skills/docs/SKILL.md and skills/docs/references/commands.md together, then perform map using this frozen July 11 recipe: read docs/README.md directly without probing first; read only the current-state hot-path files named there; in one execution run python skills/docs/scripts/check.py . --map docs/README.md --hot docs/STATE.md, treat exit 1 with reported findings as a completed diagnostic, and measure the named map/hot-path sizes in that same execution. Make no repository calls beyond the contract load and those three evidence actions. Do not inspect checker source, generated adapters, tests, evaluations, archives, plans, or Git history. Label unresolved relationships instead of broadening retrieval. Render one compact fenced text tree with repository-relative labels and keep the start path and evidence outside it. Make no changes."
+    },
+    {
+      "id": "docs-map-0.1.6",
+      "prompt": "Invoke the installed Diataxis Docs 0.1.6 map command for this repository. This is a read-only retrieval benchmark; make no changes."
+    }
+  ],
+  "constant_assertions": {
+    "start_route": "docs/README.md",
+    "current_truth_route": "docs/STATE.md",
+    "canonical_skill_route": "skills/docs/SKILL.md",
+    "generated_route": "adapters/",
+    "hot_path_bytes": 1589,
+    "known_topology_gaps": [
+      "docs/superpowers/plans/2026-07-11-bounded-compass-identity.md",
+      "docs/superpowers/specs/2026-07-11-bounded-compass-identity-design.md"
+    ]
+  },
+  "metrics": [
+    "duration_seconds",
+    "tool_call_wrappers",
+    "input_tokens",
+    "cached_input_tokens",
+    "uncached_input_tokens",
+    "reasoning_tokens",
+    "nonreasoning_output_tokens",
+    "total_tokens"
+  ],
+  "decision_rule": {
+    "primary_metrics": ["duration_seconds", "uncached_input_tokens"],
+    "regression_threshold_percent": 25,
+    "minimum_correctness": "all constant assertions present or an evidence-backed explanation for a changed finding",
+    "interpretation": "Call 0.1.6 a regression when its median exceeds the July 11 bounded recipe by more than 25 percent on either primary metric without a material correctness, coverage, or safety gain."
+  }
+}
