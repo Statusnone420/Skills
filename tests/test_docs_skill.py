@@ -1089,11 +1089,17 @@ class DocsSkillContractTests(unittest.TestCase):
             "needs attention",
             "outside the mapped routes",
             "deliberately not loaded",
-            "presentation may vary",
+            "required elements",
+            "wording and order may vary",
+            "omitting any required element is an incomplete result",
+            "canonical-versus-generated split",
+            "shared health output",
+            "one next action",
         ):
             self.assertIn(phrase, contract)
         self.assertIn("make no edits", contract)
         self.assertIn("detailed diagnostics remain under `check`", contract)
+        self.assertNotIn("presentation may vary", contract)
 
     def test_map_command_has_bounded_evidence_recipe(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -1107,7 +1113,7 @@ class DocsSkillContractTests(unittest.TestCase):
             "at most three evidence actions, in order",
             "read the existing map",
             "only if it names existing current-state hot-path files, read them",
-            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",
             "never include skill or playbook files in `--hot`",
@@ -1153,11 +1159,24 @@ class DocsSkillContractTests(unittest.TestCase):
             "when mapped routes exist, do not use repository-wide search",
             "execute a documented bundled tool invocation once",
             "do not preflight its path or availability",
+            "`<installed-skill>` always means the installed diátaxis docs skill directory",
+            "the bundled checker is exactly `<installed-skill>/scripts/check.py`",
+            "repository evidence, never the tool; never execute it",
+            "hosts this skill's own source",
             "inspect source or help only when it cannot execute or returns malformed output",
             "resolve relative links from the linking file's directory",
             "report a missing target without listing its parent",
         ):
             self.assertIn(phrase, commands)
+
+    def test_checker_invocations_bind_to_the_installed_skill_only(self):
+        commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
+        doctor = (SKILL / "references" / "doctor.md").read_text(encoding="utf-8")
+        self.assertNotIn("<checker-path>", commands)
+        self.assertNotIn("<checker-path>", doctor)
+        for invocation in re.findall(r"<python> (\S+)/scripts/check\.py", commands + doctor):
+            self.assertEqual(invocation, "<installed-skill>")
+        self.assertIn("Never use repo-local checker", doctor)
 
     def test_context_command_has_bounded_retrieval_contract(self):
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
@@ -1205,7 +1224,7 @@ class DocsSkillContractTests(unittest.TestCase):
         for phrase in (
             "make no edits",
             "execute the bundled checker once",
-            "<python> <checker-path> <repository-root> --json --agent --map docs/readme.md",
+            "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
             "omit `--hot` when no existing current-state file is selected",
             "`has_findings: true` is a findings result",
             "smallest scriptless equivalent",

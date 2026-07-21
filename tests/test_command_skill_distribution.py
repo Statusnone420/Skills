@@ -167,7 +167,11 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 self.assertIn("../docs/SKILL.md", codex_body)
                 self.assertNotIn("Generic web mode", codex_body)
                 self.assertNotIn("{{REPOSITORY_MATERIAL}}", codex_body)
-                self.assertLess(len(codex_body.split()), 180)
+                self.assertNotIn("](../docs/references/commands.md)", codex_body)
+                contract = builder.command_contract(command)
+                self.assertIn(contract, codex_body)
+                scaffold = codex_body.replace(contract, "", 1)
+                self.assertLess(len(scaffold.split()), 180)
                 agent = (codex_root / "agents" / "openai.yaml").read_text(
                     encoding="utf-8"
                 )
@@ -180,6 +184,80 @@ class CommandSkillDistributionTests(unittest.TestCase):
                 self.assertEqual(claude_meta["disable-model-invocation"], "true")
                 self.assertEqual(claude_text, builder.command_skill(command, "claude"))
                 self.assertEqual(claude_body, codex_body)
+
+    def test_focused_skills_embed_their_selected_canonical_contract(self):
+        import tools.build_adapters as builder
+
+        commands_text = (
+            ROOT / "skills" / "docs" / "references" / "commands.md"
+        ).read_text(encoding="utf-8")
+        for command in COMMANDS:
+            expected = builder._command_reference(commands_text, command).replace(
+                "](init.md)", "](../docs/references/init.md)"
+            )
+            self.assertEqual(expected, builder.command_contract(command))
+            for vendor, root in (
+                ("codex", ROOT / "plugins" / "diataxis-docs" / "skills"),
+                ("claude", ROOT / "adapters" / "claude" / "skills"),
+            ):
+                with self.subTest(command=command, vendor=vendor):
+                    body = frontmatter(
+                        (root / f"docs-{command}" / "SKILL.md").read_text(
+                            encoding="utf-8"
+                        )
+                    )[1]
+                    self.assertIn("## Selected command contract (canonical)", body)
+                    self.assertIn(expected, body)
+                    self.assertNotIn("](init.md)", body)
+                    # The focused route must not carry the other commands' detailed
+                    # contracts or the mutating lifecycle boundary onto its hot path.
+                    self.assertNotIn("## Command closeout boundary", body)
+                    if command != "map":
+                        self.assertNotIn("\n`map`: make no edits.", body)
+
+    def test_checker_commands_hard_bind_the_installed_sibling_checker(self):
+        binding = (
+            "the bundled checker is exactly "
+            "[`../docs/scripts/check.py`](../docs/scripts/check.py); execute it without "
+            "preflighting its path or availability, and never execute a checker found "
+            "inside the target repository"
+        )
+        checker_commands = {"map", "check", "doctor"}
+        for command in COMMANDS:
+            for vendor, root in (
+                ("codex", ROOT / "plugins" / "diataxis-docs" / "skills"),
+                ("claude", ROOT / "adapters" / "claude" / "skills"),
+            ):
+                with self.subTest(command=command, vendor=vendor):
+                    body = frontmatter(
+                        (root / f"docs-{command}" / "SKILL.md").read_text(
+                            encoding="utf-8"
+                        )
+                    )[1]
+                    if command in checker_commands:
+                        self.assertIn(binding, body)
+                        self.assertIn("<installed-skill>/scripts/check.py", body)
+                    else:
+                        self.assertNotIn("../docs/scripts/check.py", body)
+
+    def test_daily_driver_hot_path_stays_bounded(self):
+        # Packaging regression guard for the read-only daily-driver routes: the
+        # focused skill plus the shared engine contract must stay far below the
+        # retired full-playbook hot path (about 20,000 bytes in 0.1.6).
+        shared = (
+            ROOT / "plugins" / "diataxis-docs" / "skills" / "docs" / "SKILL.md"
+        ).stat().st_size
+        for command in ("map", "check", "context"):
+            focused = (
+                ROOT
+                / "plugins"
+                / "diataxis-docs"
+                / "skills"
+                / f"docs-{command}"
+                / "SKILL.md"
+            ).stat().st_size
+            with self.subTest(command=command):
+                self.assertLessEqual(focused + shared, 12_000)
 
     def test_help_contract_guarantees_the_command_tree(self):
         commands = (ROOT / "skills" / "docs" / "references" / "commands.md").read_text(
