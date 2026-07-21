@@ -1,0 +1,242 @@
+{
+  "campaign_id": "luna-max-cli-memory-isolated-paired-v1",
+  "candidate_provenance": {
+    "bound_conditions": [
+      "docs-map-candidate"
+    ],
+    "bound_skill": "diataxis-docs:docs-map",
+    "bound_skill_file": "skills/docs-map/SKILL.md",
+    "cache_relative_prefix": "statusnone-skills/diataxis-docs/0.1.6/",
+    "campaign_id": "luna-max-cli-memory-isolated-paired-v1",
+    "candidate_commit": "47d6e76db08ffcbd599aef3f24e2ae2b66417852",
+    "drift": "none",
+    "generated_at": "2026-07-21T03:45:51.894190+00:00",
+    "key_files": {
+      "skills/docs-map/SKILL.md": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "skills/docs/SKILL.md": "26507fcf1242ba7a79a848b75b43627756549d08e8090d6b87c95abff9661619",
+      "skills/docs/scripts/check.py": "5c95d5ff57e782ae7b4a6f87655100c093c931c1cd014d25f1fc7b4ae732792c"
+    },
+    "marketplace_source": "./plugins/diataxis-docs",
+    "package_tree": {
+      "files": 93,
+      "sha256": "a62da84fbdf39f5e0d80a8237493a0cec05b10ca129e0e582c89c852fba9aeeb"
+    },
+    "snapshot_version": "0.1.6",
+    "verified_at": "2026-07-21T04:39:37.956802+00:00"
+  },
+  "collected_at": "2026-07-21T04:39:37.956784+00:00",
+  "decision_rule": {
+    "interpretation": "The candidate passes when its median duration and uncached input are each no more than 25 percent above the July 11 arm within this campaign, correctness is 3 of 3, and repository-local checker attempts are zero.",
+    "maximum_repository_checker_attempts": 0,
+    "minimum_correctness": "Candidate passes all constant assertions in 3 of 3 runs.",
+    "primary_metrics": [
+      "duration_seconds",
+      "uncached_input_tokens"
+    ],
+    "regression_threshold_percent": 25
+  },
+  "execution": {
+    "fresh_task_per_run": true,
+    "model": "gpt-5.6-luna",
+    "read_only": true,
+    "reasoning_effort": "max",
+    "recommended_max_concurrency": 1,
+    "repetitions_per_condition": 3
+  },
+  "host_context": {
+    "host": "Codex CLI",
+    "memory": "unavailable"
+  },
+  "limitations": [
+    "Codex CLI 0.144.5 Windows sandbox helper returned Access is denied during the diagnostic canary, so scored runs use danger-full-access on a disposable detached worktree with read-only prompts and a mandatory clean-worktree check after every run.",
+    "All tasks run serially; there is no concurrent model or repository activity."
+  ],
+  "runs": [
+    {
+      "assertions": {
+        "constant_assertions": false,
+        "memory_isolated": true,
+        "missing_assertions": [
+          "hot_path_bytes: 1589"
+        ],
+        "repository_checker_attempts": 0,
+        "score": "PARTIAL",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 88832,
+      "condition": "docs-map-candidate",
+      "duration_seconds": 164.06,
+      "final_output_sha256": "167b72c94f6246eaddd2e29427030c9da9e01396ef465024d383b1fd542ff4ef",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 105378,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1053,
+      "pair": 1,
+      "pair_order": 2,
+      "raw_session_sha256": "9b45457e18377687af1ec8696cb425fcc83ae33ce25f9f04e7b10fbbe43a252e",
+      "reasoning_tokens": 7478,
+      "repetition": 1,
+      "requested_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "run_id": "pair-1-candidate",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 113909,
+      "uncached_input_tokens": 16546
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 0,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 90880,
+      "condition": "docs-map-candidate",
+      "duration_seconds": 182.107,
+      "final_output_sha256": "eebd746bb4d997389c06e429a9361098737995f7b2bcad1e06427efaa3ed13c7",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 108517,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1106,
+      "pair": 2,
+      "pair_order": 1,
+      "raw_session_sha256": "4b844df094ecd0d4a83b7d614d20cd34980ec49f6e14b07581091e971b700ee2",
+      "reasoning_tokens": 8544,
+      "repetition": 2,
+      "requested_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "run_id": "pair-2-candidate",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 118167,
+      "uncached_input_tokens": 17637
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 0,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 82944,
+      "condition": "docs-map-candidate",
+      "duration_seconds": 128.838,
+      "final_output_sha256": "ef218afb81a90b9d314a2e0e666ee89743f05a778b5e0772480b590e674c7ca8",
+      "first_turn_cached_input_tokens": 0,
+      "input_tokens": 108533,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1172,
+      "pair": 3,
+      "pair_order": 1,
+      "raw_session_sha256": "06cc1a90782aac005dcafbb67c8fb82a2ae6bb6a2e110c951e890869b63f1f85",
+      "reasoning_tokens": 5589,
+      "repetition": 3,
+      "requested_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "requested_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "run_id": "pair-3-candidate",
+      "shell_commands": 4,
+      "skill_binding_evidence": "qualified-cli-request-plus-verified-cache",
+      "tool_call_wrappers": 4,
+      "total_tokens": 115294,
+      "uncached_input_tokens": 25589
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 1,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 69632,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 178.548,
+      "final_output_sha256": "becdff43b2827221ffc3b0933b5fb4f885f506b062273edf24f3c171e1df1dbd",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 107389,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1050,
+      "pair": 1,
+      "pair_order": 1,
+      "raw_session_sha256": "19907de4ccd4799d6d91a75cf08cec349089adb916528aac4be76dd2f01ec160",
+      "reasoning_tokens": 8412,
+      "repetition": 1,
+      "run_id": "pair-1-july11",
+      "shell_commands": 4,
+      "tool_call_wrappers": 4,
+      "total_tokens": 116851,
+      "uncached_input_tokens": 37757
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 1,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 66560,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 120.725,
+      "final_output_sha256": "9c8a463fc08a3fc3acdd973b7e1ec8717efd9deba6fc55abfbd4eabb338eefcf",
+      "first_turn_cached_input_tokens": 0,
+      "input_tokens": 103884,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1064,
+      "pair": 2,
+      "pair_order": 2,
+      "raw_session_sha256": "f42f81a92c28b83c18ad03a3cd4840f82873e9e2ac046b8313cf2c2e5a08cacb",
+      "reasoning_tokens": 4854,
+      "repetition": 2,
+      "run_id": "pair-2-july11",
+      "shell_commands": 4,
+      "tool_call_wrappers": 4,
+      "total_tokens": 109802,
+      "uncached_input_tokens": 37324
+    },
+    {
+      "assertions": {
+        "constant_assertions": true,
+        "memory_isolated": true,
+        "repository_checker_attempts": 1,
+        "score": "PASS",
+        "worktree_clean": true
+      },
+      "cached_input_tokens": 87808,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 143.377,
+      "final_output_sha256": "4d253134657be6bf936a4e15840b2b373ef7cd89694395a86abf3245943bc6c6",
+      "first_turn_cached_input_tokens": 8960,
+      "input_tokens": 104324,
+      "memory_read_ops": 0,
+      "memory_read_output_chars": 0,
+      "nonreasoning_output_tokens": 1208,
+      "pair": 3,
+      "pair_order": 2,
+      "raw_session_sha256": "a8b1c2d038b2ce7ff01c44b6e62d2ff7a5ca74c7972bebd71d99dcfd577ac8b0",
+      "reasoning_tokens": 5508,
+      "repetition": 3,
+      "run_id": "pair-3-july11",
+      "shell_commands": 4,
+      "tool_call_wrappers": 4,
+      "total_tokens": 111040,
+      "uncached_input_tokens": 16516
+    }
+  ],
+  "schema_version": 1,
+  "target": {
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673",
+    "repository": "Statusnone Skills"
+  },
+  "validity": "valid-memory-isolated-cli-paired-acceptance"
+}

@@ -117,7 +117,7 @@ class DocsSkillContractTests(unittest.TestCase):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         commands = (SKILL / "references" / "commands.md").read_text(encoding="utf-8")
 
-        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.6\"", skill)
+        self.assertIn("metadata:\n  author: Statusnone\n  version: \"0.1.7\"", skill)
         self.assertIn("Diátaxis Docs v<metadata.version>", commands)
 
     def test_default_help_uses_plain_english_daily_commands(self):
@@ -370,10 +370,10 @@ class DocsSkillContractTests(unittest.TestCase):
     def test_canonical_version_is_strict_semver(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertEqual(build_adapters.canonical_version(skill), "0.1.6")
+        self.assertEqual(build_adapters.canonical_version(skill), "0.1.7")
         for invalid in ("1", "v0.1.0", "01.0.0", "0.1.0-alpha"):
             with self.subTest(invalid=invalid):
-                malformed = skill.replace('version: "0.1.6"', f'version: "{invalid}"')
+                malformed = skill.replace('version: "0.1.7"', f'version: "{invalid}"')
                 with self.assertRaises(ValueError):
                     build_adapters.canonical_version(malformed)
 
@@ -1113,6 +1113,11 @@ class DocsSkillContractTests(unittest.TestCase):
             "at most three evidence actions, in order",
             "read the existing map",
             "only if it names existing current-state hot-path files, read them",
+            "select every map link explicitly presented as current state, current truth, or status",
+            "read it without a separate existence probe",
+            "a successful read proves existence",
+            "its repository-relative path must be passed to `--hot`",
+            "never silently skip an explicit current-state route",
             "<python> <installed-skill>/scripts/check.py <repository-root> --json --agent --map docs/readme.md",
             "checker action supplies findings and hot-path bytes",
             "the checker includes the map automatically",

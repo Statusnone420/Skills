@@ -129,7 +129,7 @@ class CommandSkillDistributionTests(unittest.TestCase):
         )
         self.assertEqual(manifest["name"], entry["name"])
         self.assertEqual(plugin_root.name, entry["name"])
-        self.assertEqual(manifest["version"], "0.1.6")
+        self.assertEqual(manifest["version"], "0.1.7")
         self.assertEqual(manifest["interface"]["displayName"], "Diátaxis Docs")
 
     def test_codex_and_claude_publish_the_umbrella_plus_focused_skills(self):

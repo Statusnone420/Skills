@@ -1,0 +1,241 @@
+{
+  "campaign_id": "luna-max-july11-retrieval-constant-v1",
+  "candidate_provenance": {
+    "bound_conditions": [
+      "docs-map-0.1.6"
+    ],
+    "bound_skill": "diataxis-docs:docs-map",
+    "bound_skill_file": "skills/docs-map/SKILL.md",
+    "cache_relative_prefix": "statusnone-skills/diataxis-docs/0.1.6/",
+    "campaign_id": "luna-max-july11-retrieval-constant-v1",
+    "candidate_commit": "47d6e76db08ffcbd599aef3f24e2ae2b66417852",
+    "drift": "none",
+    "generated_at": "2026-07-21T02:13:40.024067+00:00",
+    "key_files": {
+      "skills/docs-map/SKILL.md": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "skills/docs/SKILL.md": "26507fcf1242ba7a79a848b75b43627756549d08e8090d6b87c95abff9661619",
+      "skills/docs/scripts/check.py": "5c95d5ff57e782ae7b4a6f87655100c093c931c1cd014d25f1fc7b4ae732792c"
+    },
+    "marketplace_source": "./plugins/diataxis-docs",
+    "package_tree": {
+      "files": 93,
+      "sha256": "a62da84fbdf39f5e0d80a8237493a0cec05b10ca129e0e582c89c852fba9aeeb"
+    },
+    "snapshot_version": "0.1.6",
+    "verified_at": "2026-07-21T02:22:19.363368+00:00"
+  },
+  "collected_at": "2026-07-21T02:22:19.363348+00:00",
+  "decision_rule": {
+    "interpretation": "Call 0.1.6 a regression when its median exceeds the July 11 bounded recipe by more than 25 percent on either primary metric without a material correctness, coverage, or safety gain.",
+    "minimum_correctness": "all constant assertions present or an evidence-backed explanation for a changed finding",
+    "primary_metrics": [
+      "duration_seconds",
+      "uncached_input_tokens"
+    ],
+    "regression_threshold_percent": 25
+  },
+  "execution": {
+    "fresh_task_per_run": true,
+    "model": "gpt-5.6-luna",
+    "read_only": true,
+    "reasoning_effort": "max",
+    "recommended_max_concurrency": 3,
+    "repetitions_per_condition": 3
+  },
+  "host_context": {
+    "host": "Codex Desktop",
+    "memory": "enabled",
+    "tool_assisted_memory_generation": "enabled"
+  },
+  "limitations": [
+    "The no-skill and July 11 reference runs are reused from the original campaign; only the candidate condition was rerun.",
+    "The candidate intentionally retains the 0.1.6 manifest version and is identified by cryptographically verified commit and package hashes.",
+    "Codex Desktop memory and tool-assisted memory generation were enabled for all candidate runs; memory citations are part of the representative daily-driver host condition."
+  ],
+  "runs": [
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 224512,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 189.072,
+      "final_output_sha256": "2046970df8c2675b11b50c87338caf9aba10d5953bd8704ef6b2bc4e468ae58e",
+      "injected_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "injected_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "input_tokens": 251093,
+      "nonreasoning_output_tokens": 2796,
+      "raw_session_sha256": "7e37f33efece1ddb09162c63452aaee8b80eda262786cbd059c65164b7d2ca9e",
+      "reasoning_tokens": 7058,
+      "repetition": 1,
+      "run_id": "docs-map-0.1.7-candidate-1",
+      "tool_call_wrappers": 6,
+      "total_tokens": 260947,
+      "uncached_input_tokens": 26581
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 139008,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 136.87,
+      "final_output_sha256": "f909d879a0b037803380ee5d5b269da588d85233d628b622ffc0bf0feb3cc4f8",
+      "injected_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "injected_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "input_tokens": 169232,
+      "nonreasoning_output_tokens": 1329,
+      "raw_session_sha256": "333bb2cdd74f57bb0932b4885429a854d7659e70c4613f24938f628155445946",
+      "reasoning_tokens": 5749,
+      "repetition": 2,
+      "run_id": "docs-map-0.1.7-candidate-2",
+      "tool_call_wrappers": 4,
+      "total_tokens": 176310,
+      "uncached_input_tokens": 30224
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 215296,
+      "condition": "docs-map-0.1.6",
+      "duration_seconds": 155.655,
+      "final_output_sha256": "f5c9b5214b9ed4b9c6150a93cf00d232d4b63e1ee99fd76aac320a4818c17483",
+      "injected_skill_sha256": "a6739fafaad15c3e67c689a299e6396b1b42e784f435d5ac5fa5c26286563f24",
+      "injected_skill_source": "statusnone-skills/diataxis-docs/0.1.6/skills/docs-map/SKILL.md",
+      "input_tokens": 250895,
+      "nonreasoning_output_tokens": 1968,
+      "raw_session_sha256": "ceda8c433f1c0f5c79b370e9c89848d6bd8ecc159659880f1c941e2498b8c002",
+      "reasoning_tokens": 5947,
+      "repetition": 3,
+      "run_id": "docs-map-0.1.7-candidate-3",
+      "tool_call_wrappers": 6,
+      "total_tokens": 258810,
+      "uncached_input_tokens": 35599
+    },
+    {
+      "assertions": {
+        "constant_map": "PARTIAL",
+        "limitation": "checker findings were not named and hot-path bytes were unavailable",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 107264,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 143.983,
+      "final_output_sha256": "f290cc49ef7a3e095e3fe3559046890a927b420ce49a79c3d5314a7a8989823b",
+      "input_tokens": 127465,
+      "nonreasoning_output_tokens": 1199,
+      "raw_session_sha256": "dc2cad2fc4e85f21fb7964bb3217a5afdcabcd1da72238e8084eff15385a4b1a",
+      "reasoning_tokens": 6436,
+      "repetition": 1,
+      "run_id": "july11-bounded-recipe-1",
+      "tool_call_wrappers": 4,
+      "total_tokens": 135100,
+      "uncached_input_tokens": 20201
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 217344,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 168.747,
+      "final_output_sha256": "e54878bd51aecaca55a5e31d3a32cb97b07267d336c2d88690327e0e3a5356e0",
+      "input_tokens": 239839,
+      "nonreasoning_output_tokens": 1958,
+      "raw_session_sha256": "ddbd616fa6438c1d3c199e005a81b006b3bbc8fd070f880158a5d5741290234c",
+      "reasoning_tokens": 6980,
+      "repetition": 2,
+      "run_id": "july11-bounded-recipe-2",
+      "tool_call_wrappers": 6,
+      "total_tokens": 248777,
+      "uncached_input_tokens": 22495
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 117504,
+      "condition": "july11-bounded-recipe",
+      "duration_seconds": 94.604,
+      "final_output_sha256": "5bc4a09eaa4fb160a9dd82252bd0459f11b60fa27bc80b469587c455239e9662",
+      "input_tokens": 126351,
+      "nonreasoning_output_tokens": 1187,
+      "raw_session_sha256": "57a056d1f06d87e798d83151e4b6d43fc394298fb37460941cf38ddccaa343de",
+      "reasoning_tokens": 3731,
+      "repetition": 3,
+      "run_id": "july11-bounded-recipe-3",
+      "tool_call_wrappers": 4,
+      "total_tokens": 131269,
+      "uncached_input_tokens": 8847
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 1696768,
+      "condition": "no-skill",
+      "duration_seconds": 568.965,
+      "final_output_sha256": "83db4c9d23087a202f18bae6a7cd8cd5b4ea915b7e31152193a23c1ac51870ea",
+      "input_tokens": 1803309,
+      "nonreasoning_output_tokens": 5513,
+      "raw_session_sha256": "7d134d3f219bcf8b9080252ccb88fcf2d9d1a256771713c9cf2405f2c3508604",
+      "reasoning_tokens": 9208,
+      "repetition": 1,
+      "run_id": "no-skill-1",
+      "tool_call_wrappers": 35,
+      "total_tokens": 1818030,
+      "uncached_input_tokens": 106541
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 1627136,
+      "condition": "no-skill",
+      "duration_seconds": 281.578,
+      "final_output_sha256": "b9fb44b0bfa56f5730e888d7aff660d5dcef700384861ed7d473ffd296e7eb79",
+      "input_tokens": 1716038,
+      "nonreasoning_output_tokens": 4811,
+      "raw_session_sha256": "af506d5c605d2c6358211f7db1c2a00b407cd677f37c8de762b0980fc809ffb3",
+      "reasoning_tokens": 7625,
+      "repetition": 2,
+      "run_id": "no-skill-2",
+      "tool_call_wrappers": 27,
+      "total_tokens": 1728474,
+      "uncached_input_tokens": 88902
+    },
+    {
+      "assertions": {
+        "constant_map": "PASS",
+        "read_only": "PASS"
+      },
+      "cached_input_tokens": 776192,
+      "condition": "no-skill",
+      "duration_seconds": 431.956,
+      "final_output_sha256": "5c91d16ea37eb4aae5aec385fd4cf5cdce7a58c875d1662959f44fe96614e25b",
+      "input_tokens": 855227,
+      "nonreasoning_output_tokens": 10349,
+      "raw_session_sha256": "7401010c9959d6054c17a65f8c47743266fb6f8f50a0ea346f3e7a40fbca500a",
+      "reasoning_tokens": 12372,
+      "repetition": 3,
+      "run_id": "no-skill-3",
+      "tool_call_wrappers": 15,
+      "total_tokens": 877948,
+      "uncached_input_tokens": 79035
+    }
+  ],
+  "schema_version": 1,
+  "target": {
+    "commit": "7609b76da4b2ea6845c5b9f38dabfbd17487f673",
+    "repository": "Statusnone Skills"
+  },
+  "validity": "desktop-memory-on-candidate"
+}

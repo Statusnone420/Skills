@@ -4,7 +4,7 @@ Diátaxis Docs is a public alpha. Install from a revision you trust, review prop
 
 ## Codex marketplace
 
-Diátaxis Docs 0.1.6 publishes as a Codex repository marketplace plugin. Add the marketplace, install the plugin, and verify that Codex reports it:
+Diátaxis Docs 0.1.7 publishes as a Codex repository marketplace plugin. Add the marketplace, install the plugin, and verify that Codex reports it:
 
 ```text
 codex plugin marketplace add Statusnone420/Skills

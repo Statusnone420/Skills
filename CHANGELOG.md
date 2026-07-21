@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 — Bounded retrieval reliability (2026-07-21)
+
+- Bound Map, Check, and Doctor to the installed bundled checker so a repository that hosts the skill source cannot accidentally execute its own same-named checker.
+- Made focused command routing authoritative while keeping umbrella `$docs` dispatch compatible, eliminating conflicting focused-versus-umbrella instructions.
+- Required explicitly labeled current-state/current-truth/status routes to be read and supplied as measured hot paths instead of being silently skipped.
+- Added provenance-bound Codex campaign tooling and a memory-isolated paired Luna Max evaluation. The pre-fix candidate used the same four tool wrappers as the July reference, 52.7% less median uncached input, and stayed within the 25% duration gate; its recorded 2/3 correctness result motivated the targeted current-state fix rather than being discarded.
+
 ## 0.1.6 — Empty-state recovery repair (2026-07-20)
 
 - Let Init discovery and Doctor's zero-write baseline proceed without false missing-state findings when `.diataxis/` is empty or contains only an empty `manifests/` container left by an interrupted or branch-switched initialization.
